@@ -28,6 +28,7 @@ object DatabaseMigrations {
             migration_104_105,
             migration_105_106,
             migration_106_107,
+            migration_107_108,
         )
     }
 
@@ -839,214 +840,90 @@ object DatabaseMigrations {
 
     private val migration_102_103 = object : Migration(102, 103) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            // Agent 表
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `ai_agent_sessions` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `scope` TEXT NOT NULL,
-                    `scopeKey` TEXT NOT NULL,
-                    `status` TEXT NOT NULL,
-                    `contextJson` TEXT NOT NULL DEFAULT '',
-                    `createdAt` INTEGER NOT NULL DEFAULT 0,
-                    `updatedAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_scope_scopeKey` ON `ai_agent_sessions` (`scope`, `scopeKey`)")
+            // ai_agent_sessions
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_agent_sessions` (`sessionId` TEXT NOT NULL, `scope` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT '', `currentGoal` TEXT NOT NULL DEFAULT '', `currentTask` TEXT NOT NULL DEFAULT '', `currentStep` TEXT NOT NULL DEFAULT '', `contextJson` TEXT NOT NULL DEFAULT '', `pendingConfirmationsJson` TEXT NOT NULL DEFAULT '', `retryStateJson` TEXT NOT NULL DEFAULT '', `lastError` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`sessionId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_scope_updatedAt` ON `ai_agent_sessions` (`scope`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_status_updatedAt` ON `ai_agent_sessions` (`status`, `updatedAt`)")
 
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `ai_agent_jobs` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `sessionId` INTEGER NOT NULL,
-                    `type` TEXT NOT NULL,
-                    `status` TEXT NOT NULL,
-                    `payloadJson` TEXT NOT NULL DEFAULT '',
-                    `resultJson` TEXT NOT NULL DEFAULT '',
-                    `error` TEXT NOT NULL DEFAULT '',
-                    `retryCount` INTEGER NOT NULL DEFAULT 0,
-                    `maxRetries` INTEGER NOT NULL DEFAULT 3,
-                    `leaseUntil` INTEGER NOT NULL DEFAULT 0,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0,
-                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
-                    FOREIGN KEY(`sessionId`) REFERENCES `ai_agent_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_sessionId` ON `ai_agent_jobs` (`sessionId`)")
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_status` ON `ai_agent_jobs` (`status`)")
+            // ai_agent_jobs
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_agent_jobs` (`jobId` TEXT NOT NULL, `sessionId` TEXT NOT NULL DEFAULT '', `type` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT '', `inputJson` TEXT NOT NULL DEFAULT '', `checkpointJson` TEXT NOT NULL DEFAULT '', `outputJson` TEXT NOT NULL DEFAULT '', `error` TEXT NOT NULL DEFAULT '', `retryCount` INTEGER NOT NULL DEFAULT 0, `maxRetry` INTEGER NOT NULL DEFAULT 2, `nextRunAt` INTEGER NOT NULL DEFAULT 0, `leaseUntil` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`jobId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_sessionId_createdAt` ON `ai_agent_jobs` (`sessionId`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_status_updatedAt` ON `ai_agent_jobs` (`status`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_type_updatedAt` ON `ai_agent_jobs` (`type`, `updatedAt`)")
 
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `ai_agent_traces` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `sessionId` INTEGER NOT NULL,
-                    `jobId` INTEGER,
-                    `event` TEXT NOT NULL,
-                    `detail` TEXT NOT NULL DEFAULT '',
-                    `createdAt` INTEGER NOT NULL DEFAULT 0,
-                    FOREIGN KEY(`sessionId`) REFERENCES `ai_agent_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_sessionId` ON `ai_agent_traces` (`sessionId`)")
+            // ai_agent_traces
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_agent_traces` (`traceId` TEXT NOT NULL, `sessionId` TEXT NOT NULL DEFAULT '', `jobId` TEXT NOT NULL DEFAULT '', `round` INTEGER NOT NULL DEFAULT 0, `eventType` TEXT NOT NULL DEFAULT '', `payloadJson` TEXT NOT NULL DEFAULT '', `usageJson` TEXT NOT NULL DEFAULT '', `success` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`traceId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_jobId_round_createdAt` ON `ai_agent_traces` (`jobId`, `round`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_sessionId_createdAt` ON `ai_agent_traces` (`sessionId`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_eventType_createdAt` ON `ai_agent_traces` (`eventType`, `createdAt`)")
 
-            // 记忆系统表
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `ai_memory_items` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `scope` TEXT NOT NULL,
-                    `scopeKey` TEXT NOT NULL,
-                    `subject` TEXT NOT NULL,
-                    `predicate` TEXT NOT NULL,
-                    `object` TEXT NOT NULL,
-                    `source` TEXT NOT NULL DEFAULT '',
-                    `fingerprint` TEXT NOT NULL,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0,
-                    `updatedAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
-            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_items_scope_scopeKey_fingerprint` ON `ai_memory_items` (`scope`, `scopeKey`, `fingerprint`)")
+            // ai_memory_items
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_memory_items` (`memoryId` TEXT NOT NULL, `scope` TEXT NOT NULL DEFAULT '', `bookKey` TEXT NOT NULL DEFAULT '', `sessionId` TEXT NOT NULL DEFAULT '', `type` TEXT NOT NULL DEFAULT '', `subject` TEXT NOT NULL DEFAULT '', `predicate` TEXT NOT NULL DEFAULT '', `objectValue` TEXT NOT NULL DEFAULT '', `content` TEXT NOT NULL DEFAULT '', `confidence` INTEGER NOT NULL DEFAULT 50, `importance` INTEGER NOT NULL DEFAULT 50, `sourceIds` TEXT NOT NULL DEFAULT '', `sourceChapterIndex` INTEGER NOT NULL DEFAULT -1, `fingerprint` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, `lastUsedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`memoryId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_scope_updatedAt` ON `ai_memory_items` (`scope`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_bookKey_updatedAt` ON `ai_memory_items` (`bookKey`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_sessionId_updatedAt` ON `ai_memory_items` (`sessionId`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_type_updatedAt` ON `ai_memory_items` (`type`, `updatedAt`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_items_fingerprint` ON `ai_memory_items` (`fingerprint`)")
 
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `ai_memory_fragments` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `scope` TEXT NOT NULL,
-                    `scopeKey` TEXT NOT NULL,
-                    `content` TEXT NOT NULL,
-                    `contentHash` TEXT NOT NULL,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
-            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_fragments_scope_scopeKey_contentHash` ON `ai_memory_fragments` (`scope`, `scopeKey`, `contentHash`)")
+            // ai_memory_fragments
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_memory_fragments` (`fragmentId` TEXT NOT NULL, `scope` TEXT NOT NULL DEFAULT '', `bookKey` TEXT NOT NULL DEFAULT '', `sessionId` TEXT NOT NULL DEFAULT '', `sourceType` TEXT NOT NULL DEFAULT '', `title` TEXT NOT NULL DEFAULT '', `content` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT -1, `chapterTitle` TEXT NOT NULL DEFAULT '', `paragraphStart` INTEGER NOT NULL DEFAULT -1, `paragraphEnd` INTEGER NOT NULL DEFAULT -1, `contentHash` TEXT NOT NULL DEFAULT '', `importance` INTEGER NOT NULL DEFAULT 50, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, `lastUsedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`fragmentId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_scope_updatedAt` ON `ai_memory_fragments` (`scope`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_bookKey_chapterIndex` ON `ai_memory_fragments` (`bookKey`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_sessionId_updatedAt` ON `ai_memory_fragments` (`sessionId`, `updatedAt`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_fragments_contentHash` ON `ai_memory_fragments` (`contentHash`)")
 
-            // FTS 表
-            db.execSQL("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_items_fts` USING FTS4(
-                    `content` TEXT,
-                    `docid` INTEGER,
-                    content=`ai_memory_items`
-                )
-            """.trimIndent())
-            db.execSQL("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_fragments_fts` USING FTS4(
-                    `content` TEXT,
-                    `docid` INTEGER,
-                    content=`ai_memory_fragments`
-                )
-            """.trimIndent())
+            // ai_memory_items_fts (FTS4 独立表，不是外部内容表)
+            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_items_fts` USING FTS4(`memoryId` TEXT NOT NULL, `subject` TEXT NOT NULL, `predicate` TEXT NOT NULL, `objectValue` TEXT NOT NULL, `content` TEXT NOT NULL)")
 
-            // 章节摘要表
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `book_ai_chapter_summaries` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `bookUrl` TEXT NOT NULL,
-                    `chapterIndex` INTEGER NOT NULL,
-                    `contentHash` TEXT NOT NULL,
-                    `summary` TEXT NOT NULL,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
-            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_chapterIndex` ON `book_ai_chapter_summaries` (`bookUrl`, `chapterIndex`)")
+            // ai_memory_fragments_fts
+            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_fragments_fts` USING FTS4(`fragmentId` TEXT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `chapterTitle` TEXT NOT NULL)")
+
+            // book_ai_chapter_summaries
+            db.execSQL("CREATE TABLE IF NOT EXISTS `book_ai_chapter_summaries` (`cacheKey` TEXT NOT NULL, `bookUrl` TEXT NOT NULL DEFAULT '', `bookName` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `chapterKey` TEXT NOT NULL DEFAULT '', `chapterTitle` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `modelId` TEXT NOT NULL DEFAULT '', `modelName` TEXT NOT NULL DEFAULT '', `summary` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`cacheKey`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_chapterIndex` ON `book_ai_chapter_summaries` (`bookUrl`, `chapterIndex`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_contentHash` ON `book_ai_chapter_summaries` (`bookUrl`, `contentHash`)")
         }
     }
 
     private val migration_103_104 = object : Migration(103, 104) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            // AI 朗读角色缓存
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `ai_read_aloud_role_caches` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `bookUrl` TEXT NOT NULL,
-                    `chapterIndex` INTEGER NOT NULL,
-                    `contentHash` TEXT NOT NULL,
-                    `roleJson` TEXT NOT NULL DEFAULT '',
-                    `status` TEXT NOT NULL DEFAULT '',
-                    `createdAt` INTEGER NOT NULL DEFAULT 0,
-                    `updatedAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
+            // ai_read_aloud_role_caches
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_read_aloud_role_caches` (`cacheKey` TEXT NOT NULL, `bookUrl` TEXT NOT NULL DEFAULT '', `chapterKey` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `chapterTitle` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `mode` TEXT NOT NULL DEFAULT '', `paragraphCount` INTEGER NOT NULL DEFAULT 0, `status` TEXT NOT NULL DEFAULT 'success', `retryCount` INTEGER NOT NULL DEFAULT 0, `lastError` TEXT NOT NULL DEFAULT '', `createdCharacterIdsJson` TEXT NOT NULL DEFAULT '', `characterHash` TEXT NOT NULL DEFAULT '', `voiceHash` TEXT NOT NULL DEFAULT '', `segmentsJson` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`cacheKey`))")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_role_caches_bookUrl_chapterIndex` ON `ai_read_aloud_role_caches` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_role_caches_bookUrl_contentHash` ON `ai_read_aloud_role_caches` (`bookUrl`, `contentHash`)")
 
-            // AI 朗读用量记录
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `ai_read_aloud_usage_records` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `bookUrl` TEXT NOT NULL,
-                    `chapterIndex` INTEGER NOT NULL,
-                    `model` TEXT NOT NULL DEFAULT '',
-                    `promptTokens` INTEGER NOT NULL DEFAULT 0,
-                    `completionTokens` INTEGER NOT NULL DEFAULT 0,
-                    `totalTokens` INTEGER NOT NULL DEFAULT 0,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_bookUrl` ON `ai_read_aloud_usage_records` (`bookUrl`)")
+            // ai_read_aloud_usage_records
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_read_aloud_usage_records` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT '', `bookUrl` TEXT NOT NULL DEFAULT '', `bookName` TEXT NOT NULL DEFAULT '', `chapterTitle` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `cacheKey` TEXT NOT NULL DEFAULT '', `batchName` TEXT NOT NULL DEFAULT '', `providerName` TEXT NOT NULL DEFAULT '', `modelId` TEXT NOT NULL DEFAULT '', `elapsedMillis` INTEGER NOT NULL DEFAULT 0, `requestCount` INTEGER NOT NULL DEFAULT 0, `inputTokens` INTEGER NOT NULL DEFAULT 0, `cachedInputTokens` INTEGER NOT NULL DEFAULT 0, `outputTokens` INTEGER NOT NULL DEFAULT 0, `totalTokens` INTEGER NOT NULL DEFAULT 0, `summary` TEXT NOT NULL DEFAULT '', `error` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_type_createdAt` ON `ai_read_aloud_usage_records` (`type`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_bookUrl_chapterIndex` ON `ai_read_aloud_usage_records` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_cacheKey` ON `ai_read_aloud_usage_records` (`cacheKey`)")
 
-            // BGM 组
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_groups` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `bookUrl` TEXT NOT NULL,
-                    `name` TEXT NOT NULL,
-                    `enabled` INTEGER NOT NULL DEFAULT 1,
-                    `order` INTEGER NOT NULL DEFAULT 0,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_bookUrl` ON `read_aloud_bgm_groups` (`bookUrl`)")
+            // read_aloud_bgm_groups
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_bgm_groups` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL DEFAULT '', `assetType` TEXT NOT NULL DEFAULT 'bgm', `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_sortOrder_id` ON `read_aloud_bgm_groups` (`sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_assetType_sortOrder_id` ON `read_aloud_bgm_groups` (`assetType`, `sortOrder`, `id`)")
 
-            // BGM 音轨
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_tracks` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `groupId` INTEGER NOT NULL,
-                    `name` TEXT NOT NULL,
-                    `url` TEXT NOT NULL DEFAULT '',
-                    `type` TEXT NOT NULL DEFAULT '',
-                    `volume` REAL NOT NULL DEFAULT 1.0,
-                    `loop` INTEGER NOT NULL DEFAULT 1,
-                    `order` INTEGER NOT NULL DEFAULT 0,
-                    FOREIGN KEY(`groupId`) REFERENCES `read_aloud_bgm_groups`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_groupId` ON `read_aloud_bgm_tracks` (`groupId`)")
+            // read_aloud_bgm_tracks
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_bgm_tracks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `groupId` INTEGER NOT NULL DEFAULT 0, `assetType` TEXT NOT NULL DEFAULT 'bgm', `name` TEXT NOT NULL DEFAULT '', `fileName` TEXT NOT NULL DEFAULT '', `filePath` TEXT NOT NULL DEFAULT '', `tags` TEXT NOT NULL DEFAULT '', `checksum` TEXT NOT NULL DEFAULT '', `durationMs` INTEGER NOT NULL DEFAULT 0, `defaultVolume` REAL NOT NULL DEFAULT 1.0, `enabled` INTEGER NOT NULL DEFAULT 1, `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_groupId_sortOrder_id` ON `read_aloud_bgm_tracks` (`groupId`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_assetType_enabled_groupId_sortOrder_id` ON `read_aloud_bgm_tracks` (`assetType`, `enabled`, `groupId`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_checksum` ON `read_aloud_bgm_tracks` (`checksum`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_enabled` ON `read_aloud_bgm_tracks` (`enabled`)")
 
-            // BGM 分配缓存
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_assignment_caches` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `bookUrl` TEXT NOT NULL,
-                    `chapterIndex` INTEGER NOT NULL,
-                    `contentHash` TEXT NOT NULL,
-                    `assignmentJson` TEXT NOT NULL DEFAULT '',
-                    `createdAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
+            // read_aloud_bgm_assignment_caches
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_bgm_assignment_caches` (`cacheKey` TEXT NOT NULL, `bookUrl` TEXT NOT NULL DEFAULT '', `chapterKey` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `chapterTitle` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `modelId` TEXT NOT NULL DEFAULT '', `catalogHash` TEXT NOT NULL DEFAULT '', `assignmentsJson` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT 'success', `lastError` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`cacheKey`))")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_chapterIndex` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_contentHash` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `contentHash`)")
 
-            // Speaker 组
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `read_aloud_speaker_groups` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `bookUrl` TEXT NOT NULL,
-                    `name` TEXT NOT NULL,
-                    `enabled` INTEGER NOT NULL DEFAULT 1,
-                    `order` INTEGER NOT NULL DEFAULT 0,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_bookUrl` ON `read_aloud_speaker_groups` (`bookUrl`)")
+            // read_aloud_speaker_groups
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_speaker_groups` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL DEFAULT '', `enabled` INTEGER NOT NULL DEFAULT 1, `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_enabled_sortOrder_id` ON `read_aloud_speaker_groups` (`enabled`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_sortOrder_id` ON `read_aloud_speaker_groups` (`sortOrder`, `id`)")
 
-            // Speaker 组项
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS `read_aloud_speaker_group_items` (
-                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    `groupId` INTEGER NOT NULL,
-                    `speakerName` TEXT NOT NULL,
-                    `voiceId` TEXT NOT NULL DEFAULT '',
-                    `style` TEXT NOT NULL DEFAULT '',
-                    `order` INTEGER NOT NULL DEFAULT 0,
-                    FOREIGN KEY(`groupId`) REFERENCES `read_aloud_speaker_groups`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
-                )
-            """.trimIndent())
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_groupId` ON `read_aloud_speaker_group_items` (`groupId`)")
+            // read_aloud_speaker_group_items
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_speaker_group_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `groupId` INTEGER NOT NULL DEFAULT 0, `engineType` TEXT NOT NULL DEFAULT '', `engineValue` TEXT NOT NULL DEFAULT '', `engineName` TEXT NOT NULL DEFAULT '', `speakerName` TEXT NOT NULL DEFAULT '', `toneID` TEXT NOT NULL DEFAULT '', `sourceGroupId` TEXT NOT NULL DEFAULT '', `sourceGroupName` TEXT NOT NULL DEFAULT '', `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_groupId_sortOrder_id` ON `read_aloud_speaker_group_items` (`groupId`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_engineType_engineValue_toneID` ON `read_aloud_speaker_group_items` (`engineType`, `engineValue`, `toneID`)")
         }
     }
 
@@ -1069,6 +946,116 @@ object DatabaseMigrations {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE `httpTTS` ADD COLUMN `speakersJson` TEXT NOT NULL DEFAULT ''")
             db.execSQL("ALTER TABLE `httpTTS` ADD COLUMN `emotionsJson` TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    /**
+     * 修复已经升级到 v107 但表结构错误的用户。
+     * migration_102_103 / migration_103_104 早期版本使用了与实体类不匹配的 SQL，
+     * 导致 Room 运行时 schema 校验失败崩溃。此 migration 对所有新表执行
+     * DROP TABLE IF EXISTS 然后用正确的 SQL 重建。
+     * SQLite DROP IF EXISTS 不强制外键约束检查，故 DROP 顺序无影响。
+     */
+    private val migration_107_108 = object : Migration(107, 108) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 先删除所有结构错误的表
+            db.execSQL("DROP TABLE IF EXISTS `ai_agent_traces`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_agent_jobs`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_agent_sessions`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_memory_items_fts`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_memory_fragments_fts`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_memory_items`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_memory_fragments`")
+            db.execSQL("DROP TABLE IF EXISTS `book_ai_chapter_summaries`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_read_aloud_role_caches`")
+            db.execSQL("DROP TABLE IF EXISTS `ai_read_aloud_usage_records`")
+            db.execSQL("DROP TABLE IF EXISTS `read_aloud_bgm_tracks`")
+            db.execSQL("DROP TABLE IF EXISTS `read_aloud_bgm_groups`")
+            db.execSQL("DROP TABLE IF EXISTS `read_aloud_bgm_assignment_caches`")
+            db.execSQL("DROP TABLE IF EXISTS `read_aloud_speaker_group_items`")
+            db.execSQL("DROP TABLE IF EXISTS `read_aloud_speaker_groups`")
+
+            // 用正确的 SQL 重建所有表和索引
+            // ai_agent_sessions
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_agent_sessions` (`sessionId` TEXT NOT NULL, `scope` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT '', `currentGoal` TEXT NOT NULL DEFAULT '', `currentTask` TEXT NOT NULL DEFAULT '', `currentStep` TEXT NOT NULL DEFAULT '', `contextJson` TEXT NOT NULL DEFAULT '', `pendingConfirmationsJson` TEXT NOT NULL DEFAULT '', `retryStateJson` TEXT NOT NULL DEFAULT '', `lastError` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`sessionId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_scope_updatedAt` ON `ai_agent_sessions` (`scope`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_status_updatedAt` ON `ai_agent_sessions` (`status`, `updatedAt`)")
+
+            // ai_agent_jobs
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_agent_jobs` (`jobId` TEXT NOT NULL, `sessionId` TEXT NOT NULL DEFAULT '', `type` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT '', `inputJson` TEXT NOT NULL DEFAULT '', `checkpointJson` TEXT NOT NULL DEFAULT '', `outputJson` TEXT NOT NULL DEFAULT '', `error` TEXT NOT NULL DEFAULT '', `retryCount` INTEGER NOT NULL DEFAULT 0, `maxRetry` INTEGER NOT NULL DEFAULT 2, `nextRunAt` INTEGER NOT NULL DEFAULT 0, `leaseUntil` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`jobId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_sessionId_createdAt` ON `ai_agent_jobs` (`sessionId`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_status_updatedAt` ON `ai_agent_jobs` (`status`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_type_updatedAt` ON `ai_agent_jobs` (`type`, `updatedAt`)")
+
+            // ai_agent_traces
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_agent_traces` (`traceId` TEXT NOT NULL, `sessionId` TEXT NOT NULL DEFAULT '', `jobId` TEXT NOT NULL DEFAULT '', `round` INTEGER NOT NULL DEFAULT 0, `eventType` TEXT NOT NULL DEFAULT '', `payloadJson` TEXT NOT NULL DEFAULT '', `usageJson` TEXT NOT NULL DEFAULT '', `success` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`traceId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_jobId_round_createdAt` ON `ai_agent_traces` (`jobId`, `round`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_sessionId_createdAt` ON `ai_agent_traces` (`sessionId`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_eventType_createdAt` ON `ai_agent_traces` (`eventType`, `createdAt`)")
+
+            // ai_memory_items
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_memory_items` (`memoryId` TEXT NOT NULL, `scope` TEXT NOT NULL DEFAULT '', `bookKey` TEXT NOT NULL DEFAULT '', `sessionId` TEXT NOT NULL DEFAULT '', `type` TEXT NOT NULL DEFAULT '', `subject` TEXT NOT NULL DEFAULT '', `predicate` TEXT NOT NULL DEFAULT '', `objectValue` TEXT NOT NULL DEFAULT '', `content` TEXT NOT NULL DEFAULT '', `confidence` INTEGER NOT NULL DEFAULT 50, `importance` INTEGER NOT NULL DEFAULT 50, `sourceIds` TEXT NOT NULL DEFAULT '', `sourceChapterIndex` INTEGER NOT NULL DEFAULT -1, `fingerprint` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, `lastUsedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`memoryId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_scope_updatedAt` ON `ai_memory_items` (`scope`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_bookKey_updatedAt` ON `ai_memory_items` (`bookKey`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_sessionId_updatedAt` ON `ai_memory_items` (`sessionId`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_type_updatedAt` ON `ai_memory_items` (`type`, `updatedAt`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_items_fingerprint` ON `ai_memory_items` (`fingerprint`)")
+
+            // ai_memory_fragments
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_memory_fragments` (`fragmentId` TEXT NOT NULL, `scope` TEXT NOT NULL DEFAULT '', `bookKey` TEXT NOT NULL DEFAULT '', `sessionId` TEXT NOT NULL DEFAULT '', `sourceType` TEXT NOT NULL DEFAULT '', `title` TEXT NOT NULL DEFAULT '', `content` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT -1, `chapterTitle` TEXT NOT NULL DEFAULT '', `paragraphStart` INTEGER NOT NULL DEFAULT -1, `paragraphEnd` INTEGER NOT NULL DEFAULT -1, `contentHash` TEXT NOT NULL DEFAULT '', `importance` INTEGER NOT NULL DEFAULT 50, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, `lastUsedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`fragmentId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_scope_updatedAt` ON `ai_memory_fragments` (`scope`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_bookKey_chapterIndex` ON `ai_memory_fragments` (`bookKey`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_sessionId_updatedAt` ON `ai_memory_fragments` (`sessionId`, `updatedAt`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_fragments_contentHash` ON `ai_memory_fragments` (`contentHash`)")
+
+            // ai_memory_items_fts (FTS4 独立表，不是外部内容表)
+            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_items_fts` USING FTS4(`memoryId` TEXT NOT NULL, `subject` TEXT NOT NULL, `predicate` TEXT NOT NULL, `objectValue` TEXT NOT NULL, `content` TEXT NOT NULL)")
+
+            // ai_memory_fragments_fts
+            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_fragments_fts` USING FTS4(`fragmentId` TEXT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `chapterTitle` TEXT NOT NULL)")
+
+            // book_ai_chapter_summaries
+            db.execSQL("CREATE TABLE IF NOT EXISTS `book_ai_chapter_summaries` (`cacheKey` TEXT NOT NULL, `bookUrl` TEXT NOT NULL DEFAULT '', `bookName` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `chapterKey` TEXT NOT NULL DEFAULT '', `chapterTitle` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `modelId` TEXT NOT NULL DEFAULT '', `modelName` TEXT NOT NULL DEFAULT '', `summary` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`cacheKey`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_chapterIndex` ON `book_ai_chapter_summaries` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_contentHash` ON `book_ai_chapter_summaries` (`bookUrl`, `contentHash`)")
+
+            // ai_read_aloud_role_caches
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_read_aloud_role_caches` (`cacheKey` TEXT NOT NULL, `bookUrl` TEXT NOT NULL DEFAULT '', `chapterKey` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `chapterTitle` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `mode` TEXT NOT NULL DEFAULT '', `paragraphCount` INTEGER NOT NULL DEFAULT 0, `status` TEXT NOT NULL DEFAULT 'success', `retryCount` INTEGER NOT NULL DEFAULT 0, `lastError` TEXT NOT NULL DEFAULT '', `createdCharacterIdsJson` TEXT NOT NULL DEFAULT '', `characterHash` TEXT NOT NULL DEFAULT '', `voiceHash` TEXT NOT NULL DEFAULT '', `segmentsJson` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`cacheKey`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_role_caches_bookUrl_chapterIndex` ON `ai_read_aloud_role_caches` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_role_caches_bookUrl_contentHash` ON `ai_read_aloud_role_caches` (`bookUrl`, `contentHash`)")
+
+            // ai_read_aloud_usage_records
+            db.execSQL("CREATE TABLE IF NOT EXISTS `ai_read_aloud_usage_records` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT '', `bookUrl` TEXT NOT NULL DEFAULT '', `bookName` TEXT NOT NULL DEFAULT '', `chapterTitle` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `cacheKey` TEXT NOT NULL DEFAULT '', `batchName` TEXT NOT NULL DEFAULT '', `providerName` TEXT NOT NULL DEFAULT '', `modelId` TEXT NOT NULL DEFAULT '', `elapsedMillis` INTEGER NOT NULL DEFAULT 0, `requestCount` INTEGER NOT NULL DEFAULT 0, `inputTokens` INTEGER NOT NULL DEFAULT 0, `cachedInputTokens` INTEGER NOT NULL DEFAULT 0, `outputTokens` INTEGER NOT NULL DEFAULT 0, `totalTokens` INTEGER NOT NULL DEFAULT 0, `summary` TEXT NOT NULL DEFAULT '', `error` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_type_createdAt` ON `ai_read_aloud_usage_records` (`type`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_bookUrl_chapterIndex` ON `ai_read_aloud_usage_records` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_cacheKey` ON `ai_read_aloud_usage_records` (`cacheKey`)")
+
+            // read_aloud_bgm_groups
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_bgm_groups` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL DEFAULT '', `assetType` TEXT NOT NULL DEFAULT 'bgm', `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_sortOrder_id` ON `read_aloud_bgm_groups` (`sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_assetType_sortOrder_id` ON `read_aloud_bgm_groups` (`assetType`, `sortOrder`, `id`)")
+
+            // read_aloud_bgm_tracks
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_bgm_tracks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `groupId` INTEGER NOT NULL DEFAULT 0, `assetType` TEXT NOT NULL DEFAULT 'bgm', `name` TEXT NOT NULL DEFAULT '', `fileName` TEXT NOT NULL DEFAULT '', `filePath` TEXT NOT NULL DEFAULT '', `tags` TEXT NOT NULL DEFAULT '', `checksum` TEXT NOT NULL DEFAULT '', `durationMs` INTEGER NOT NULL DEFAULT 0, `defaultVolume` REAL NOT NULL DEFAULT 1.0, `enabled` INTEGER NOT NULL DEFAULT 1, `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_groupId_sortOrder_id` ON `read_aloud_bgm_tracks` (`groupId`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_assetType_enabled_groupId_sortOrder_id` ON `read_aloud_bgm_tracks` (`assetType`, `enabled`, `groupId`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_checksum` ON `read_aloud_bgm_tracks` (`checksum`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_enabled` ON `read_aloud_bgm_tracks` (`enabled`)")
+
+            // read_aloud_bgm_assignment_caches
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_bgm_assignment_caches` (`cacheKey` TEXT NOT NULL, `bookUrl` TEXT NOT NULL DEFAULT '', `chapterKey` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `chapterTitle` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `modelId` TEXT NOT NULL DEFAULT '', `catalogHash` TEXT NOT NULL DEFAULT '', `assignmentsJson` TEXT NOT NULL DEFAULT '', `status` TEXT NOT NULL DEFAULT 'success', `lastError` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`cacheKey`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_chapterIndex` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_contentHash` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `contentHash`)")
+
+            // read_aloud_speaker_groups
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_speaker_groups` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL DEFAULT '', `enabled` INTEGER NOT NULL DEFAULT 1, `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_enabled_sortOrder_id` ON `read_aloud_speaker_groups` (`enabled`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_sortOrder_id` ON `read_aloud_speaker_groups` (`sortOrder`, `id`)")
+
+            // read_aloud_speaker_group_items
+            db.execSQL("CREATE TABLE IF NOT EXISTS `read_aloud_speaker_group_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `groupId` INTEGER NOT NULL DEFAULT 0, `engineType` TEXT NOT NULL DEFAULT '', `engineValue` TEXT NOT NULL DEFAULT '', `engineName` TEXT NOT NULL DEFAULT '', `speakerName` TEXT NOT NULL DEFAULT '', `toneID` TEXT NOT NULL DEFAULT '', `sourceGroupId` TEXT NOT NULL DEFAULT '', `sourceGroupName` TEXT NOT NULL DEFAULT '', `sortOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_groupId_sortOrder_id` ON `read_aloud_speaker_group_items` (`groupId`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_engineType_engineValue_toneID` ON `read_aloud_speaker_group_items` (`engineType`, `engineValue`, `toneID`)")
         }
     }
 
