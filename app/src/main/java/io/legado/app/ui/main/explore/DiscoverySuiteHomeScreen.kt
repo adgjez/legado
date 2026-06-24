@@ -37,11 +37,12 @@ import io.legado.app.help.config.AppConfig
 
 @Composable
 fun DiscoverySuiteHomeScreen(
-    selectedSuiteLabel: String?,
+    selectedSuite: DiscoverySuite?,
     scrollToTopSignal: Int,
     onSearchClick: () -> Unit,
     onSuiteClick: () -> Unit,
     onCreateSuiteClick: () -> Unit,
+    onAddWidgetClick: () -> Unit,
     onCanScrollBackwardChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -73,7 +74,8 @@ fun DiscoverySuiteHomeScreen(
             .navigationBarsPadding()
     ) {
         DiscoverySuiteSearchBar(
-            selectedSuiteLabel = selectedSuiteLabel ?: context.getString(R.string.discovery_suite_no_suite),
+            selectedSuiteLabel = selectedSuite?.displayName
+                ?: context.getString(R.string.discovery_suite_no_suite),
             onSearchClick = onSearchClick,
             onSuiteClick = onSuiteClick
         )
@@ -81,8 +83,39 @@ fun DiscoverySuiteHomeScreen(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             content = {
-                item(key = "suite_empty") {
-                    DiscoverySuiteEmptyState(onCreateSuiteClick = onCreateSuiteClick)
+                if (selectedSuite == null) {
+                    item(key = "suite_empty") {
+                        DiscoverySuiteEmptyState(
+                            title = context.getString(R.string.discovery_suite_empty_title),
+                            summary = context.getString(R.string.discovery_suite_empty_summary),
+                            action = context.getString(R.string.discovery_suite_create),
+                            onActionClick = onCreateSuiteClick
+                        )
+                    }
+                } else if (selectedSuite.widgets.isEmpty()) {
+                    item(key = "suite_no_widgets") {
+                        DiscoverySuiteEmptyState(
+                            title = context.getString(R.string.discovery_suite_no_widgets_title),
+                            summary = context.getString(R.string.discovery_suite_no_widgets_summary),
+                            action = context.getString(R.string.discovery_suite_add_widget),
+                            onActionClick = onAddWidgetClick
+                        )
+                    }
+                } else {
+                    item(key = "suite_header") {
+                        Text(
+                            text = selectedSuite.displayName,
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                    selectedSuite.widgets.forEach { widget ->
+                        item(key = widget.id) {
+                            DiscoverySuiteWidgetPlaceholder(widget = widget)
+                        }
+                    }
                 }
             }
         )
@@ -144,7 +177,10 @@ private fun DiscoverySuiteSearchBar(
 
 @Composable
 private fun DiscoverySuiteEmptyState(
-    onCreateSuiteClick: () -> Unit
+    title: String,
+    summary: String,
+    action: String,
+    onActionClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -154,20 +190,20 @@ private fun DiscoverySuiteEmptyState(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
-            text = LocalContext.current.getString(R.string.discovery_suite_empty_title),
+            text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = LocalContext.current.getString(R.string.discovery_suite_empty_summary),
+            text = summary,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Surface(
             modifier = Modifier
                 .height(42.dp)
-                .clickable(onClick = onCreateSuiteClick),
+                .clickable(onClick = onActionClick),
             shape = RoundedCornerShape(21.dp),
             color = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -177,10 +213,39 @@ private fun DiscoverySuiteEmptyState(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = LocalContext.current.getString(R.string.discovery_suite_create),
+                    text = action,
                     fontWeight = FontWeight.Medium
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DiscoverySuiteWidgetPlaceholder(widget: DiscoverySuiteWidget) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = widget.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = LocalContext.current.getString(R.string.discovery_suite_widget_pending),
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
     }
 }

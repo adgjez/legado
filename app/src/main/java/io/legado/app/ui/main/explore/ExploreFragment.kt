@@ -89,6 +89,10 @@ import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
@@ -174,6 +178,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeDiscoverListStyle = mutableIntStateOf(AppConfig.bookshelfListItemStyle)
     private val composeDiscoverScrollToTopSignal = mutableIntStateOf(0)
     private val composeSuiteScrollToTopSignal = mutableIntStateOf(0)
+    private val composeSuiteConfig = mutableStateOf(DiscoverySuiteStore.load())
+    private val composeSelectedSuiteId = mutableStateOf(DiscoverySuiteStore.selectedSuiteId())
     private var composeDiscoverCanScrollBackward = false
     private var composeSuiteCanScrollBackward = false
     private var composeDiscoverBooksSignature = ""
@@ -264,12 +270,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         )
         binding.composeDiscoverySuite.setContent {
             LegadoComposeTheme {
+                val suiteConfig = composeSuiteConfig.value
+                val selectedSuite = selectedSuite(suiteConfig)
                 DiscoverySuiteHomeScreen(
-                    selectedSuiteLabel = null,
+                    selectedSuite = selectedSuite,
                     scrollToTopSignal = composeSuiteScrollToTopSignal.intValue,
                     onSearchClick = { SearchActivity.start(requireContext(), key = null) },
-                    onSuiteClick = { requireContext().toastOnUi(R.string.discovery_suite_no_suite) },
-                    onCreateSuiteClick = { requireContext().toastOnUi(R.string.discovery_suite_create) },
+                    onSuiteClick = ::showSuiteSelector,
+                    onCreateSuiteClick = ::showCreateSuiteDialog,
+                    onAddWidgetClick = { selectedSuite?.let(::showAddSuiteWidgetDialog) },
                     onCanScrollBackwardChanged = { composeSuiteCanScrollBackward = it }
                 )
             }
@@ -407,11 +416,177 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun initSuiteMode() {
+        refreshSuiteConfig()
         binding.swipeRefreshLayout.isRefreshing = false
     }
 
     private fun stopSuiteMode() {
         composeSuiteCanScrollBackward = false
+    }
+
+    private fun selectedSuite(config: DiscoverySuiteConfig = composeSuiteConfig.value): DiscoverySuite? {
+        val selectedId = composeSelectedSuiteId.value
+        return config.suites.firstOrNull { it.id == selectedId }
+            ?: config.suites.firstOrNull()
+    }
+
+    private fun refreshSuiteConfig() {
+        val config = DiscoverySuiteStore.load()
+        val selectedId = DiscoverySuiteStore.selectedSuiteId()
+            .takeIf { id -> config.suites.any { it.id == id } }
+            ?: config.suites.firstOrNull()?.id.orEmpty()
+        if (selectedId != DiscoverySuiteStore.selectedSuiteId()) {
+            DiscoverySuiteStore.setSelectedSuiteId(selectedId)
+        }
+        composeSuiteConfig.value = config
+        composeSelectedSuiteId.value = selectedId
+    }
+
+    private fun saveSuiteConfig(
+        selectedId: String? = null,
+        transform: (DiscoverySuiteConfig) -> DiscoverySuiteConfig
+    ) {
+        val current = DiscoverySuiteStore.load()
+        DiscoverySuiteStore.save(transform(current))
+        selectedId?.let(DiscoverySuiteStore::setSelectedSuiteId)
+        refreshSuiteConfig()
+    }
+
+    private fun showSuiteSelector() {
+        val config = composeSuiteConfig.value
+        if (config.suites.isEmpty()) {
+            showCreateSuiteDialog()
+            return
+        }
+        val labels = buildList {
+            add(getString(R.string.discovery_suite_manage))
+            addAll(config.suites.map { it.displayName })
+            add(getString(R.string.discovery_suite_create))
+        }
+        val selectedIndex = config.suites.indexOfFirst { it.id == composeSelectedSuiteId.value }
+            .takeIf { it >= 0 }
+            ?.plus(1)
+            ?: -1
+        showComposeChoiceListDialog(
+            title = getString(R.string.discovery_page_mode_suite),
+            labels = labels,
+            selectedIndex = selectedIndex
+        ) { index ->
+            when {
+                index == 0 -> selectedSuite(config)?.let(::showSuiteManageDialog)
+                index == labels.lastIndex -> showCreateSuiteDialog()
+                index > 0 -> {
+                    config.suites.getOrNull(index - 1)?.let { suite ->
+                        DiscoverySuiteStore.setSelectedSuiteId(suite.id)
+                        refreshSuiteConfig()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showSuiteManageDialog(suite: DiscoverySuite) {
+        val labels = listOf(
+            getString(R.string.discovery_suite_rename),
+            getString(R.string.discovery_suite_alias),
+            getString(R.string.discovery_suite_add_widget),
+            getString(R.string.discovery_suite_delete)
+        )
+        showComposeActionListDialog(
+            title = suite.displayName,
+            labels = labels,
+            dangerIndices = setOf(3)
+        ) { index ->
+            when (index) {
+                0 -> showRenameSuiteDialog(suite)
+                1 -> showSuiteAliasDialog(suite)
+                2 -> showAddSuiteWidgetDialog(suite)
+                3 -> confirmDeleteSuite(suite)
+            }
+        }
+    }
+
+    private fun showCreateSuiteDialog() {
+        showComposeTextInputDialog(
+            title = getString(R.string.discovery_suite_create),
+            hint = getString(R.string.discovery_suite_name),
+            validateInput = { it.trim().isNotEmpty() },
+            onPositive = { name ->
+                val suite = DiscoverySuiteStore.newSuite(name)
+                saveSuiteConfig(selectedId = suite.id) { config ->
+                    config.copy(suites = config.suites + suite)
+                }
+            }
+        )
+    }
+
+    private fun showRenameSuiteDialog(suite: DiscoverySuite) {
+        showComposeTextInputDialog(
+            title = getString(R.string.discovery_suite_rename),
+            hint = getString(R.string.discovery_suite_name),
+            initialValue = suite.name,
+            validateInput = { it.trim().isNotEmpty() },
+            onPositive = { name ->
+                updateSuite(suite.id) { it.copy(name = name.trim()) }
+            }
+        )
+    }
+
+    private fun showSuiteAliasDialog(suite: DiscoverySuite) {
+        showComposeTextInputDialog(
+            title = getString(R.string.discovery_suite_alias),
+            hint = getString(R.string.discovery_suite_alias),
+            initialValue = suite.alias,
+            onPositive = { alias ->
+                updateSuite(suite.id) { it.copy(alias = alias.trim()) }
+            }
+        )
+    }
+
+    private fun showAddSuiteWidgetDialog(suite: DiscoverySuite) {
+        showComposeTextInputDialog(
+            title = getString(R.string.discovery_suite_add_widget),
+            hint = getString(R.string.discovery_suite_widget_title),
+            initialValue = getString(R.string.discovery_suite_add_widget),
+            validateInput = { it.trim().isNotEmpty() },
+            onPositive = { title ->
+                val widget = DiscoverySuiteStore.newBookWidget(title)
+                updateSuite(suite.id) { it.copy(widgets = it.widgets + widget) }
+            }
+        )
+    }
+
+    private fun confirmDeleteSuite(suite: DiscoverySuite) {
+        showComposeConfirmDialog(
+            title = getString(R.string.discovery_suite_delete),
+            message = suite.displayName,
+            dangerPositive = true,
+            onPositive = {
+                saveSuiteConfig { config ->
+                    val suites = config.suites.filterNot { it.id == suite.id }
+                    val selectedId = if (composeSelectedSuiteId.value == suite.id) {
+                        suites.firstOrNull()?.id.orEmpty()
+                    } else {
+                        composeSelectedSuiteId.value
+                    }
+                    DiscoverySuiteStore.setSelectedSuiteId(selectedId)
+                    config.copy(suites = suites)
+                }
+            }
+        )
+    }
+
+    private fun updateSuite(
+        suiteId: String,
+        transform: (DiscoverySuite) -> DiscoverySuite
+    ) {
+        saveSuiteConfig { config ->
+            config.copy(
+                suites = config.suites.map { suite ->
+                    if (suite.id == suiteId) transform(suite) else suite
+                }
+            )
+        }
     }
 
     private fun initSearchView() {
