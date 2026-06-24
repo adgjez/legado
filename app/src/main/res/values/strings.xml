@@ -1233,6 +1233,7 @@
     <string name="discovery_suite_no_widgets_title">No widgets in this suite</string>
     <string name="discovery_suite_no_widgets_summary">Add a book widget and bind it to source tags.</string>
     <string name="discovery_suite_add_widget">Add widget</string>
+    <string name="discovery_suite_widget_loading">Loading widget content...</string>
     <string name="discovery_suite_widget_pending">Widget source and tag selection will be configured in the suite editor.</string>
     <string name="discovery_suite_manage">Edit suite</string>
     <string name="discovery_suite_rename">Rename suite</string>

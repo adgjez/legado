@@ -23,6 +23,7 @@ import android.view.SubMenu
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -92,6 +93,7 @@ import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
@@ -162,6 +164,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var discoverWarmupJob: Job? = null
     private var discoverLoadJob: Job? = null
     private var discoverActionJob: Job? = null
+    private var suiteLoadJob: Job? = null
     private val discoverSources = mutableListOf<BookSourcePart>()
     private val discoverAllTagItems = mutableListOf<DiscoverTagItem>()
     private val discoverTagItems = mutableListOf<DiscoverTagItem>()
@@ -180,6 +183,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeSuiteScrollToTopSignal = mutableIntStateOf(0)
     private val composeSuiteConfig = mutableStateOf(DiscoverySuiteStore.load())
     private val composeSelectedSuiteId = mutableStateOf(DiscoverySuiteStore.selectedSuiteId())
+    private val composeSuiteWidgetBooks = mutableStateMapOf<String, List<SearchBook>>()
+    private val composeSuiteLoadingWidgets = mutableStateMapOf<String, Boolean>()
     private var composeDiscoverCanScrollBackward = false
     private var composeSuiteCanScrollBackward = false
     private var composeDiscoverBooksSignature = ""
@@ -274,11 +279,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 val selectedSuite = selectedSuite(suiteConfig)
                 DiscoverySuiteHomeScreen(
                     selectedSuite = selectedSuite,
+                    widgetBooks = composeSuiteWidgetBooks,
+                    loadingWidgetIds = composeSuiteLoadingWidgets
+                        .filterValues { it }
+                        .keys,
                     scrollToTopSignal = composeSuiteScrollToTopSignal.intValue,
                     onSearchClick = { SearchActivity.start(requireContext(), key = null) },
                     onSuiteClick = ::showSuiteSelector,
                     onCreateSuiteClick = ::showCreateSuiteDialog,
                     onAddWidgetClick = { selectedSuite?.let(::showAddSuiteWidgetDialog) },
+                    onBookClick = ::showBookInfo,
+                    onBookPreview = ::showSuiteBookPreview,
                     onCanScrollBackwardChanged = { composeSuiteCanScrollBackward = it }
                 )
             }
@@ -421,6 +432,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun stopSuiteMode() {
+        suiteLoadJob?.cancel()
+        suiteLoadJob = null
+        composeSuiteLoadingWidgets.clear()
         composeSuiteCanScrollBackward = false
     }
 
@@ -440,6 +454,59 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
         composeSuiteConfig.value = config
         composeSelectedSuiteId.value = selectedId
+        loadSelectedSuiteWidgets()
+    }
+
+    private fun loadSelectedSuiteWidgets() {
+        suiteLoadJob?.cancel()
+        composeSuiteLoadingWidgets.clear()
+        val suite = selectedSuite() ?: run {
+            composeSuiteWidgetBooks.clear()
+            return
+        }
+        val widgetIds = suite.widgets.map { it.id }.toSet()
+        composeSuiteWidgetBooks.keys
+            .filterNot { it in widgetIds }
+            .forEach { composeSuiteWidgetBooks.remove(it) }
+        suiteLoadJob = viewLifecycleOwner.lifecycleScope.launch {
+            suite.widgets.forEach { widget ->
+                if (widget.targets.isEmpty()) {
+                    composeSuiteWidgetBooks[widget.id] = emptyList()
+                    return@forEach
+                }
+                composeSuiteLoadingWidgets[widget.id] = true
+                val books = runCatching {
+                    withContext(IO) {
+                        loadSuiteWidgetBooks(widget)
+                    }
+                }.getOrElse {
+                    AppLog.put("套件发现控件加载失败", it)
+                    emptyList()
+                }
+                if (!isAdded || !usingSuiteDiscovery) return@launch
+                composeSuiteWidgetBooks[widget.id] = books
+                composeSuiteLoadingWidgets[widget.id] = false
+            }
+        }
+    }
+
+    private suspend fun loadSuiteWidgetBooks(widget: DiscoverySuiteWidget): List<SearchBook> {
+        val books = linkedSetOf<SearchBook>()
+        widget.targets.take(3).forEach { target ->
+            if (books.size >= widget.displayLimit) return@forEach
+            val source = appDb.bookSourceDao.getBookSource(target.sourceUrl) ?: return@forEach
+            val newBooks = WebBook.exploreBookAwait(
+                source,
+                target.tagUrl,
+                1,
+                WebViewPool.Scope.DISCOVERY
+            )
+            books.addAll(newBooks.take(widget.displayLimit - books.size))
+        }
+        if (books.isNotEmpty()) {
+            appDb.searchBookDao.insert(*books.toTypedArray())
+        }
+        return books.toList()
     }
 
     private fun saveSuiteConfig(
@@ -550,10 +617,82 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             initialValue = getString(R.string.discovery_suite_add_widget),
             validateInput = { it.trim().isNotEmpty() },
             onPositive = { title ->
-                val widget = DiscoverySuiteStore.newBookWidget(title)
-                updateSuite(suite.id) { it.copy(widgets = it.widgets + widget) }
+                showSuiteWidgetSourceDialog(suite, title.trim())
             }
         )
+    }
+
+    private fun showSuiteWidgetSourceDialog(suite: DiscoverySuite, title: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val sources = withContext(IO) {
+                appDb.bookSourceDao.allEnabledPart
+                    .filter { it.enabledExplore && it.hasExploreUrl }
+            }
+            if (sources.isEmpty()) {
+                requireContext().toastOnUi(R.string.explore_empty)
+                return@launch
+            }
+            showComposeMultiChoiceDialog(
+                title = getString(R.string.screen_find),
+                labels = sources.map { it.bookSourceName },
+                checkedIndices = emptySet(),
+                onPositive = { checked ->
+                    val selected = sources.filterIndexed { index, _ ->
+                        checked.getOrNull(index) == true
+                    }
+                    if (selected.isEmpty()) {
+                        requireContext().toastOnUi(R.string.screen_find)
+                    } else {
+                        showSuiteWidgetTagDialog(suite, title, selected)
+                    }
+                }
+            )
+        }
+    }
+
+    private fun showSuiteWidgetTagDialog(
+        suite: DiscoverySuite,
+        title: String,
+        sources: List<BookSourcePart>
+    ) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val targets = withContext(IO) {
+                sources.flatMap { source ->
+                    runCatching {
+                        source.exploreKinds()
+                            .filter { it.type == ExploreKind.Type.url && !it.url.isNullOrBlank() }
+                            .map { kind ->
+                                DiscoverySuiteWidgetTarget(
+                                    sourceUrl = source.bookSourceUrl,
+                                    tagUrl = kind.url.orEmpty(),
+                                    title = "${source.bookSourceName} - ${kind.title}"
+                                )
+                            }
+                    }.getOrElse { emptyList() }
+                }
+            }
+            if (targets.isEmpty()) {
+                requireContext().toastOnUi(R.string.find_empty)
+                return@launch
+            }
+            showComposeMultiChoiceDialog(
+                title = getString(R.string.discovery_suite_add_widget),
+                labels = targets.map { it.title },
+                checkedIndices = emptySet(),
+                onPositive = { checked ->
+                    val selectedTargets = targets.filterIndexed { index, _ ->
+                        checked.getOrNull(index) == true
+                    }
+                    if (selectedTargets.isEmpty()) {
+                        requireContext().toastOnUi(R.string.find_empty)
+                        return@showComposeMultiChoiceDialog
+                    }
+                    val widget = DiscoverySuiteStore.newBookWidget(title)
+                        .copy(targets = selectedTargets)
+                    updateSuite(suite.id) { it.copy(widgets = it.widgets + widget) }
+                }
+            )
+        }
     }
 
     private fun confirmDeleteSuite(suite: DiscoverySuite) {
@@ -2484,6 +2623,20 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }
             SearchBookOpenHelper.open(requireContext(), book, isVideo)
         }
+    }
+
+    private fun showSuiteBookPreview(book: SearchBook) {
+        val lines = buildList {
+            if (book.author.isNotBlank()) add(book.author)
+            if (book.originName.isNotBlank()) add(book.originName)
+            book.intro?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }
+        showComposeConfirmDialog(
+            title = book.name,
+            message = lines.joinToString("\n\n").ifBlank { book.bookUrl },
+            showNegative = false,
+            onPositive = {}
+        )
     }
 
     private fun handleDiscoverToggleTag(index: Int, item: DiscoverTagItem) {

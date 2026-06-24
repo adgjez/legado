@@ -1,7 +1,9 @@
 package io.legado.app.ui.main.explore
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,16 +35,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.legado.app.R
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
 
 @Composable
 fun DiscoverySuiteHomeScreen(
     selectedSuite: DiscoverySuite?,
+    widgetBooks: Map<String, List<SearchBook>>,
+    loadingWidgetIds: Set<String>,
     scrollToTopSignal: Int,
     onSearchClick: () -> Unit,
     onSuiteClick: () -> Unit,
     onCreateSuiteClick: () -> Unit,
     onAddWidgetClick: () -> Unit,
+    onBookClick: (SearchBook) -> Unit,
+    onBookPreview: (SearchBook) -> Unit,
     onCanScrollBackwardChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -113,7 +120,13 @@ fun DiscoverySuiteHomeScreen(
                     }
                     selectedSuite.widgets.forEach { widget ->
                         item(key = widget.id) {
-                            DiscoverySuiteWidgetPlaceholder(widget = widget)
+                            DiscoverySuiteWidgetSection(
+                                widget = widget,
+                                books = widgetBooks[widget.id].orEmpty(),
+                                isLoading = widget.id in loadingWidgetIds,
+                                onBookClick = onBookClick,
+                                onBookPreview = onBookPreview
+                            )
                         }
                     }
                 }
@@ -222,7 +235,13 @@ private fun DiscoverySuiteEmptyState(
 }
 
 @Composable
-private fun DiscoverySuiteWidgetPlaceholder(widget: DiscoverySuiteWidget) {
+private fun DiscoverySuiteWidgetSection(
+    widget: DiscoverySuiteWidget,
+    books: List<SearchBook>,
+    isLoading: Boolean,
+    onBookClick: (SearchBook) -> Unit,
+    onBookPreview: (SearchBook) -> Unit
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -242,10 +261,60 @@ private fun DiscoverySuiteWidgetPlaceholder(widget: DiscoverySuiteWidget) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = LocalContext.current.getString(R.string.discovery_suite_widget_pending),
-                style = MaterialTheme.typography.bodyMedium
-            )
+            when {
+                isLoading -> Text(
+                    text = LocalContext.current.getString(R.string.discovery_suite_widget_loading),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                books.isEmpty() -> Text(
+                    text = LocalContext.current.getString(R.string.discovery_suite_widget_pending),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                else -> books.take(widget.displayLimit).forEach { book ->
+                    DiscoverySuiteBookRow(
+                        book = book,
+                        onBookClick = onBookClick,
+                        onBookPreview = onBookPreview
+                    )
+                }
+            }
         }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DiscoverySuiteBookRow(
+    book: SearchBook,
+    onBookClick: (SearchBook) -> Unit,
+    onBookPreview: (SearchBook) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = { onBookClick(book) },
+                onLongClick = { onBookPreview(book) }
+            )
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = book.name,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = listOf(book.author, book.originName)
+                .filter { it.isNotBlank() }
+                .joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

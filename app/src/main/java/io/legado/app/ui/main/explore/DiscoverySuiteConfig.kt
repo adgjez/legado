@@ -26,10 +26,17 @@ data class DiscoverySuiteWidget(
     val id: String = "",
     val type: String = DiscoverySuiteWidgetType.BookList.value,
     val title: String = "",
+    val targets: List<DiscoverySuiteWidgetTarget> = emptyList(),
     val sourceUrls: List<String> = emptyList(),
     val tagUrls: List<String> = emptyList(),
     val displayLimit: Int = DEFAULT_WIDGET_DISPLAY_LIMIT,
     val order: Int = 0
+)
+
+data class DiscoverySuiteWidgetTarget(
+    val sourceUrl: String = "",
+    val tagUrl: String = "",
+    val title: String = ""
 )
 
 enum class DiscoverySuiteWidgetType(val value: String) {
@@ -41,6 +48,7 @@ object DiscoverySuiteStore {
     private const val MAX_SUITES = 20
     private const val MAX_WIDGETS_PER_SUITE = 50
     private const val MAX_URLS_PER_WIDGET = 30
+    private const val MAX_TARGETS_PER_WIDGET = 30
     private const val MAX_NAME_CHARS = 40
     private const val MAX_TITLE_CHARS = 60
     private const val MAX_ID_CHARS = 64
@@ -118,6 +126,7 @@ object DiscoverySuiteStore {
                                 },
                                 title = widget.title.cleanTitle()
                                     .ifBlank { "Books ${widgetIndex + 1}" },
+                                targets = widget.targets.cleanTargets(),
                                 sourceUrls = widget.sourceUrls.cleanUrls(),
                                 tagUrls = widget.tagUrls.cleanUrls(),
                                 displayLimit = widget.displayLimit.coerceIn(4, 60),
@@ -137,6 +146,21 @@ object DiscoverySuiteStore {
             .filter { it.isNotEmpty() }
             .distinct()
             .take(MAX_URLS_PER_WIDGET)
+            .toList()
+    }
+
+    private fun List<DiscoverySuiteWidgetTarget>.cleanTargets(): List<DiscoverySuiteWidgetTarget> {
+        return asSequence()
+            .map {
+                DiscoverySuiteWidgetTarget(
+                    sourceUrl = it.sourceUrl.trim(),
+                    tagUrl = it.tagUrl.trim(),
+                    title = it.title.cleanTitle()
+                )
+            }
+            .filter { it.sourceUrl.isNotEmpty() && it.tagUrl.isNotEmpty() }
+            .distinctBy { "${it.sourceUrl}\n${it.tagUrl}" }
+            .take(MAX_TARGETS_PER_WIDGET)
             .toList()
     }
 
