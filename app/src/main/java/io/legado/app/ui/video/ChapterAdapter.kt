@@ -55,7 +55,7 @@ class ChapterAdapter(
     @SuppressLint("NotifyDataSetChanged")
     fun updateData(newToc: List<BookChapter>?) {
         this.chapters = newToc ?: return
-        notifyDataSetChanged() //全量更新
+        notifyDataSetChanged()
     }
 
     inner class ChapterViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -64,7 +64,7 @@ class ChapterAdapter(
         fun bind(chapter: BookChapter, isSelected: Boolean) {
             tvChapterName.text = chapter.title
             tvChapterName.isSelected = isSelected
-            tvChapterName.textSize = if (isVolume) 12f else if (isSelected) 14.5f else 13.5f
+            tvChapterName.textSize = if (isVolume) 12f else 13.5f
             if (!isVolume) {
                 tvChapterName.setBackgroundResource(
                     if (isSelected) R.drawable.bg_video_episode_selected else 0
@@ -73,16 +73,16 @@ class ChapterAdapter(
             if (isSelected) {
                 tvChapterName.setTextColor(accentColor)
             } else {
-                tvChapterName.setTextColor(ContextCompat.getColor(itemView.context,R.color.primaryText))
+                tvChapterName.setTextColor(ContextCompat.getColor(itemView.context, R.color.primaryText))
             }
             itemView.setOnClickListener {
                 val previousPosition = selectedPosition
                 selectedPosition = bindingAdapterPosition
                 if (previousPosition >= 0) {
-                    notifyItemChanged(previousPosition) //更新之前的
+                    notifyItemChanged(previousPosition)
                 }
                 if (selectedPosition >= 0) {
-                    notifyItemChanged(selectedPosition) //更新当前选中的
+                    notifyItemChanged(selectedPosition)
                 }
                 onChapterClick(chapter, selectedPosition)
             }

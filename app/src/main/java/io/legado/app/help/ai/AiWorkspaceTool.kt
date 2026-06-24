@@ -415,12 +415,17 @@ object AiWorkspaceTool {
         val startLine = args.optInt("startLine", 0)
         val endLine = args.optInt("endLine", startLine)
         if (startLine <= 0 || endLine < startLine) return error("invalid line range")
-        val replacement = args.optString("replacement")
         val before = file.readText()
         val lines = before.split('\n').toMutableList()
         if (startLine > lines.size + 1 || endLine > lines.size) {
             return error("line range outside file, file has ${lines.size} line(s)")
         }
+        val oldLines = lines.subList(startLine - 1, endLine).joinToString("\n")
+        val expectedText = args.optString("expectedText")
+        if (expectedText.isNotEmpty() && oldLines != expectedText) {
+            return error("expectedText did not match the selected line range")
+        }
+        val replacement = args.optString("replacement")
         val replacementLines = if (replacement.isEmpty()) {
             emptyList()
         } else {
@@ -441,6 +446,7 @@ object AiWorkspaceTool {
             .put("editMethod", "edit_lines")
             .put("startLine", startLine)
             .put("endLine", endLine)
+            .put("matchedText", oldLines.limitForJson(1_000))
             .toString()
     }
 
@@ -1424,12 +1430,13 @@ object AiWorkspaceTool {
 
     private fun editLinesDefinition() = functionDef(
         TOOL_EDIT_LINES,
-        "Replace a 1-based inclusive line range in a workspace file. Use after workspace_read_file or workspace_read_matches returns line numbers, especially when exact snippets are hard to escape.",
+        "Replace a 1-based inclusive line range in a workspace file. Use only after workspace_read_lines or workspace_read_matches returns stable line numbers. Pass expectedText when possible to prevent stale-line edits.",
         JSONObject()
             .put("sessionId", stringProp("Optional workspace session id."))
             .put("path", stringProp("Relative file path."))
             .put("startLine", JSONObject().put("type", "integer").put("description", "1-based first line to replace."))
             .put("endLine", JSONObject().put("type", "integer").put("description", "1-based last line to replace, inclusive."))
+            .put("expectedText", stringProp("Optional exact current text in the selected line range. The edit fails if it does not match."))
             .put("replacement", stringProp("Replacement text for the whole line range. Empty string deletes the range."))
             .put("backup", stringProp("auto, true, or false."))
     )

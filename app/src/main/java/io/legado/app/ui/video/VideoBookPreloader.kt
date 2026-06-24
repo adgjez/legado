@@ -13,12 +13,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 
 object VideoBookPreloader {
 
     private const val DEFAULT_MAX_PRELOAD = 4
     private val runningKeys = ConcurrentHashMap.newKeySet<String>()
+    private val preloadSemaphore = Semaphore(DEFAULT_MAX_PRELOAD)
 
     fun preloadSearchBooks(
         scope: CoroutineScope,
@@ -36,11 +39,13 @@ object VideoBookPreloader {
         if (!runningKeys.add(key)) return
         scope.launch(IO) {
             try {
-                preloadAwait(searchBook)
+                preloadSemaphore.withPermit {
+                    preloadAwait(searchBook)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                AppLog.put("视频目录预加载失败: ${searchBook.name}\n${e.localizedMessage}", e)
+                AppLog.put("Video toc preload failed: ${searchBook.name}\n${e.localizedMessage}", e)
             } finally {
                 runningKeys.remove(key)
             }
@@ -51,7 +56,7 @@ object VideoBookPreloader {
         if (searchBook.bookUrl.isBlank() || searchBook.origin.isBlank()) return false
         if (appDb.bookChapterDao.getChapterList(searchBook.bookUrl).isNotEmpty()) return true
         val source = appDb.bookSourceDao.getBookSource(searchBook.origin) ?: return false
-        if (source.bookSourceType != BookSourceType.video && searchBook.type and BookType.video <= 0) {
+        if (source.bookSourceType != BookSourceType.video && (searchBook.type and BookType.video) <= 0) {
             return false
         }
         val stored = appDb.bookDao.getBook(searchBook.bookUrl)
