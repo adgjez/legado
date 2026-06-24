@@ -3210,7 +3210,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 if (refresh) {
                     LibraryCloudSync.refreshSession(book)
                 } else {
-                    libraryCloudSession ?: LibraryCloudSync.openSession(book)
+                    currentLibraryCloudSession() ?: LibraryCloudSync.openSession(book)
                 }
             }
             libraryCloudSession = session
@@ -3406,7 +3406,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 if (refresh) {
                     LibraryCloudSync.refreshSession(book)
                 } else {
-                    libraryCloudSession ?: LibraryCloudSync.openSession(book)
+                    currentLibraryCloudSession() ?: LibraryCloudSync.openSession(book)
                 }
             }
             if (ReadBook.book?.bookUrl != book.bookUrl) return@launch
@@ -3417,6 +3417,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 toastOnUi(libraryCloudStateMessage(session))
             }
         }
+    }
+
+    private fun currentLibraryCloudSession(): LibraryCloudSession? {
+        val currentContainerId = LibraryContainerManager.readContainer()?.id
+        return libraryCloudSession?.takeIf { it.config?.id == currentContainerId }
     }
 
     private fun downloadLibraryCloudChapter(
@@ -4716,6 +4721,17 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<ArrayList<Int>>(EventBus.UP_CONFIG) {
             handleReadConfigUpdate(it)
+        }
+        observeEvent<Boolean>(EventBus.LIBRARY_CONTAINER_CHANGED) {
+            val bookUrl = ReadBook.book?.bookUrl.orEmpty()
+            if (BookCloudEntryModeStore.get(bookUrl) == BookCloudEntryMode.LIBRARY_CHAPTER) {
+                libraryCloudSession = null
+                refreshLibraryCloudSession(refresh = true, silent = true)
+            } else {
+                libraryCloudSession = null
+                libraryCloudState = LibraryCloudState.DISABLED
+                readMenu.updateCloudLibraryState(libraryCloudState)
+            }
         }
         observeEvent<Bundle>(EventBus.READ_ALOUD_CONFIG_CHANGED) {
             readAloudPlayerPanel.onReadAloudConfigChanged(

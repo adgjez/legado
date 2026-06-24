@@ -1,10 +1,12 @@
 package io.legado.app.help.book.library
 
 import io.legado.app.constant.PreferKey
+import io.legado.app.constant.EventBus
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefString
 import splitties.init.appCtx
 
@@ -47,6 +49,7 @@ object LibraryContainerManager {
             selections[SCOPE_DEFAULT] = id
         }
         saveSelectionsLocked(selections)
+        notifyChangedLocked()
     }
 
     fun upsert(config: LibraryContainerConfig): LibraryContainerConfig = synchronized(lock) {
@@ -58,12 +61,14 @@ object LibraryContainerManager {
         if (index >= 0) items[index] = normalized else items += normalized
         saveContainersLocked(items)
         if (selected() == null) select(normalized.id)
+        notifyChangedLocked()
         normalized
     }
 
     fun delete(id: String) = synchronized(lock) {
         saveContainersLocked(containers().filterNot { it.id == id })
         if (selectedId() == id) select(containers().firstOrNull { it.id != id }?.id)
+        notifyChangedLocked()
     }
 
     fun updateUsage(id: String, usedBytes: Long): LibraryContainerConfig? = synchronized(lock) {
@@ -107,5 +112,10 @@ object LibraryContainerManager {
 
     private fun saveSelectionsLocked(selections: Map<String, String>) {
         appCtx.putPrefString(PreferKey.libraryS3ContainerSelections, GSON.toJson(selections))
+    }
+
+    private fun notifyChangedLocked() {
+        LibraryCloudSync.clearSessions()
+        postEvent(EventBus.LIBRARY_CONTAINER_CHANGED, true)
     }
 }
