@@ -1,0 +1,275 @@
+name: Android Fast Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-abi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Grant gradlew permission
+        run: chmod +x gradlew
+
+      - name: Release Apk Sign
+        run: |
+          echo -e "\n" >> gradle.properties
+          echo RELEASE_KEY_ALIAS='${{ secrets.CI_DEBUG_KEY_ALIAS }}' >> gradle.properties
+          echo RELEASE_KEY_PASSWORD='${{ secrets.CI_DEBUG_KEY_PASSWORD }}' >> gradle.properties
+          echo RELEASE_STORE_PASSWORD='${{ secrets.CI_DEBUG_STORE_PASSWORD }}' >> gradle.properties
+          echo RELEASE_STORE_FILE='./key.jks' >> gradle.properties
+          echo ${{ secrets.CI_DEBUG_KEY_STORE_B64 }} | base64 --decode > $GITHUB_WORKSPACE/app/key.jks
+
+      - name: Prepare release version
+        id: version
+        run: |
+          VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H%M)"
+          VERSION_CODE=$(($(date -u +%s) / 60))
+          TAG_NAME="archive-v3-${VERSION_NAME}"
+          {
+            echo "name=${VERSION_NAME}"
+            echo "code=${VERSION_CODE}"
+            echo "tag=${TAG_NAME}"
+          } >> "$GITHUB_OUTPUT"
+
+          cat > release-notes.md <<'EOF'
+          阅读Archive 第十版问题修复更新
+
+          本次更新集中修复近期反馈的阅读页、书架、目录、书源管理、主题、导出和 Compose 新界面兼容性问题，并针对 OOM 与部分机型崩溃做了稳定性加固。
+
+          新增：
+          - 新增 Compose 快速滑动条，覆盖书架、目录、搜索结果、设置管理等长列表页面。
+          - 新增书籍详情 useWeb 弹窗多窗口支持，修复 WebView 内图片弹窗无法正常加载的问题。
+          - 新增应用主题手动新建入口，可基于当前配置生成组合主题并进入编辑。
+
+          优化：
+          - 优化目录页顶部与分卷展示，保留吸顶分卷，同时避免章节内容从透明卷标题下透出。
+          - 优化正文菜单顶部按钮触控区域，减少“换源 / 刷新 / 缓存”等操作误触。
+          - 优化正文长按菜单布局，改善部分机型按钮提前换行、右侧留白的问题。
+          - 优化老三键导航栏适配，阅读菜单、弹窗和统计页底部内容避开系统导航栏。
+          - 优化朗读页封面获取逻辑，使用更完整的封面解析结果。
+          - 优化启动页逻辑，默认使用系统 splash 和应用图标，减少启动黑屏、白闪和欢迎页停顿。
+          - 优化应用主题导出结构，根目录直接写入 appearance_kit.json，并允许仅布局/默认组件配置导出。
+
+          修复：
+          - 修复书源、RSS 等管理页胶囊开关点击后 UI 不实时更新的问题。
+          - 修复书源管理拖拽排序后状态不同步、需要退出重进才显示的问题。
+          - 修复管理列表同对象更新时 Compose 行项目不刷新的问题。
+          - 修复发现页、书架页透明顶栏下列表内容透出的显示问题。
+          - 修复阅读页、详情页、搜索进入阅读后返回路径不一致的问题，现在统一回到书架。
+          - 修复阅读页 Android 10 设备可能一直显示“数据加载中”的问题。
+          - 修复目录页分卷吸顶后无法回落、章节无法滑到顶部的问题。
+          - 修复快速滑动条透明触摸层遮挡书源、RSS 等管理页编辑/更多/开关按钮的问题。
+          - 修复搜索结果 LazyColumn 重复 key 导致偶发崩溃的问题。
+          - 修复正文刷新长按选项丢失的问题。
+          - 修复 AI 内置阅读菜单按钮删除后无法重新添加的问题。
+          - 修复正文虚拟气泡图片 dp: 路径被错误缓存/下载的问题。
+          - 修复主题圆球中文字溢出圆形区域的问题。
+          - 修复主题、封面、背景等 Compose 图片释放时可能触发 Glide destroyed activity 崩溃的问题。
+          - 修复沉浸式顶栏、主题预览、封面集合等页面销毁时 Glide 加载崩溃的问题。
+          - 修复卓易通等环境导出的 zip 包可能无法解压的问题，并增加导出后 zip 可读性校验。
+          - 修复主题 zip 文件通过文件关联打开时识别不完整的问题。
+          - 修复应用主题 zip 因 appearance_kit.json 位于嵌套目录而被误判为普通主题包、提示缺少 theme.json 的问题。
+          - 修复普通界面主题导入入口误选应用主题包时仍走 theme.json 检查的问题。
+          - 修复旧版/已导出的嵌套应用主题包无法从文件关联和管理页正常导入的问题。
+          - 修复更新弹窗底部留白过大的问题。
+          - 修复统计页底部内容被主界面悬浮底栏遮挡的问题。
+          - 修复本地文件保存、压缩包图片读取、data-url 图片、用户图片解码等场景的 OOM 风险。
+          - 修复路径包含性检查不严格带来的潜在安全风险。
+          - 修复缓存大小估算不准导致内存缓存风险偏高的问题。
+          - 修复详情页云端入口选中状态不可见的问题。
+          - 修复段落规则编辑器启动阻塞过久的问题。
+
+          本次共整理并修复 36 类问题，重点是 Compose 改造后的实时刷新、列表滚动、弹窗布局、系统导航栏适配、WebView 弹窗、应用主题导入导出和内存稳定性。
+          EOF
+
+      - name: Build arm64 release APK
+        run: |
+          rm -rf release-apks app/build/outputs/apk/app/release
+          mkdir -p release-apks
+          ./gradlew :app:clean :app:assembleAppRelease \
+            -Pabi=arm64-v8a \
+            -PVERSION_NAME="${{ steps.version.outputs.name }}" \
+            -PVERSION_CODE="${{ steps.version.outputs.code }}" \
+            --stacktrace
+          APK_PATH=$(find app/build/outputs/apk/app/release -type f -name '*.apk' | head -n 1)
+          cp "$APK_PATH" "release-apks/legado-arm64-v8a_app_${{ steps.version.outputs.name }}_${{ steps.version.outputs.code }}.apk"
+
+      - name: Build armeabi-v7a release APK
+        run: |
+          rm -rf app/build/outputs/apk/app/release
+          ./gradlew :app:clean :app:assembleAppRelease \
+            -Pabi=armeabi-v7a \
+            -PVERSION_NAME="${{ steps.version.outputs.name }}" \
+            -PVERSION_CODE="${{ steps.version.outputs.code }}" \
+            --stacktrace
+          APK_PATH=$(find app/build/outputs/apk/app/release -type f -name '*.apk' | head -n 1)
+          cp "$APK_PATH" "release-apks/legado-armeabi-v7a_app_${{ steps.version.outputs.name }}_${{ steps.version.outputs.code }}.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado-release-abi
+          path: release-apks/*.apk
+
+      - name: Clear existing versioned release APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/${{ steps.version.outputs.tag }} --jq '.id' 2>/dev/null || true)
+          if [ -n "$RELEASE_ID" ]; then
+            gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --paginate \
+              --jq '.[] | select(.name | endswith(".apk")) | .id' \
+              | while read -r ASSET_ID; do
+                  gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
+                done
+          fi
+
+      - name: Publish versioned release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: 阅读Archive 第十版问题修复更新 ${{ steps.version.outputs.name }}
+          prerelease: false
+          make_latest: true
+          generate_release_notes: false
+          files: release-apks/*.apk
+          body_path: release-notes.md
+
+      - name: Refresh app update channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CHANNEL_TAG="latest-arm64-release"
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$CHANNEL_TAG --jq '.id' 2>/dev/null || true)
+          if [ -n "$RELEASE_ID" ]; then
+            gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --paginate \
+              --jq '.[] | select(.name | endswith(".apk")) | .id' \
+              | while read -r ASSET_ID; do
+                  gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
+                done
+            gh release upload "$CHANNEL_TAG" release-apks/*.apk --clobber
+            gh release edit "$CHANNEL_TAG" \
+              --title "阅读Archive 更新通道" \
+              --notes-file release-notes.md
+          else
+            gh release create "$CHANNEL_TAG" release-apks/*.apk \
+              --title "阅读Archive 更新通道" \
+              --notes-file release-notes.md
+          fi
+
+      - name: Sync release to Gitee
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          if [ -z "$GITEE_TOKEN" ]; then
+            echo "GITEE_TOKEN is not configured, skip Gitee release sync."
+            exit 0
+          fi
+
+          set +e
+          API="https://gitee.com/api/v5/repos/zziji/legado"
+          TAG_NAME="${{ steps.version.outputs.tag }}"
+          RELEASE_NAME="阅读Archive 第十版问题修复更新 ${{ steps.version.outputs.name }}"
+          CHANNEL_TAG="latest-arm64-release"
+          TOKEN_QUERY="$(python3 -c 'import os, urllib.parse; print(urllib.parse.urlencode({"access_token": os.environ["GITEE_TOKEN"]}))')"
+
+          if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+          fi
+
+          GITEE_REMOTE="https://oauth2:${GITEE_TOKEN}@gitee.com/zziji/legado.git"
+          if git ls-remote --exit-code --tags "$GITEE_REMOTE" "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+            echo "Gitee tag already exists: $TAG_NAME"
+          else
+            git push "$GITEE_REMOTE" "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+            echo "Pushed Gitee tag: $TAG_NAME"
+          fi
+
+          find_release_id() {
+            curl -fsS -G \
+              --data-urlencode "access_token=$GITEE_TOKEN" \
+              "$API/releases/tags/$1" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))'
+          }
+
+          upsert_release() {
+            local tag_name="$1"
+            local release_name="$2"
+            local release_id
+            release_id="$(find_release_id "$tag_name" 2>/dev/null || true)"
+            if [ -n "$release_id" ]; then
+              curl -fsS -X PATCH "$API/releases/$release_id" \
+                --data-urlencode "access_token=$GITEE_TOKEN" \
+                --data-urlencode "tag_name=$tag_name" \
+                --data-urlencode "name=$release_name" \
+                --data-urlencode "body=$(cat release-notes.md)" \
+                --data-urlencode "prerelease=false" >/dev/null
+            else
+              release_id="$(curl -fsS -X POST "$API/releases" \
+                --data-urlencode "access_token=$GITEE_TOKEN" \
+                --data-urlencode "tag_name=$tag_name" \
+                --data-urlencode "target_commitish=$tag_name" \
+                --data-urlencode "name=$release_name" \
+                --data-urlencode "body=$(cat release-notes.md)" \
+                --data-urlencode "prerelease=false" \
+                | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))')"
+            fi
+            echo "$release_id"
+          }
+
+          upload_apks() {
+            local release_id="$1"
+            if [ -z "$release_id" ]; then
+              return 1
+            fi
+            curl -fsS -G \
+              --data-urlencode "access_token=$GITEE_TOKEN" \
+              "$API/releases/$release_id/attach_files" \
+              | python3 -c 'import json,sys; data=json.load(sys.stdin); [print(item.get("id")) for item in data if str(item.get("name", "")).endswith(".apk")]' \
+              | while read -r attach_id; do
+                  if [ -n "$attach_id" ]; then
+                    curl -fsS -X DELETE "$API/releases/$release_id/attach_files/$attach_id?$TOKEN_QUERY" >/dev/null
+                  fi
+                done
+            for apk in release-apks/*.apk; do
+              curl -fsS -X POST "$API/releases/$release_id/attach_files" \
+                -F "access_token=$GITEE_TOKEN" \
+                -F "file=@$apk" >/dev/null || return 1
+            done
+          }
+
+          SYNC_FAILED=0
+          VERSIONED_ID="$(upsert_release "$TAG_NAME" "$RELEASE_NAME")" || SYNC_FAILED=1
+          upload_apks "$VERSIONED_ID" || SYNC_FAILED=1
+
+          if git ls-remote --exit-code --tags "$GITEE_REMOTE" "refs/tags/$CHANNEL_TAG" >/dev/null 2>&1; then
+            echo "Gitee update channel tag already exists: $CHANNEL_TAG"
+          else
+            git push "$GITEE_REMOTE" "HEAD:refs/tags/$CHANNEL_TAG"
+            echo "Pushed Gitee update channel tag: $CHANNEL_TAG"
+          fi
+
+          CHANNEL_ID="$(upsert_release "$CHANNEL_TAG" "阅读Archive 更新通道")" || SYNC_FAILED=1
+          upload_apks "$CHANNEL_ID" || SYNC_FAILED=1
+
+          if [ "$SYNC_FAILED" -ne 0 ]; then
+            echo "Gitee release sync failed, GitHub release has already been published."
+            exit 0
+          fi
+          echo "Gitee release sync finished."
