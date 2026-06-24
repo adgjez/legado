@@ -8,28 +8,24 @@ import java.io.File
 
 class FileManageViewModel(application: Application) : BaseViewModel(application) {
 
-    val rootDoc = context.getExternalFilesDir(null)?.parentFile
+    var rootDoc: File? = context.getExternalFilesDir(null)?.parentFile
+        private set
     var subDocs = mutableListOf<File>()
     val filesLiveData = MutableLiveData<List<File>>()
 
     val lastDir: File? get() = subDocs.lastOrNull() ?: rootDoc
 
+    fun setRoot(file: File?) {
+        rootDoc = file ?: context.getExternalFilesDir(null)?.parentFile
+        subDocs.clear()
+    }
+
     fun upFiles(parentFile: File?) {
         execute {
             parentFile ?: return@execute emptyList()
-            if (parentFile == rootDoc) {
-                parentFile.listFiles()?.sortedWith(
-                    compareBy({ it.isFile }, { it.name })
-                )
-            } else {
-                val list = arrayListOf(parentFile)
-                parentFile.listFiles()?.sortedWith(
-                    compareBy({ it.isFile }, { it.name })
-                )?.let {
-                    list.addAll(it)
-                }
-                list
-            }
+            parentFile.listFiles()
+                ?.filterNot { it.isHiddenWorkspaceBackupDir() }
+                ?.sortedWith(compareBy({ it.isFile }, { it.name }))
         }.onStart {
             filesLiveData.postValue(emptyList())
         }.onSuccess {
@@ -49,4 +45,8 @@ class FileManageViewModel(application: Application) : BaseViewModel(application)
         }
     }
 
+}
+
+private fun File.isHiddenWorkspaceBackupDir(): Boolean {
+    return isDirectory && name.lowercase() in setOf(".backup", ".backups")
 }

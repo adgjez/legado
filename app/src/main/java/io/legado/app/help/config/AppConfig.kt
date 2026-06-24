@@ -26,6 +26,7 @@ import io.legado.app.utils.putPrefStringSet
 import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
+import io.legado.app.ui.main.ai.AiAgentMode
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiContextSummary
@@ -1236,9 +1237,17 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             } ?: AI_READ_TOOL_MODE_ENABLED
         )
 
+    var aiChatAgentMode: AiAgentMode
+        get() = AiAgentMode.fromId(appCtx.getPrefString(PreferKey.aiChatAgentMode))
+        set(value) = appCtx.putPrefString(PreferKey.aiChatAgentMode, value.id)
+
     var aiAgentToolMaxAttempts: Int
         get() = appCtx.getPrefInt(PreferKey.aiAgentToolMaxAttempts, 3).coerceIn(1, 5)
         set(value) = appCtx.putPrefInt(PreferKey.aiAgentToolMaxAttempts, value.coerceIn(1, 5))
+
+    var aiAgentMaxToolRounds: Int
+        get() = appCtx.getPrefInt(PreferKey.aiAgentMaxToolRounds, 32).coerceIn(4, 64)
+        set(value) = appCtx.putPrefInt(PreferKey.aiAgentMaxToolRounds, value.coerceIn(4, 64))
 
     var aiAgentToolRetryBackoffMillis: Int
         get() = appCtx.getPrefInt(PreferKey.aiAgentToolRetryBackoffMillis, 600).coerceIn(0, 5_000)

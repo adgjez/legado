@@ -17,7 +17,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,8 +27,11 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
 
 @Composable
@@ -115,12 +117,17 @@ private fun ComposeFastScroller(
 ) {
     if (!enabled || totalItems <= visibleItems || totalItems <= 0) return
 
-    val scope = rememberCoroutineScope()
     var trackHeight by remember { mutableIntStateOf(0) }
     var dragging by remember { mutableStateOf(false) }
     var thumbVisible by remember { mutableStateOf(false) }
     var hotzoneAlive by remember { mutableStateOf(false) }
     var dragThumbTop by remember { mutableFloatStateOf(0f) }
+    val scrollTargets = remember {
+        MutableSharedFlow<Int>(
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
+        )
+    }
     val palette = rememberAppManagementPalette()
     // 视觉滑块：停止滚动后较快淡出，避免长期遮挡内容
     LaunchedEffect(isScrollInProgress, dragging) {
@@ -158,11 +165,19 @@ private fun ComposeFastScroller(
     )
     val hotzoneVisible = dragging || isScrollInProgress || hotzoneAlive
 
+    LaunchedEffect(scrollTargets, maxFirstIndex) {
+        scrollTargets
+            .distinctUntilChanged()
+            .collectLatest { index ->
+                onScrollToIndex(index.coerceIn(0, maxFirstIndex))
+            }
+    }
+
     Box(
         modifier = modifier
-            .width(40.dp)
+            .width(64.dp)
             .fillMaxHeight()
-            .padding(top = 8.dp, end = 6.dp, bottom = 8.dp)
+            .padding(top = 8.dp, end = 10.dp, bottom = 8.dp)
             .onSizeChanged { trackHeight = it.height }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -189,7 +204,7 @@ private fun ComposeFastScroller(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .width(28.dp)
+                    .width(56.dp)
                     .fillMaxHeight()
                     .pointerInput(totalItems, visibleItems, trackHeight, maxFirstIndex) {
                         detectDragGestures(
@@ -206,7 +221,7 @@ private fun ComposeFastScroller(
                                 dragThumbTop = (offset.y - metrics.thumbHeight / 2f)
                                     .coerceIn(0f, metrics.maxThumbTop)
                                 val index = metrics.indexForThumbTop(dragThumbTop)
-                                scope.launch { onScrollToIndex(index) }
+                                scrollTargets.tryEmit(index)
                             },
                             onDragEnd = { dragging = false },
                             onDragCancel = { dragging = false },
@@ -223,7 +238,7 @@ private fun ComposeFastScroller(
                                 dragThumbTop = (dragThumbTop + dragAmount.y)
                                     .coerceIn(0f, metrics.maxThumbTop)
                                 val index = metrics.indexForThumbTop(dragThumbTop)
-                                scope.launch { onScrollToIndex(index) }
+                                scrollTargets.tryEmit(index)
                             }
                         )
                     }

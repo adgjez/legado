@@ -24,12 +24,14 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.file.FileManageActivity
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class AiConfigFragment : ComposeSettingFragment() {
 
@@ -42,6 +44,7 @@ class AiConfigFragment : ComposeSettingFragment() {
     private companion object {
         const val KEY_IMPORT_DEFAULT_SKILL = "aiImportDefaultSkill"
         const val KEY_MANAGE_NATIVE_TOOLS = "aiManageNativeTools"
+        const val KEY_AI_WORKSPACE = "aiWorkspace"
         const val KEY_CONTEXT_COMPRESSION = "aiContextCompression"
         const val KEY_WORLD_BOOK_MANAGE = "aiWorldBookManage"
         const val KEY_DEFAULT_MODEL_SETTINGS = "aiDefaultModelSettings"
@@ -120,6 +123,18 @@ class AiConfigFragment : ComposeSettingFragment() {
                             title = getString(R.string.ai_manage_native_tools),
                             summary = "${getString(R.string.ai_manage_native_tools_summary)} · ${AiToolRegistry.effectiveEnabledToolNames().size}",
                             onClick = ::showManageNativeToolsDialog
+                        ),
+                        SettingActionSpec(
+                            key = KEY_AI_WORKSPACE,
+                            title = "AI 工作区",
+                            summary = "查看 Agent 创建、编辑和备份的文件",
+                            onClick = ::openAiWorkspace
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiAgentMaxToolRounds,
+                            title = "AI 工具轮次上限",
+                            summary = "${AppConfig.aiAgentMaxToolRounds} 轮",
+                            onClick = ::showAgentMaxToolRoundsDialog
                         ),
                         SettingActionSpec(
                             key = PreferKey.aiReadToolMode,
@@ -304,6 +319,28 @@ class AiConfigFragment : ComposeSettingFragment() {
             PreferKey.aiCurrentImageProviderId -> refreshUi()
             PreferKey.aiReadToolMode -> refreshUi()
         }
+    }
+
+    private fun openAiWorkspace() {
+        val root = File(requireContext().filesDir, "ai_workspace").apply { mkdirs() }
+        startActivity(
+            Intent(requireContext(), FileManageActivity::class.java)
+                .putExtra(FileManageActivity.EXTRA_ROOT_PATH, root.absolutePath)
+                .putExtra(FileManageActivity.EXTRA_TITLE, "AI 工作区")
+        )
+    }
+
+    private fun showAgentMaxToolRoundsDialog() {
+        showComposeNumberPickerDialog(
+            title = "AI 工具轮次上限",
+            value = AppConfig.aiAgentMaxToolRounds,
+            minValue = 4,
+            maxValue = 64,
+            onValue = { value ->
+                AppConfig.aiAgentMaxToolRounds = value
+                refreshUi()
+            }
+        )
     }
 
     private fun switch(
@@ -677,15 +714,16 @@ class AiConfigFragment : ComposeSettingFragment() {
     private fun groupOrder(group: String): Int {
         return when (group) {
             "书架" -> 0
-            "书源" -> 1
-            "阅读" -> 2
-            "阅读网络" -> 3
-            "联网搜索" -> 4
-            "AI 生图" -> 5
-            "角色资料" -> 6
-            "设置" -> 7
-            "MCP 工具" -> 8
-            else -> 8
+            "AI workspace" -> 1
+            "书源" -> 2
+            "阅读" -> 3
+            "阅读网络" -> 4
+            "联网搜索" -> 5
+            "AI 生图" -> 6
+            "角色资料" -> 7
+            "设置" -> 8
+            "MCP 工具" -> 9
+            else -> 9
         }
     }
 

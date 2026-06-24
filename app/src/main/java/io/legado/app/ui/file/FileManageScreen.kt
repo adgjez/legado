@@ -54,6 +54,7 @@ import java.io.File
 
 @Composable
 internal fun FileManageScreen(
+    title: String,
     currentFiles: List<File>,
     subDocs: List<File>,
     searchQuery: String,
@@ -86,7 +87,7 @@ internal fun FileManageScreen(
             .background(palette.page)
     ) {
         FileTopBar(
-            title = stringResource(R.string.file_manage),
+            title = title,
             palette = palette,
             onBackClick = onBackClick
         )

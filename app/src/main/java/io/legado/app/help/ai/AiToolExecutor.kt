@@ -29,6 +29,8 @@ internal object AiToolExecutor {
         "get_book_source",
         "fetch_source_html",
         "debug_book_source",
+        "workspace_import_book_source",
+        "workspace_debug_book_source",
         "reading_ajax",
         "reading_webview",
         "capture_web_requests",

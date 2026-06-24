@@ -74,6 +74,7 @@ import io.legado.app.data.entities.AiAgentSession
 import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.help.ai.AiAgentStateStore
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiAgentInterruption
 import io.legado.app.help.ai.AiMemoryContext
 import io.legado.app.help.ai.AiMemoryStore
 import io.legado.app.help.ai.AiTaskKeepAlive
@@ -257,8 +258,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     private fun stopAnswer() {
         val context = readContext
-        answerJob?.cancel()
-        AiAgentStateStore.cancel(activeAgentRun, "User stopped read ai")
+        answerJob?.cancel(CancellationException(AiAgentInterruption.USER_STOPPED_READ_AI))
+        AiAgentStateStore.cancel(activeAgentRun, AiAgentInterruption.USER_STOPPED_READ_AI)
         activeAgentRun = null
         streamingAssistantContent = null
         streamingAssistantMessageId = null
@@ -280,8 +281,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     private fun startNewChat() {
         val context = readContext ?: return
-        answerJob?.cancel()
-        AiAgentStateStore.cancel(activeAgentRun, "Start new read ai chat")
+        answerJob?.cancel(CancellationException(AiAgentInterruption.START_NEW_READ_AI_CHAT))
+        AiAgentStateStore.cancel(activeAgentRun, AiAgentInterruption.START_NEW_READ_AI_CHAT)
         activeAgentRun = null
         streamingAssistantContent = null
         streamingAssistantMessageId = null
@@ -302,8 +303,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     private fun ask(question: String) {
         val context = readContext ?: return
-        answerJob?.cancel()
-        AiAgentStateStore.cancel(activeAgentRun, "Superseded by next read ai question")
+        answerJob?.cancel(CancellationException(AiAgentInterruption.SUPERSEDED_READ_AI_QUESTION))
+        AiAgentStateStore.cancel(activeAgentRun, AiAgentInterruption.SUPERSEDED_READ_AI_QUESTION)
         finishActiveProcessMessages(currentSessionId, success = false)
         val requestSessionId = currentSessionId
         appendMessage(context, ReadAiMessage.Role.USER, question)
@@ -384,7 +385,14 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                     )
                 }.onFailure { throwable ->
                     if (throwable is CancellationException) {
-                        AiAgentStateStore.cancel(agentRun, "Read ai cancelled")
+                        if (AiAgentInterruption.isUserCancellation(throwable)) {
+                            AiAgentStateStore.cancel(agentRun, throwable.message.orEmpty())
+                        } else {
+                            AiAgentStateStore.markWaitingResume(
+                                agentRun,
+                                AiAgentInterruption.systemCancellationMessage(throwable)
+                            )
+                        }
                     } else {
                         AiAgentStateStore.finish(
                             agentRun,
@@ -400,7 +408,11 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                         onSuccess = { it.ifBlank { resources.getString(R.string.ai_chat_cancelled) } },
                         onFailure = { throwable ->
                             if (throwable is CancellationException) {
-                                resources.getString(R.string.ai_chat_cancelled)
+                                if (AiAgentInterruption.isUserCancellation(throwable)) {
+                                    resources.getString(R.string.ai_chat_cancelled)
+                                } else {
+                                    AiAgentInterruption.systemCancellationMessage(throwable)
+                                }
                             } else {
                                 resources.getString(
                                     R.string.ai_request_failed,
@@ -802,7 +814,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             listOf(
                 "新建对话",
                 "历史记录",
-                "Skill：${windowSkillIds.size} 个",
+                "Skill：${activeWindowSkills().size} 个",
                 "MCP：${windowMcpServerIds.size} 个",
                 "世界书：${activeReadAiWorldBookCount()} 个",
                 "清空 Skill/MCP"
@@ -887,7 +899,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     private fun showWindowSkillDialog() {
-        val skills = AppConfig.aiSkillList
+        val skills = AppConfig.aiSkillList.filter { it.enabled }
         if (skills.isEmpty()) {
             context.toastOnUi("没有可用 Skill")
             return
@@ -902,7 +914,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             }
             okButton {
                 windowSkillIds = selected.filterTo(linkedSetOf()) { id ->
-                    AppConfig.aiSkillList.any { it.id == id }
+                    AppConfig.aiSkillList.any { it.id == id && it.enabled }
                 }
             }
             neutralButton("清空") {
@@ -938,7 +950,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
     }
 
-    private fun activeWindowSkills() = AppConfig.aiSkillList.filter { it.id in windowSkillIds }
+    private fun activeWindowSkills() = AppConfig.aiSkillList.filter { it.id in windowSkillIds && it.enabled }
 
     private fun buildContextLabel(context: ReadContext): String {
         return context.bookName.ifBlank { resources.getString(R.string.book_name) }

@@ -41,6 +41,7 @@ object AiSettingsTool {
         SettingDef(PreferKey.aiTavilyTopic, "string", values = setOf("general", "news", "finance")),
         SettingDef(PreferKey.aiTavilySearchDepth, "string", values = setOf("basic", "advanced", "ultra-fast")),
         SettingDef(PreferKey.aiTavilyMaxResults, "int", min = 1, max = 10),
+        SettingDef(PreferKey.aiAgentMaxToolRounds, "int", min = 4, max = 64),
         SettingDef(PreferKey.aiAgentToolMaxAttempts, "int", min = 1, max = 5),
         SettingDef(PreferKey.aiAgentToolRetryBackoffMillis, "int", min = 0, max = 5000)
     )
@@ -270,6 +271,7 @@ object AiSettingsTool {
                 PreferKey.aiTavilyTopic,
                 PreferKey.aiTavilySearchDepth,
                 PreferKey.aiTavilyMaxResults,
+                PreferKey.aiAgentMaxToolRounds,
                 PreferKey.aiAgentToolMaxAttempts,
                 PreferKey.aiAgentToolRetryBackoffMillis
             )
