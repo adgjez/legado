@@ -31,6 +31,8 @@ abstract class ComposeSettingFragment : Fragment(),
 
     protected open val autoOpenTargetItem: Boolean = true
 
+    protected open val drawPanelImage: Boolean = true
+
     private val refreshTick = mutableIntStateOf(0)
     private val scrollTargetKey = mutableStateOf<String?>(null)
     private var targetKeyHandled = false
@@ -54,6 +56,7 @@ abstract class ComposeSettingFragment : Fragment(),
                 SettingSpecScreen(
                     page = buildPageSpec(),
                     scrollTargetKey = scrollTargetKey.value,
+                    drawPanelImage = drawPanelImage,
                     onTargetReady = ::handleTargetReady,
                     onTargetMissing = ::consumeMissingTarget,
                     onItemClick = ::handleItemClick

@@ -25,6 +25,7 @@ import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
+import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
@@ -50,7 +51,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
     ): View {
         (activity as ReadBookActivity).bottomDialog++
         return FrameLayout(requireContext()).apply {
-            background = ReaderSheetStyle.topSheetDrawable(ReaderSheetStyle.resolve(requireContext()))
+            background = requireContext().dialogSurfaceBackground
             clipChildren = true
             clipToPadding = true
             clipToOutline = true
@@ -81,6 +82,8 @@ class MoreConfigDialog : BasePrefDialogFragment() {
         override val applyActivityTitle: Boolean = false
 
         override val autoOpenTargetItem: Boolean = false
+
+        override val drawPanelImage: Boolean = false
 
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
