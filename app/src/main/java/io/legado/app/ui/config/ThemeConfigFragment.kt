@@ -85,16 +85,6 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
                             onClick = { startActivity<TopBarManageActivity>() }
                         ),
                         SettingActionSpec(
-                            key = KEY_DISCOVERY_SUBSCRIPTION_SETTINGS,
-                            title = getString(R.string.discovery_subscription_settings_title),
-                            summary = getString(R.string.discovery_subscription_settings_summary),
-                            onClick = {
-                                startActivity<ConfigActivity> {
-                                    putExtra("configTag", ConfigTag.DISCOVERY_SUBSCRIPTION_CONFIG)
-                                }
-                            }
-                        ),
-                        SettingActionSpec(
                             key = KEY_BOOK_INFO_MANAGE,
                             title = getString(R.string.book_info_manage),
                             summary = getString(R.string.book_info_manage_summary),
@@ -186,7 +176,6 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
         private const val KEY_THEME_MANAGE = "theme_manage"
         private const val KEY_NAVIGATION_BAR_MANAGE = "navigation_bar_manage"
         private const val KEY_TOP_BAR_MANAGE = "top_bar_manage"
-        private const val KEY_DISCOVERY_SUBSCRIPTION_SETTINGS = "discovery_subscription_settings"
         private const val KEY_BOOK_INFO_MANAGE = "book_info_manage"
         private const val KEY_BUBBLE_MANAGE = "bubble_manage"
     }

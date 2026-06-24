@@ -49,9 +49,6 @@ class MainTopBarView @JvmOverloads constructor(
     val searchEntry = LinearLayout(context)
     private val searchEntryText = TextView(context)
     private val searchEntryIcon = AppCompatImageView(context)
-    val suiteSelect = LinearLayout(context)
-    private val suiteSelectText = TextView(context)
-    private val suiteSelectArrow = AppCompatImageView(context)
     val moreButton = actionButton(R.drawable.ic_more_vert, R.string.menu)
     val searchButton = actionButton(R.drawable.ic_search, R.string.search)
     val filterButton = actionButton(R.drawable.ic_sort, R.string.sort)
@@ -92,7 +89,6 @@ class MainTopBarView @JvmOverloads constructor(
     private var tagsBarRequested = false
     private var filtersExpanded = false
     private var searchEntryRequested = true
-    private var suiteSelectRequested = false
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
     private var statusBarInsetTop: Int = 0
@@ -192,16 +188,6 @@ class MainTopBarView @JvmOverloads constructor(
         if (searchEntryRequested == visible) return
         searchEntryRequested = visible
         applyTopBarStyle(force = true)
-    }
-
-    fun setSuiteSelectVisible(visible: Boolean) {
-        if (suiteSelectRequested == visible) return
-        suiteSelectRequested = visible
-        applyTopBarStyle(force = true)
-    }
-
-    fun setSuiteSelectText(text: CharSequence) {
-        suiteSelectText.text = text
     }
 
     fun setPrimaryItems(items: List<RoundedTagBarView.Item>, selectedIndex: Int) {
@@ -386,17 +372,9 @@ class MainTopBarView @JvmOverloads constructor(
             val padding = resources.getDimensionPixelSize(R.dimen.bookshelf_action_button_padding)
             it.setPadding(padding, padding, padding, padding)
         }
-        suiteSelect.isVisible = suiteSelectRequested && mode == Mode.DISCOVERY
-        suiteSelect.background = ContextCompat.getDrawable(context, R.drawable.bg_discover_embedded_action)
-        suiteSelect.layoutParams = (suiteSelect.layoutParams as LayoutParams).apply {
-            height = resources.getDimensionPixelSize(R.dimen.bookshelf_title_select_height)
-            marginStart = 8.dp
-        }
-        suiteSelect.setPadding(12.dp, 0, 10.dp, 0)
         titleText.gravity = Gravity.CENTER_VERTICAL
         titleText.setTextColor(ContextCompat.getColor(context, R.color.primaryText))
         searchEntryText.setTextColor(ContextCompat.getColor(context, R.color.primaryText))
-        suiteSelectText.setTextColor(ContextCompat.getColor(context, R.color.primaryText))
         primaryBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         selectsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         tagsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
@@ -442,17 +420,9 @@ class MainTopBarView @JvmOverloads constructor(
             val padding = 8.dp
             it.setPadding(padding, padding, padding, padding)
         }
-        suiteSelect.isVisible = suiteSelectRequested && mode == Mode.DISCOVERY
-        suiteSelect.background = TopBarSearchStyle.actionBackground(context)
-        suiteSelect.layoutParams = (suiteSelect.layoutParams as LayoutParams).apply {
-            height = resources.getDimensionPixelSize(R.dimen.top_bar_regular_action_size)
-            marginStart = 6.dp
-        }
-        suiteSelect.setPadding(12.dp, 0, 10.dp, 0)
         titleText.gravity = Gravity.CENTER_VERTICAL
         titleText.setTextColor(context.primaryTextColor)
         searchEntryText.setTextColor(context.primaryTextColor)
-        suiteSelectText.setTextColor(context.primaryTextColor)
         primaryBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         selectsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         tagsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
@@ -491,36 +461,6 @@ class MainTopBarView @JvmOverloads constructor(
                     applyUiTitleTypeface(context)
                     layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                         marginStart = 8.dp
-                    }
-                })
-            })
-            addView(suiteSelect.apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                isClickable = true
-                isFocusable = true
-                visibility = View.GONE
-                background = ContextCompat.getDrawable(context, R.drawable.bg_discover_embedded_action)
-                layoutParams = LayoutParams(
-                    LayoutParams.WRAP_CONTENT,
-                    resources.getDimensionPixelSize(R.dimen.bookshelf_title_select_height)
-                ).apply {
-                    marginStart = 8.dp
-                }
-                setPadding(12.dp, 0, 10.dp, 0)
-                addView(suiteSelectText.apply {
-                    includeFontPadding = false
-                    maxLines = 1
-                    ellipsize = TextUtils.TruncateAt.END
-                    textSize = 13f
-                    setTextColor(ContextCompat.getColor(context, R.color.primaryText))
-                    applyUiTitleTypeface(context)
-                    maxWidth = 112.dp
-                })
-                addView(suiteSelectArrow.apply {
-                    setImageResource(R.drawable.ic_arrow_drop_down)
-                    layoutParams = LayoutParams(18.dp, 18.dp).apply {
-                        marginStart = 2.dp
                     }
                 })
             })
@@ -593,7 +533,6 @@ class MainTopBarView @JvmOverloads constructor(
         val color = ContextCompat.getColor(context, R.color.primaryText)
         titleArrow.setColorFilter(color)
         searchEntryIcon.setColorFilter(color)
-        suiteSelectArrow.setColorFilter(color)
         listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton, filterToggleButton).forEach {
             it.setColorFilter(color)
         }
