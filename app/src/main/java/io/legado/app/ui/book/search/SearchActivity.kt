@@ -277,6 +277,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 isInBookshelf = { isInBookshelf(it) },
                 lifecycle = lifecycle,
                 onBookClick = { showBookInfo(it) },
+                onBookLongClick = { previewBook(it) },
                 onLoadMore = { scrollToBottom() }
             )
         }
@@ -626,6 +627,38 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 是否已经加入书架
      */
+    private fun previewBook(book: SearchBook) {
+        val details = buildString {
+            append("作者：").append(book.author.ifBlank { "未知" }).append('\n')
+            book.originName?.takeIf { it.isNotBlank() }?.let {
+                append("来源：").append(it).append('\n')
+            } ?: book.origin?.takeIf { it.isNotBlank() }?.let {
+                append("来源：").append(it).append('\n')
+            }
+            book.latestChapterTitle?.takeIf { it.isNotBlank() }?.let {
+                append("最新：").append(it).append('\n')
+            }
+            book.kind?.takeIf { it.isNotBlank() }?.let {
+                append("分类：").append(it).append('\n')
+            }
+            book.intro?.trim()?.takeIf { it.isNotBlank() }?.let {
+                if (isNotEmpty()) append('\n')
+                append(it)
+            }
+            if (isEmpty()) {
+                append("暂无更多预览信息")
+            }
+        }
+        alert("书籍预览") {
+            setTitle(book.name)
+            setMessage(details)
+            negativeButton(android.R.string.cancel)
+            positiveButton("进入详情") {
+                showBookInfo(book)
+            }
+        }
+    }
+
     private fun isInBookshelf(book: SearchBook): Boolean {
         return viewModel.isInBookShelf(book)
     }

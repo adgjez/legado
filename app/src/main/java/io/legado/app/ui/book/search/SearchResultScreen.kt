@@ -61,6 +61,7 @@ fun SearchResultScreen(
     isInBookshelf: (SearchBook) -> Boolean,
     lifecycle: Lifecycle,
     onBookClick: (SearchBook) -> Unit,
+    onBookLongClick: (SearchBook) -> Unit,
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -103,7 +104,8 @@ fun SearchResultScreen(
                         renderConfig = renderConfig,
                         palette = palette,
                         lifecycle = lifecycle,
-                        onClick = { onBookClick(book) }
+                        onClick = { onBookClick(book) },
+                        onLongClick = { onBookLongClick(book) }
                     )
                 }
             }
@@ -127,13 +129,15 @@ private fun SearchResultItem(
     renderConfig: io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig,
     palette: BookshelfListPalette,
     lifecycle: Lifecycle,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     BookListCardSurface(
         rounded = rounded,
         compact = false,
         renderConfig = renderConfig,
-        onClick = onClick
+        onClick = onClick,
+        onLongClick = onLongClick
     ) { metrics ->
         Box(modifier = Modifier.width(metrics.coverWidth)) {
             AndroidView(

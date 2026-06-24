@@ -367,6 +367,27 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             }
         }
 
+    var modernDiscoverySourceAliases: Map<String, String>
+        get() {
+            return GSON.fromJsonObject<Map<String, String>>(
+                appCtx.getPrefString(PreferKey.modernDiscoverySourceAliases)
+            ).getOrDefault(emptyMap())
+                .filterKeys { it.isNotBlank() }
+                .mapValues { it.value.trim() }
+                .filterValues { it.isNotBlank() }
+        }
+        set(value) {
+            val normalized = value
+                .filterKeys { it.isNotBlank() }
+                .mapValues { it.value.trim() }
+                .filterValues { it.isNotBlank() }
+            if (normalized.isEmpty()) {
+                appCtx.removePref(PreferKey.modernDiscoverySourceAliases)
+            } else {
+                appCtx.putPrefString(PreferKey.modernDiscoverySourceAliases, GSON.toJson(normalized))
+            }
+        }
+
     var modernRssSourceUrl: String?
         get() = appCtx.getPrefString(PreferKey.modernRssSourceUrl)
         set(value) {
