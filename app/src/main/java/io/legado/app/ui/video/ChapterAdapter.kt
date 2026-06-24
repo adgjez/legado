@@ -63,7 +63,13 @@ class ChapterAdapter(
 
         fun bind(chapter: BookChapter, isSelected: Boolean) {
             tvChapterName.text = chapter.title
+            tvChapterName.isSelected = isSelected
             tvChapterName.textSize = if (isVolume) 12f else if (isSelected) 14.5f else 13.5f
+            if (!isVolume) {
+                tvChapterName.setBackgroundResource(
+                    if (isSelected) R.drawable.bg_video_episode_selected else 0
+                )
+            }
             if (isSelected) {
                 tvChapterName.setTextColor(accentColor)
             } else {

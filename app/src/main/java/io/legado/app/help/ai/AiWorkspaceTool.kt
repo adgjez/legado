@@ -23,6 +23,7 @@ object AiWorkspaceTool {
 
     private const val TOOL_LIST_FILES = "workspace_list_files"
     private const val TOOL_READ_FILE = "workspace_read_file"
+    private const val TOOL_READ_LINES = "workspace_read_lines"
     private const val TOOL_READ_MATCHES = "workspace_read_matches"
     private const val TOOL_SEARCH_FILES = "workspace_search_files"
     private const val TOOL_SAVE_INPUT_FILE = "workspace_save_input_file"
@@ -32,6 +33,7 @@ object AiWorkspaceTool {
     private const val TOOL_REPLACE_REGEX = "workspace_replace_regex"
     private const val TOOL_EDIT_LINES = "workspace_edit_lines"
     private const val TOOL_INSERT_TEXT = "workspace_insert_text"
+    private const val TOOL_DIFF_FILE = "workspace_diff_file"
     private const val TOOL_DELETE_FILE = "workspace_delete_file"
     private const val TOOL_LIST_BACKUPS = "workspace_list_backups"
     private const val TOOL_CREATE_BACKUP = "workspace_create_backup"
@@ -66,6 +68,7 @@ object AiWorkspaceTool {
         return listOf(
             AiResolvedTool(TOOL_LIST_FILES, listFilesDefinition()) { args -> listFiles(args) },
             AiResolvedTool(TOOL_READ_FILE, readFileDefinition()) { args -> readFile(args) },
+            AiResolvedTool(TOOL_READ_LINES, readLinesDefinition()) { args -> readLines(args) },
             AiResolvedTool(TOOL_READ_MATCHES, readMatchesDefinition()) { args -> readMatches(args) },
             AiResolvedTool(TOOL_SEARCH_FILES, searchFilesDefinition()) { args -> searchFiles(args) },
             AiResolvedTool(TOOL_SAVE_INPUT_FILE, saveInputFileDefinition()) { args -> saveInputFile(args) },
@@ -75,6 +78,7 @@ object AiWorkspaceTool {
             AiResolvedTool(TOOL_REPLACE_REGEX, replaceRegexDefinition()) { args -> replaceRegex(args) },
             AiResolvedTool(TOOL_EDIT_LINES, editLinesDefinition()) { args -> editLines(args) },
             AiResolvedTool(TOOL_INSERT_TEXT, insertTextDefinition()) { args -> insertText(args) },
+            AiResolvedTool(TOOL_DIFF_FILE, diffFileDefinition()) { args -> diffFile(args) },
             AiResolvedTool(TOOL_DELETE_FILE, deleteFileDefinition()) { args -> deleteFile(args) },
             AiResolvedTool(TOOL_LIST_BACKUPS, listBackupsDefinition()) { args -> listBackups(args) },
             AiResolvedTool(TOOL_CREATE_BACKUP, createBackupDefinition()) { args -> createBackup(args) },
@@ -144,6 +148,50 @@ object AiWorkspaceTool {
             .put("truncated", offset + chunk.length < text.length)
             .put("sha256", sha256(text))
             .put("content", chunk)
+            .toString()
+    }
+
+    private fun readLines(args: JSONObject?): String {
+        args ?: return error("missing arguments")
+        val sessionId = sessionId(args)
+        val file = resolvePath(sessionId, args.optString("path"))
+            .getOrElse { return error(it.message ?: "invalid path") }
+        if (!file.isFile) return error("file not found")
+        val text = file.readText()
+        val lines = text.lines()
+        val startLine = args.optInt("startLine", 1).coerceAtLeast(1)
+        val maxLines = args.optInt("maxLines", 120).coerceIn(1, 1_000)
+        val requestedEnd = args.optInt("endLine", startLine + maxLines - 1)
+        val endLine = requestedEnd.coerceAtLeast(startLine).coerceAtMost(lines.size)
+        val actualStart = startLine.coerceAtMost((lines.size + 1).coerceAtLeast(1))
+        val selected = if (actualStart > lines.size) {
+            emptyList()
+        } else {
+            lines.subList(actualStart - 1, endLine)
+        }
+        return ok()
+            .put("sessionId", sessionId)
+            .put("path", relativePath(sessionId, file))
+            .put("size", file.length())
+            .put("sha256", sha256(text))
+            .put("lineCount", lines.size)
+            .put("startLine", actualStart)
+            .put("endLine", if (selected.isEmpty()) JSONObject.NULL else endLine)
+            .put("truncated", endLine < lines.size)
+            .put("lines", JSONArray().apply {
+                selected.forEachIndexed { index, line ->
+                    put(JSONObject().apply {
+                        put("line", actualStart + index)
+                        put("text", line)
+                    })
+                }
+            })
+            .put(
+                "content",
+                selected.mapIndexed { index, line -> "${actualStart + index}: $line" }
+                    .joinToString("\n")
+                    .limitForJson(MAX_READ_CHARS)
+            )
             .toString()
     }
 
@@ -432,6 +480,62 @@ object AiWorkspaceTool {
             .toString()
     }
 
+    private fun diffFile(args: JSONObject?): String {
+        args ?: return error("missing arguments")
+        val sessionId = sessionId(args)
+        val file = resolvePath(sessionId, args.optString("path"))
+            .getOrElse { return error(it.message ?: "invalid path") }
+        if (!file.isFile) return error("file not found")
+        val after = file.readText()
+        val backupIdArg = args.optString("backupId").trim()
+        val beforeSource: String
+        val before: String
+        val backupId: String?
+        if (backupIdArg.isNotBlank()) {
+            val backupFile = resolveBackupFile(sessionId, backupIdArg)
+                .getOrElse { return error(it.message ?: "invalid backupId") }
+            beforeSource = "backup"
+            before = backupFile.readText()
+            backupId = backupIdArg
+        } else {
+            val beforeContent = args.optString("beforeContent")
+            if (beforeContent.isNotEmpty()) {
+                beforeSource = "beforeContent"
+                before = beforeContent
+                backupId = null
+            } else {
+                val latest = latestBackupForPath(sessionId, relativePath(sessionId, file))
+                    ?: return error("backupId or beforeContent is required, and no backup was found for this path")
+                beforeSource = "latestBackup"
+                before = latest.second.readText()
+                backupId = latest.first
+            }
+        }
+        val contextLines = args.optInt("contextLines", 3).coerceIn(0, 20)
+        val maxChars = args.optInt("maxChars", 12_000).coerceIn(1_000, 80_000)
+        val expectedContains = args.optString("expectedContains").takeIf { it.isNotEmpty() }
+        val expectedNotContains = args.optString("expectedNotContains").takeIf { it.isNotEmpty() }
+        val expectedRegex = args.optString("expectedRegex").takeIf { it.isNotEmpty() }
+        val regexOk = expectedRegex?.let { raw ->
+            compileSearchPattern(raw, args.optString("expectedRegexFlags"))
+                .map { it.matcher(after).find() }
+                .getOrElse { return error("invalid expectedRegex: ${it.message}") }
+        }
+        return ok()
+            .put("sessionId", sessionId)
+            .put("path", relativePath(sessionId, file))
+            .put("beforeSource", beforeSource)
+            .put("backupId", backupId ?: JSONObject.NULL)
+            .put("changed", before != after)
+            .put("beforeHash", sha256(before))
+            .put("afterHash", sha256(after))
+            .put("expectedContainsOk", expectedContains?.let { after.contains(it) } ?: JSONObject.NULL)
+            .put("expectedNotContainsOk", expectedNotContains?.let { !after.contains(it) } ?: JSONObject.NULL)
+            .put("expectedRegexOk", regexOk ?: JSONObject.NULL)
+            .put("diff", unifiedDiff(before, after, contextLines, maxChars))
+            .toString()
+    }
+
     private fun deleteFile(args: JSONObject?): String {
         args ?: return error("missing arguments")
         val sessionId = sessionId(args)
@@ -635,6 +739,31 @@ object AiWorkspaceTool {
 
     private fun backupRoot(sessionId: String): File {
         return File(workspaceRoot(sessionId), ".backups").apply { mkdirs() }
+    }
+
+    private fun resolveBackupFile(sessionId: String, backupId: String): Result<File> {
+        if (backupId.isBlank() || backupId.contains("..")) {
+            return Result.failure(IllegalArgumentException("invalid backupId"))
+        }
+        val root = backupRoot(sessionId).canonicalFile
+        val file = File(root, backupId).canonicalFile
+        if (!file.path.startsWith(root.path + File.separator) || !file.isFile) {
+            return Result.failure(IllegalArgumentException("backup not found"))
+        }
+        return Result.success(file)
+    }
+
+    private fun latestBackupForPath(sessionId: String, relativePath: String): Pair<String, File>? {
+        val root = backupRoot(sessionId)
+        if (!root.exists()) return null
+        return root.walkTopDown()
+            .filter { it.isFile && it.name != "manifest.json" }
+            .mapNotNull { file ->
+                val backupId = root.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+                val backedPath = backupId.substringAfter('/', backupId)
+                if (backedPath == relativePath) backupId to file else null
+            }
+            .maxByOrNull { it.second.lastModified() }
     }
 
     private fun resolvePath(sessionId: String, rawPath: String, allowMissing: Boolean = false): Result<File> {
@@ -1071,17 +1200,59 @@ object AiWorkspaceTool {
     }
 
     private fun diffPreview(before: String, after: String): String {
+        return unifiedDiff(before, after, contextLines = 2, maxChars = 2_000)
+    }
+
+    private fun unifiedDiff(
+        before: String,
+        after: String,
+        contextLines: Int,
+        maxChars: Int
+    ): String {
         if (before == after) return ""
         val beforeLines = before.lines()
         val afterLines = after.lines()
-        val firstChanged = (0 until maxOf(beforeLines.size, afterLines.size))
-            .firstOrNull { beforeLines.getOrNull(it) != afterLines.getOrNull(it) }
-            ?: return ""
+        var prefix = 0
+        val minSize = minOf(beforeLines.size, afterLines.size)
+        while (prefix < minSize && beforeLines[prefix] == afterLines[prefix]) {
+            prefix++
+        }
+        var suffix = 0
+        while (
+            suffix < beforeLines.size - prefix &&
+            suffix < afterLines.size - prefix &&
+            beforeLines[beforeLines.lastIndex - suffix] == afterLines[afterLines.lastIndex - suffix]
+        ) {
+            suffix++
+        }
+        val beforeStart = (prefix - contextLines).coerceAtLeast(0)
+        val afterStart = (prefix - contextLines).coerceAtLeast(0)
+        val beforeEnd = (beforeLines.size - suffix + contextLines).coerceAtMost(beforeLines.size)
+        val afterEnd = (afterLines.size - suffix + contextLines).coerceAtMost(afterLines.size)
         return buildString {
-            append("@@ line ").append(firstChanged + 1).append(" @@\n")
-            beforeLines.drop(firstChanged).take(4).forEach { append("- ").append(it).append('\n') }
-            afterLines.drop(firstChanged).take(4).forEach { append("+ ").append(it).append('\n') }
-        }.take(2_000)
+            append("--- before\n")
+            append("+++ after\n")
+            append("@@ -")
+            append(beforeStart + 1)
+            append(',')
+            append((beforeEnd - beforeStart).coerceAtLeast(0))
+            append(" +")
+            append(afterStart + 1)
+            append(',')
+            append((afterEnd - afterStart).coerceAtLeast(0))
+            append(" @@\n")
+            val beforeChangedStart = prefix
+            val beforeChangedEnd = beforeLines.size - suffix
+            val afterChangedStart = prefix
+            val afterChangedEnd = afterLines.size - suffix
+            beforeLines.subList(beforeStart, beforeChangedStart).forEach { append("  ").append(it).append('\n') }
+            beforeLines.subList(beforeChangedStart, beforeChangedEnd).forEach { append("- ").append(it).append('\n') }
+            afterLines.subList(afterChangedStart, afterChangedEnd).forEach { append("+ ").append(it).append('\n') }
+            afterLines.subList(afterChangedEnd, afterEnd).forEach { append("  ").append(it).append('\n') }
+            if (beforeStart > 0 || beforeEnd < beforeLines.size || afterStart > 0 || afterEnd < afterLines.size) {
+                append("...<diff truncated to changed window>\n")
+            }
+        }.limitForJson(maxChars)
     }
 
     private fun sha256(text: String): String {
@@ -1122,12 +1293,23 @@ object AiWorkspaceTool {
 
     private fun readFileDefinition() = functionDef(
         TOOL_READ_FILE,
-        "Read a file from the sandboxed AI workspace. Use offset and maxChars for large files.",
+        "Read a file from the sandboxed AI workspace. Use offset and maxChars for large files. Use workspace_read_lines when you need stable line numbers for workspace_edit_lines.",
         JSONObject()
             .put("sessionId", stringProp("Optional workspace session id."))
             .put("path", stringProp("Relative file path."))
             .put("offset", JSONObject().put("type", "integer"))
             .put("maxChars", JSONObject().put("type", "integer"))
+    )
+
+    private fun readLinesDefinition() = functionDef(
+        TOOL_READ_LINES,
+        "Read a numbered line range from one workspace file. This is the preferred read tool before workspace_edit_lines.",
+        JSONObject()
+            .put("sessionId", stringProp("Optional workspace session id."))
+            .put("path", stringProp("Relative file path."))
+            .put("startLine", JSONObject().put("type", "integer").put("description", "1-based first line. Defaults to 1."))
+            .put("endLine", JSONObject().put("type", "integer").put("description", "1-based last line, inclusive."))
+            .put("maxLines", JSONObject().put("type", "integer").put("description", "Maximum lines to return when endLine is omitted. Defaults to 120."))
     )
 
     private fun readMatchesDefinition() = functionDef(
@@ -1263,6 +1445,22 @@ object AiWorkspaceTool {
             .put("anchor", stringProp("Exact anchor text for before/after insertion. Not needed for start/end."))
             .put("expectMatches", JSONObject().put("type", "integer").put("description", "Expected anchor match count. Defaults to 1."))
             .put("backup", stringProp("auto, true, or false."))
+    )
+
+    private fun diffFileDefinition() = functionDef(
+        TOOL_DIFF_FILE,
+        "Show a unified diff after editing a workspace file. Pass the backupId returned by an edit tool, or omit it to compare with the latest backup for that path. Use expectedContains/expectedNotContains/expectedRegex for lightweight validation.",
+        JSONObject()
+            .put("sessionId", stringProp("Optional workspace session id."))
+            .put("path", stringProp("Relative file path."))
+            .put("backupId", stringProp("Backup id returned by edit/write/restore tools. If omitted, latest backup for this path is used."))
+            .put("beforeContent", stringProp("Optional explicit before text when no backup is available."))
+            .put("contextLines", JSONObject().put("type", "integer").put("description", "Context lines around changed block. Defaults to 3."))
+            .put("maxChars", JSONObject().put("type", "integer").put("description", "Maximum diff characters. Defaults to 12000."))
+            .put("expectedContains", stringProp("Optional text that must exist in the current file after the edit."))
+            .put("expectedNotContains", stringProp("Optional text that must not exist in the current file after the edit."))
+            .put("expectedRegex", stringProp("Optional regex that must match the current file after the edit."))
+            .put("expectedRegexFlags", stringProp("Regex flags for expectedRegex: i, m, s, x."))
     )
 
     private fun deleteFileDefinition() = functionDef(

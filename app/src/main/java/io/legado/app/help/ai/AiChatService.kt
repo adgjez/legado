@@ -62,10 +62,11 @@ object AiChatService {
     private const val AI_WORKSPACE_POLICY_PROMPT =
         "Agent file workflow is mandatory for source, rule, log, JSON, HTML, and project-style edits. " +
                 "If the user provides long data, source text, logs, JSON, HTML, or project snippets, first save it with workspace_save_input_file. " +
-                "Before editing, inspect files with workspace_list_files, workspace_search_files, workspace_read_file, or workspace_read_matches. " +
+                "Before editing, inspect files with workspace_list_files, workspace_search_files, workspace_read_file, workspace_read_lines, or workspace_read_matches. " +
                 "Before modifying any existing file, proactively call workspace_create_backup, especially before regex replacements, bulk edits, deletes, overwrites, or applying a book source. " +
-                "Make focused changes with the most specific edit tool: workspace_replace_text for plain exact snippets, workspace_replace_regex for rule-like text, escaped quotes, capture groups, or regex patterns, workspace_edit_lines after reading line numbers, and workspace_insert_text for additive edits. Use workspace_edit_file only for small batches of already verified replacements. " +
+                "Make focused changes with the most specific edit tool: workspace_replace_text for plain exact snippets, workspace_replace_regex for rule-like text, escaped quotes, capture groups, or regex patterns, workspace_edit_lines only after workspace_read_lines or workspace_read_matches gives stable line numbers, and workspace_insert_text for additive edits. Use workspace_edit_file only for small batches of already verified replacements. " +
                 "Always set expectMatches for replacement tools and keep backup=true or backup=auto. Never set backup=false unless the user explicitly requests no backup. " +
+                "After editing, call workspace_diff_file with the returned backupId to verify the diff is exactly what was intended before applying a book source or reporting success. " +
                 "Do not pass regex-looking or heavily escaped text as a literal oldText. For regex edits, use workspace_replace_regex with pattern, replacement, flags, expectMatches, and Python replacement syntax like \\1, \\g<1>, or \\g<name>. " +
                 "For Legado book sources, do not use create_book_source or update_book_source for normal modification. " +
                 "Instead import with workspace_import_book_source, create drafts with workspace_create_book_source_file, explicitly back up the workspace file, edit with workspace_edit_file, debug with workspace_debug_book_source, and apply with workspace_apply_book_source only after validation or explicit user request. " +

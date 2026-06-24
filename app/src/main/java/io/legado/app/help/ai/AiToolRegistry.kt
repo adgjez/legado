@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 14
+    private const val TOOL_SETTINGS_VERSION = 15
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -80,6 +80,10 @@ object AiToolRegistry {
         "workspace_edit_lines",
         "workspace_insert_text"
     )
+    private val version15AddedDefaultTools = setOf(
+        "workspace_read_lines",
+        "workspace_diff_file"
+    )
 
     val characterCompanionToolNames = setOf(
         "query_bookshelf",
@@ -116,9 +120,11 @@ object AiToolRegistry {
         "get_app_settings",
         "workspace_list_files",
         "workspace_read_file",
+        "workspace_read_lines",
         "workspace_read_matches",
         "workspace_search_files",
         "workspace_list_backups",
+        "workspace_diff_file",
         "workspace_import_book_source",
         "workspace_debug_book_source"
     )
@@ -184,6 +190,7 @@ object AiToolRegistry {
         "set_app_settings_batch",
         "workspace_list_files",
         "workspace_read_file",
+        "workspace_read_lines",
         "workspace_read_matches",
         "workspace_search_files",
         "workspace_save_input_file",
@@ -193,6 +200,7 @@ object AiToolRegistry {
         "workspace_replace_regex",
         "workspace_edit_lines",
         "workspace_insert_text",
+        "workspace_diff_file",
         "workspace_delete_file",
         "workspace_list_backups",
         "workspace_create_backup",
@@ -259,6 +267,7 @@ object AiToolRegistry {
         "set_app_settings_batch" to "批量修改设置",
         "workspace_list_files" to "工作区：列出文件",
         "workspace_read_file" to "工作区：读取文件",
+        "workspace_read_lines" to "工作区：按行读取",
         "workspace_read_matches" to "工作区：正则读取",
         "workspace_search_files" to "工作区：正则搜索",
         "workspace_save_input_file" to "工作区：保存输入为文件",
@@ -268,6 +277,7 @@ object AiToolRegistry {
         "workspace_replace_regex" to "工作区：正则替换",
         "workspace_edit_lines" to "工作区：行号编辑",
         "workspace_insert_text" to "工作区：插入文本",
+        "workspace_diff_file" to "工作区：查看差异",
         "workspace_delete_file" to "工作区：删除文件",
         "workspace_list_backups" to "工作区：列出备份",
         "workspace_create_backup" to "工作区：创建备份",
@@ -334,6 +344,7 @@ object AiToolRegistry {
         "set_app_settings_batch" to "设置",
         "workspace_list_files" to "AI workspace",
         "workspace_read_file" to "AI workspace",
+        "workspace_read_lines" to "AI workspace",
         "workspace_read_matches" to "AI workspace",
         "workspace_search_files" to "AI workspace",
         "workspace_save_input_file" to "AI workspace",
@@ -343,6 +354,7 @@ object AiToolRegistry {
         "workspace_replace_regex" to "AI workspace",
         "workspace_edit_lines" to "AI workspace",
         "workspace_insert_text" to "AI workspace",
+        "workspace_diff_file" to "AI workspace",
         "workspace_delete_file" to "AI workspace",
         "workspace_list_backups" to "AI workspace",
         "workspace_create_backup" to "AI workspace",
@@ -437,6 +449,7 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 11) addAll(version11AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 13) addAll(version13AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 14) addAll(version14AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 15) addAll(version15AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .minus(if (AppConfig.aiEnabledToolNamesVersion < 12) version12RemovedDefaultTools else emptySet())

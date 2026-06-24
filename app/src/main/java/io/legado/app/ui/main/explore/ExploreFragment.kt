@@ -84,6 +84,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.ui.main.MainFragmentInterface
+import io.legado.app.ui.video.VideoBookPreloader
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.ui.widget.SourceSelectDialog
@@ -2041,6 +2042,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     withContext(IO) {
                         appDb.searchBookDao.insert(*newBooks.toTypedArray())
                     }
+                    VideoBookPreloader.preloadSearchBooks(viewLifecycleOwner.lifecycleScope, newBooks)
                     val oldSize = discoverBooks.size
                     discoverBooks.addAll(newBooks)
                     val hasNewBooks = discoverBooks.size > oldSize

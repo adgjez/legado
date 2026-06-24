@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
+import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.book.info.BookInfoNavigator
@@ -42,6 +43,8 @@ object SearchBookOpenHelper {
             putExtra(EXTRA_COVER_URL, book.coverUrl)
             putExtra("videoTitle", book.name)
             if (target == VideoPlayerActivity::class.java && prepareInPlayer) {
+                putExtra("sourceKey", book.origin)
+                putExtra("sourceType", SourceType.book)
                 putExtra(VideoPlayerActivity.EXTRA_PREPARE_BOOK_INFO, true)
             }
         })

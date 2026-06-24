@@ -12,6 +12,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.webBook.SearchModel
+import io.legado.app.ui.video.VideoBookPreloader
 import io.legado.app.utils.ConflateLiveData
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,6 +43,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         }
 
         override fun onSearchSuccess(searchBooks: List<SearchBook>) {
+            VideoBookPreloader.preloadSearchBooks(viewModelScope, searchBooks)
             searchBookLiveData.postValue(searchBooks)
         }
 
