@@ -11,7 +11,6 @@ import android.graphics.Color
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.InputDevice
@@ -22,7 +21,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.view.WindowInsetsController
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -626,9 +626,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         viewModel.initReadBookConfig(intent)
-        Looper.myQueue().addIdleHandler {
+        binding.root.post {
+            AppLog.put("read-init: schedule, source=postCreate")
             viewModel.initData(intent)
-            false
         }
         justInitData = true
     }
@@ -1777,16 +1777,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         lifecycleScope.launch {
             binding.readView.upPageAnim(upRecorder)
         }
-    }
-
-    override fun requestLayoutSizeSync(): Boolean {
-        val synced = binding.readView.syncLayoutSizeToChapterProvider()
-        if (!synced) {
-            binding.readView.post {
-                binding.readView.syncLayoutSizeToChapterProvider()
-            }
-        }
-        return synced
     }
 
     private fun isEpubCoreMode(): Boolean {
@@ -3706,22 +3696,19 @@ class ReadBookActivity : BaseReadBookActivity(),
         WindowCompat.setDecorFitsSystemWindows(window, false)
         binding.navigationBar.visibility = View.GONE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.run {
+            WindowCompat.getInsetsController(window, binding.root)?.run {
                 if (ReadBookConfig.hideNavigationBar) {
-                    hide(WindowInsets.Type.navigationBars())
+                    hide(WindowInsetsCompat.Type.navigationBars())
                 } else {
-                    show(WindowInsets.Type.navigationBars())
+                    show(WindowInsetsCompat.Type.navigationBars())
                 }
                 if (ReadBookConfig.hideStatusBar) {
-                    hide(WindowInsets.Type.statusBars())
+                    hide(WindowInsetsCompat.Type.statusBars())
                 } else {
-                    show(WindowInsets.Type.statusBars())
+                    show(WindowInsetsCompat.Type.statusBars())
                 }
-                setSystemBarsAppearance(
-                    0,
-                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                )
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = false
             }
         }
         var flag = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or

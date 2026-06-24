@@ -113,7 +113,6 @@ class PageView(context: Context) : FrameLayout(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         upBg()
-        postSyncMainContentSize()
     }
 
     override fun onDetachedFromWindow() {
@@ -559,34 +558,6 @@ class PageView(context: Context) : FrameLayout(context) {
     fun markAsMainView() {
         isMainView = true
         binding.contentTextView.isMainView = true
-        postSyncMainContentSize()
-    }
-
-    fun syncContentViewSizeToChapterProvider(): Boolean {
-        if (!isMainView) return false
-        val width = binding.contentTextView.width.takeIf { it > 0 } ?: binding.contentTextView.measuredWidth
-        val height = binding.contentTextView.height.takeIf { it > 0 } ?: binding.contentTextView.measuredHeight
-        if (width <= 0 || height <= 0) {
-            val fallbackWidth = binding.vwRoot.width.takeIf { it > 0 } ?: width
-            val fallbackHeight = (
-                binding.vwBottomDivider.top.takeIf { it > 0 } ?: (binding.vwRoot.height - binding.llFooter.height)
-            ) - binding.vwTopDivider.bottom
-            if (fallbackWidth <= 0 || fallbackHeight <= 0) return false
-            ChapterProvider.upViewSize(fallbackWidth, fallbackHeight)
-            return ChapterProvider.isLayoutSizeReady()
-        }
-        ChapterProvider.upViewSize(width, height)
-        return true
-    }
-
-    private fun postSyncMainContentSize() {
-        if (!isMainView) return
-        post {
-            syncContentViewSizeToChapterProvider()
-        }
-        binding.contentTextView.post {
-            syncContentViewSizeToChapterProvider()
-        }
     }
 
     fun selectStartMove(x: Float, y: Float) {

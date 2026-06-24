@@ -32,12 +32,12 @@ import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.request.transition.Transition
-import io.legado.app.data.entities.Book
+import io.legado.app.data.dao.BookShelfDisplay
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.CoverThumbnailCache
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.BookCover
@@ -117,7 +117,7 @@ fun BookshelfComposeCover(
             .apply(options)
             .placeholder(BookCover.defaultDrawable)
             .error(BookCover.defaultDrawable)
-            .priority(Priority.HIGH)
+            .priority(if (AppConfig.loadCoverHighQuality) Priority.NORMAL else Priority.HIGH)
             .override(
                 if (useThumb) 240 else Target.SIZE_ORIGINAL,
                 if (useThumb) 320 else Target.SIZE_ORIGINAL
@@ -178,21 +178,41 @@ private data class BookshelfCoverRequest(
 
 private fun BookshelfItemUi.toCoverRequest(): BookshelfCoverRequest {
     return when (this) {
-        is BookshelfBookItemUi -> book.toCoverRequest()
+        is BookshelfBookItemUi -> display.toCoverRequest()
         is BookshelfFolderItemUi -> group.toCoverRequest()
     }
 }
 
-private fun Book.toCoverRequest(): BookshelfCoverRequest {
-    val display = CoverDisplayResolver.resolve(this)
+private fun BookShelfDisplay.toCoverRequest(): BookshelfCoverRequest {
+    val originalCover = getDisplayCover()
+    val collectionCover = CoverCollectionManager.selectedCollectionCover(
+        bookKey = bookUrl.ifBlank { "$origin|$name|$author" },
+        coverPath = originalCover
+    )
+    val usingCollectionCover = collectionCover != null
+    val forceOriginalCover = collectionCover == null &&
+        CoverCollectionManager.isMixedMode() &&
+        originalCover.isRealCoverPath()
+    val forcePath = usingCollectionCover || forceOriginalCover
+    val allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
+    val displayKey = listOf(
+        collectionCover ?: originalCover,
+        name,
+        author,
+        origin,
+        AppConfig.useDefaultCover.toString(),
+        CoverCollectionManager.selectionKey(),
+        forcePath.toString(),
+        allowNameOverlay.toString()
+    ).joinToString("|")
     return buildCoverRequest(
-        path = display.path,
-        name = display.name,
-        author = display.author,
-        sourceOrigin = display.sourceOrigin,
+        path = collectionCover ?: originalCover,
+        name = name,
+        author = author,
+        sourceOrigin = origin,
         preferThumb = true,
-        forcePath = display.forcePath,
-        displayKey = display.loadKey
+        forcePath = forcePath,
+        displayKey = displayKey
     )
 }
 
@@ -242,7 +262,7 @@ private fun BookshelfItemUi.coverIdentityKey(): String {
         CoverCollectionManager.selectionKey()
     ).joinToString("|")
     return when (this) {
-        is BookshelfBookItemUi -> "$configKey|book|${book.bookUrl}|${book.getDisplayCover()}|${book.name}|${book.author}"
+        is BookshelfBookItemUi -> "$configKey|book|${display.bookUrl}|${display.getDisplayCover()}|${display.name}|${display.author}"
         is BookshelfFolderItemUi -> "$configKey|folder|${group.groupId}|${group.cover}|${group.groupName}"
     }
 }

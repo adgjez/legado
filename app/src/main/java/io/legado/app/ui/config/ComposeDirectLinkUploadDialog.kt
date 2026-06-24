@@ -300,6 +300,8 @@ private fun DirectLinkTextField(
             focusedContainerColor = style.fieldSurface,
             unfocusedContainerColor = style.fieldSurface
         ),
-        singleLine = true
+        singleLine = false,
+        minLines = 1,
+        maxLines = 6
     )
 }

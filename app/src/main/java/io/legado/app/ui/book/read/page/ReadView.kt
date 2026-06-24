@@ -153,18 +153,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         if (w > 0 && h > 0) {
             upBg()
             callBack.upSystemUiVisibility()
-            curPage.syncContentViewSizeToChapterProvider()
-            post {
-                curPage.syncContentViewSizeToChapterProvider()
-            }
         }
-    }
-
-    fun syncLayoutSizeToChapterProvider(): Boolean {
-        if (curPage.syncContentViewSizeToChapterProvider()) return true
-        if (width <= 0 || height <= 0) return false
-        ChapterProvider.upViewSize(width, height)
-        return ChapterProvider.isLayoutSizeReady()
     }
 
     override fun dispatchDraw(canvas: Canvas) {

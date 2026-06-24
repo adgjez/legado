@@ -15,7 +15,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
+import io.legado.app.data.dao.BookTagInfo
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ActivityBookshelfTagManageBinding
 import io.legado.app.help.book.BookTagHelper
@@ -50,7 +50,7 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
     private fun loadTags() {
         lifecycleScope.launch {
             val data = withContext(IO) {
-                val books = appDb.bookDao.all
+                val books = appDb.bookDao.allTagInfos
                 val groups = appDb.bookGroupDao.all
                     .filter { it.groupId != BookGroup.IdRoot }
                     .sortedWith(compareBy<BookGroup> { if (it.groupId == focusGroupId) 0 else 1 }
@@ -220,8 +220,7 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
                                 }
                                 else -> return@forEachIndexed
                             }
-                            book.customTag = BookTagHelper.join(tags)
-                            appDb.bookDao.update(book)
+                            appDb.bookDao.updateCustomTag(book.bookUrl, BookTagHelper.join(tags))
                         }
                         postEvent(EventBus.BOOKSHELF_REFRESH, "")
                         withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -259,11 +258,11 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
                 lifecycleScope.launch(IO) {
                     groupTags.books.forEach { book ->
                         if (BookTagHelper.has(book.customTag, tag)) {
-                            book.customTag = BookTagHelper.join(
+                            val normalizedTag = BookTagHelper.join(
                                 BookTagHelper.parse(book.customTag)
                                     .filterNot { it.equals(tag, ignoreCase = true) }
                             )
-                            appDb.bookDao.update(book)
+                            appDb.bookDao.updateCustomTag(book.bookUrl, normalizedTag)
                         }
                     }
                     val map = AppConfig.bookshelfHiddenTags.toMutableMap()
@@ -305,7 +304,7 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
         UiCorner.actionRadius(this)
     )
 
-    private fun booksInGroup(group: BookGroup, books: List<Book>, userGroupMask: Long): List<Book> {
+    private fun booksInGroup(group: BookGroup, books: List<BookTagInfo>, userGroupMask: Long): List<BookTagInfo> {
         return when (group.groupId) {
             BookGroup.IdAll -> books
             BookGroup.IdLocal -> books.filter { it.type and BookType.local > 0 }
@@ -334,7 +333,7 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
 
     private data class GroupTags(
         val group: BookGroup,
-        val books: List<Book>,
+        val books: List<BookTagInfo>,
         val tags: List<String>
     )
 }

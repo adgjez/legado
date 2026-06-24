@@ -388,7 +388,7 @@ private fun BookshelfBookMeta(
     showTags: Boolean,
     introMaxLines: Int
 ) {
-    val book = item.book
+    val book = item.display
     if (compact) {
         Text(
             text = listOf(book.author, book.durChapterTitle)
@@ -417,19 +417,6 @@ private fun BookshelfBookMeta(
         text = book.latestChapterTitle,
         palette = palette
     )
-    if (showIntro) {
-        item.intro?.let { intro ->
-            Text(
-                text = intro,
-                color = palette.secondaryText,
-                fontSize = 12.sp,
-                fontFamily = palette.bodyFontFamily,
-                maxLines = introMaxLines,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-    }
     if (showTags && item.tags.isNotEmpty()) {
         BookshelfTagChips(
             tags = item.tags,
@@ -546,6 +533,6 @@ private fun BookshelfListStatus(
 
 private val BookshelfItemUi.displayName: String
     get() = when (this) {
-        is BookshelfBookItemUi -> book.name
+        is BookshelfBookItemUi -> display.name
         is BookshelfFolderItemUi -> group.groupName
     }

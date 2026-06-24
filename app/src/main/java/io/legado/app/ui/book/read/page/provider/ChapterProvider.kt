@@ -25,11 +25,7 @@ import io.legado.app.utils.isPad
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.spToPx
 import io.legado.app.utils.textHeight
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers.Main
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import splitties.init.appCtx
 import androidx.core.net.toUri
 
@@ -147,15 +143,11 @@ object ChapterProvider {
 
     private var upViewSizeRunnable: Runnable? = null
 
-    private val layoutSizeReadyLock = Any()
-    private var layoutSizeReadySignal = CompletableDeferred<Unit>()
-    private const val layoutSizeReadyTimeoutMillis = 1500L
-
     init {
         upStyle()
     }
 
-    suspend fun getTextChapterAsync(
+    fun getTextChapterAsync(
         scope: CoroutineScope,
         book: Book,
         bookChapter: BookChapter,
@@ -163,7 +155,6 @@ object ChapterProvider {
         bookContent: BookContent,
         chapterSize: Int,
     ): TextChapter {
-        awaitLayoutSizeReady()
 
         val textChapter = TextChapter(
             bookChapter,
@@ -178,61 +169,6 @@ object ChapterProvider {
         }
 
         return textChapter
-    }
-
-    /**
-     * 阅读区域尺寸是否已可用于排版
-     */
-    fun isLayoutSizeReady(): Boolean {
-        return viewWidth > 0 && viewHeight > 0 && visibleWidth > 0 && visibleHeight > 0
-    }
-
-    suspend fun awaitLayoutSizeReady() {
-        if (isLayoutSizeReady()) return
-        withContext(Main.immediate) {
-            ReadBook.callBack?.requestLayoutSizeSync()
-        }
-        if (isLayoutSizeReady()) return
-        val signal = synchronized(layoutSizeReadyLock) {
-            if (isLayoutSizeReady()) {
-                null
-            } else {
-                layoutSizeReadySignal.takeUnless { it.isCompleted }
-                    ?: CompletableDeferred<Unit>().also { layoutSizeReadySignal = it }
-            }
-        }
-        if (signal != null && withTimeoutOrNull(layoutSizeReadyTimeoutMillis) { signal.await() } == null) {
-            withContext(Main.immediate) {
-                ReadBook.callBack?.requestLayoutSizeSync()
-            }
-        }
-        if (isLayoutSizeReady()) return
-        if (bootstrapFallbackLayoutSize()) return
-        throw IllegalStateException(
-            "Reader layout size is not ready: view=${viewWidth}x${viewHeight}, " +
-                "visible=${visibleWidth}x${visibleHeight}"
-        )
-    }
-
-    private fun bootstrapFallbackLayoutSize(): Boolean {
-        if (isLayoutSizeReady()) return true
-        val metrics = appCtx.resources.displayMetrics
-        val fallbackWidth = metrics.widthPixels
-        val fallbackHeight = metrics.heightPixels
-        if (fallbackWidth <= 0 || fallbackHeight <= 0) return false
-        AppLog.putDebug(
-            "Reader layout size fallback: view=${viewWidth}x${viewHeight}, " +
-                "screen=${fallbackWidth}x${fallbackHeight}"
-        )
-        notifyViewSizeChange(fallbackWidth, fallbackHeight)
-        return isLayoutSizeReady()
-    }
-
-    private fun notifyLayoutSizeReadyIfNeeded() {
-        if (!isLayoutSizeReady()) return
-        synchronized(layoutSizeReadyLock) {
-            layoutSizeReadySignal.takeUnless { it.isCompleted }
-        }?.complete(Unit)
     }
 
     /**
@@ -426,7 +362,6 @@ object ChapterProvider {
             visibleBottom.toFloat() + 10f.dpToPx() //下划线最远10dp
         )
 
-        notifyLayoutSizeReadyIfNeeded()
     }
 
     private fun setFallbackLayout() {

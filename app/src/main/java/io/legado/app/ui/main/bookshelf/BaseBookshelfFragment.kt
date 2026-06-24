@@ -43,6 +43,7 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfViewModel>(layoutId),
     MainFragmentInterface {
@@ -147,11 +148,17 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                 putExtra("groupId", groupId)
             }
 
-            R.id.menu_export_bookshelf -> viewModel.exportBookshelf(books) { file ->
-                exportResult.launch {
-                    mode = HandleFileContract.EXPORT
-                    fileData =
-                        HandleFileContract.FileData("bookshelf.json", file, "application/json")
+            R.id.menu_export_bookshelf -> lifecycleScope.launch {
+                val bookUrls = books.map { it.bookUrl }
+                val fullBooks = withContext(IO) {
+                    appDb.bookDao.getBooksSafe(bookUrls)
+                }
+                viewModel.exportBookshelf(fullBooks) { file ->
+                    exportResult.launch {
+                        mode = HandleFileContract.EXPORT
+                        fileData =
+                            HandleFileContract.FileData("bookshelf.json", file, "application/json")
+                    }
                 }
             }
 
@@ -185,7 +192,8 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                 onPositive = { result ->
                     val keepTags = tags.filterIndexed { index, _ -> result[index] }.toSet()
                 lifecycleScope.launch(IO) {
-                    targetBooks.forEach { book ->
+                    val fullBooks = appDb.bookDao.getBooksSafe(targetBooks.map { it.bookUrl })
+                    fullBooks.forEach { book ->
                         val normalized = BookTagHelper.join(
                             BookTagHelper.parse(book.customTag).filter { it in keepTags }
                         )
