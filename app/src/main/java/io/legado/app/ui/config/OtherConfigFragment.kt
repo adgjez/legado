@@ -1,7 +1,6 @@
 package io.legado.app.ui.config
 
 import android.content.ComponentName
-import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
@@ -110,16 +109,6 @@ class OtherConfigFragment : ComposeSettingFragment() {
                             key = PreferKey.showReadRecord,
                             title = getString(R.string.show_read_record),
                             defaultValue = true
-                        ),
-                        SettingActionSpec(
-                            key = KEY_DISCOVERY_SUBSCRIPTION_SETTINGS,
-                            title = getString(R.string.discovery_subscription_settings_title),
-                            summary = getString(R.string.discovery_subscription_settings_summary),
-                            onClick = {
-                                startActivity(Intent(requireContext(), ConfigActivity::class.java).apply {
-                                    putExtra("configTag", ConfigTag.DISCOVERY_SUBSCRIPTION_CONFIG)
-                                })
-                            }
                         ),
                         choice(
                             key = PreferKey.defaultHomePage,
@@ -623,7 +612,6 @@ class OtherConfigFragment : ComposeSettingFragment() {
     companion object {
         private const val KEY_LANGUAGE = "language"
         private const val KEY_LOCAL_PASSWORD = "localPassword"
-        private const val KEY_DISCOVERY_SUBSCRIPTION_SETTINGS = "discoverySubscriptionSettings"
         private const val KEY_MEDIA_BUTTON_ON_EXIT = "mediaButtonOnExit"
         private const val KEY_AUTO_UPDATE_VARIANT = "autoUpdateVariant"
         private val DEFAULT_USER_AGENT =
