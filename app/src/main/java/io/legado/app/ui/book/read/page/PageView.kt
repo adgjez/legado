@@ -178,6 +178,13 @@ class PageView(context: Context) : FrameLayout(context) {
         }
         upTime()
         upBattery(battery)
+        invalidateTextRenderCache()
+    }
+
+    fun invalidateTextRenderCache() {
+        currentTextPage?.invalidateAll()
+        pairedTextPage?.invalidateAll()
+        ViewCompat.postInvalidateOnAnimation(binding.contentTextView)
     }
 
     /**
