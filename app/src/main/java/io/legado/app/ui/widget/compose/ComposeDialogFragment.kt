@@ -2,8 +2,12 @@ package io.legado.app.ui.widget.compose
 
 import android.os.Bundle
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.app.Dialog
+import androidx.activity.ComponentDialog
+import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
@@ -26,6 +30,24 @@ abstract class ComposeDialogFragment : DialogFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setStyle(STYLE_NO_TITLE, 0)
+    }
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        return super.onCreateDialog(savedInstanceState).apply {
+            (this as? ComponentDialog)?.onBackPressedDispatcher?.addCallback(
+                this@ComposeDialogFragment,
+                object : OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        handleDialogBack()
+                    }
+                }
+            )
+            setOnKeyListener { _, keyCode, event ->
+                keyCode == KeyEvent.KEYCODE_BACK &&
+                        event.action == KeyEvent.ACTION_UP &&
+                        handleDialogBack()
+            }
+        }
     }
 
     override fun onStart() {
@@ -60,6 +82,13 @@ abstract class ComposeDialogFragment : DialogFragment() {
         } else {
             setLayout(dialogWidth, dialogHeight)
         }
+    }
+
+    private fun handleDialogBack(): Boolean {
+        if (isCancelable) {
+            dismissAllowingStateLoss()
+        }
+        return true
     }
 
     private fun applyEInkDialogBorder() {

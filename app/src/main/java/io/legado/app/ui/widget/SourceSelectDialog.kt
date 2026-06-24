@@ -2,10 +2,12 @@ package io.legado.app.ui.widget
 
 import android.content.Context
 import android.graphics.drawable.ColorDrawable
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import androidx.activity.ComponentDialog
+import androidx.activity.OnBackPressedCallback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -72,6 +74,21 @@ object SourceSelectDialog {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
             window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            onBackPressedDispatcher.addCallback(
+                object : OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        dismiss()
+                    }
+                }
+            )
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    dismiss()
+                    true
+                } else {
+                    false
+                }
+            }
         }
         dialog.setContentView(
             ComposeView(context).apply {
