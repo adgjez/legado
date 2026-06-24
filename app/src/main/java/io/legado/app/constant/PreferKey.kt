@@ -49,6 +49,8 @@ object PreferKey {
     const val modernDiscoveryPage = "modernDiscoveryPage"
     const val modernRssPage = "modernRssPage"
     const val discoveryPageLayout = "discoveryPageLayout"
+    const val discoverySuiteList = "discoverySuiteList"
+    const val currentDiscoverySuiteId = "currentDiscoverySuiteId"
     const val mergeDiscoveryRss = "mergeDiscoveryRss"
     const val mergedDiscoveryRssTarget = "mergedDiscoveryRssTarget"
     const val modernDiscoverySourceUrl = "modernDiscoverySourceUrl"

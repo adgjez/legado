@@ -111,16 +111,6 @@ class OtherConfigFragment : ComposeSettingFragment() {
                             title = getString(R.string.show_read_record),
                             defaultValue = true
                         ),
-                        SettingActionSpec(
-                            key = KEY_DISCOVERY_SUBSCRIPTION_SETTINGS,
-                            title = getString(R.string.discovery_subscription_settings_title),
-                            summary = getString(R.string.discovery_subscription_settings_summary),
-                            onClick = {
-                                startActivity(Intent(requireContext(), ConfigActivity::class.java).apply {
-                                    putExtra("configTag", ConfigTag.DISCOVERY_SUBSCRIPTION_CONFIG)
-                                })
-                            }
-                        ),
                         choice(
                             key = PreferKey.defaultHomePage,
                             title = getString(R.string.default_home_page),

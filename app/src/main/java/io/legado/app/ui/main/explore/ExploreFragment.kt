@@ -60,6 +60,8 @@ import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemFindBookBinding
 import io.legado.app.databinding.FragmentExploreBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.DiscoverySuite
+import io.legado.app.help.config.DiscoverySuiteConfig
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.help.webView.WebViewPool
@@ -89,6 +91,7 @@ import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
@@ -151,6 +154,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var usingModernDiscovery = false
     private var sourceMenuPopup: PopupWindow? = null
     private var tagFilterPopup: ModernActionPopup.Handle? = null
+    private var discoverySuitePopup: ModernActionPopup.Handle? = null
+    private var discoverySuiteEditPopup: ModernActionPopup.Handle? = null
     private var discoverSourceFlowJob: Job? = null
     private var discoverBookshelfFlowJob: Job? = null
     private var discoverWarmupJob: Job? = null
@@ -171,6 +176,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeDiscoverLayoutMode = mutableIntStateOf(AppConfig.discoveryPageLayout)
     private val composeDiscoverListStyle = mutableIntStateOf(AppConfig.bookshelfListItemStyle)
     private val composeDiscoverScrollToTopSignal = mutableIntStateOf(0)
+    private val discoverySuitesState = mutableStateOf(DiscoverySuiteConfig.suites)
+    private val currentDiscoverySuiteState = mutableStateOf(DiscoverySuiteConfig.currentSuite)
     private var composeDiscoverCanScrollBackward = false
     private var composeDiscoverBooksSignature = ""
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
@@ -227,6 +234,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.composeDiscoverBooks.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
+        binding.composeDiscoverySuite.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
         binding.composeDiscoverBooks.setContent {
             LegadoComposeTheme {
                 ExploreModernListScreen(
@@ -246,6 +256,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     onCanScrollBackwardChanged = { composeDiscoverCanScrollBackward = it },
                     fragment = this@ExploreFragment,
                     lifecycle = viewLifecycleOwner.lifecycle
+                )
+            }
+        }
+        binding.composeDiscoverySuite.setContent {
+            LegadoComposeTheme {
+                DiscoverySuiteHomeScreen(
+                    suite = currentDiscoverySuiteState.value,
+                    topPaddingPx = composeDiscoverTopPadding.intValue,
+                    onEditSuite = ::showDiscoverySuiteEditor
                 )
             }
         }
@@ -269,13 +288,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         usingModernDiscovery = modern
         binding.titleBar.isGone = modern
         binding.llModernDiscovery.isVisible = modern
+        binding.composeDiscoverySuite.isVisible = modern
         binding.rvFind.isGone = modern
         binding.tvEmptyMsg.isGone = modern
         searchView?.isGone = modern
         if (modern) {
+            refreshDiscoverySuiteUi()
             binding.topBar.post {
                 updateModernTopBarOverlay()
             }
+        } else {
+            binding.topBar.setSuiteSelectVisible(false)
         }
         if (!loadData) {
             activity?.invalidateOptionsMenu()
@@ -340,6 +363,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         sourceMenuPopup = null
         tagFilterPopup?.dismiss()
         tagFilterPopup = null
+        discoverySuitePopup?.dismiss()
+        discoverySuitePopup = null
+        discoverySuiteEditPopup?.dismiss()
+        discoverySuiteEditPopup = null
         discoverWarmupJob?.cancel()
         discoverWarmupJob = null
         discoverSourceFlowJob?.cancel()
@@ -546,6 +573,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.topBar.searchEntry.setOnClickListener {
             openDiscoverSearch()
         }
+        binding.topBar.setSuiteSelectVisible(true)
+        binding.topBar.suiteSelect.setOnClickListener {
+            showDiscoverySuiteMenu()
+        }
+        binding.topBar.suiteSelect.setOnLongClickListener {
+            currentDiscoverySuiteState.value?.let(::showDiscoverySuiteAliasDialog)
+                ?: showDiscoverySuiteEditor()
+            true
+        }
         binding.topBar.loginButton.setOnClickListener {
             openSelectedSourceLogin()
         }
@@ -565,11 +601,165 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val actionsWidth = listOf(
             binding.topBar.searchButton,
             binding.topBar.filterButton,
-            binding.topBar.loginButton
+            binding.topBar.loginButton,
+            binding.topBar.suiteSelect
         ).filter { it.isVisible }.sumOf { it.measuredWidth.takeIf { width -> width > 0 } ?: it.layoutParams.width }
         val spacing = 36.dpToPx()
         val maxWidth = (rowWidth - actionsWidth - spacing).coerceIn(96.dpToPx(), 190.dpToPx())
         binding.topBar.titleText.maxWidth = maxWidth
+    }
+
+    private fun refreshDiscoverySuiteUi() {
+        discoverySuitesState.value = DiscoverySuiteConfig.suites
+        currentDiscoverySuiteState.value = DiscoverySuiteConfig.currentSuite
+        binding.topBar.setSuiteSelectText(currentDiscoverySuiteState.value?.displayName ?: "默认")
+        binding.topBar.setSuiteSelectVisible(usingModernDiscovery)
+        binding.composeDiscoverySuite.isVisible = usingModernDiscovery
+        binding.topBar.post(::updateDiscoverSourceNameWidth)
+    }
+
+    private fun showDiscoverySuiteMenu() {
+        val suites = discoverySuitesState.value
+        val current = currentDiscoverySuiteState.value
+        val actions = buildList {
+            add(
+                ModernActionPopup.Action(
+                    title = "编辑套件",
+                    description = "新建、重命名、别名和排序"
+                ) {
+                    showDiscoverySuiteEditor()
+                }
+            )
+            add(
+                ModernActionPopup.Action(
+                    title = "默认",
+                    checked = current == null
+                ) {
+                    DiscoverySuiteConfig.currentSuiteId = null
+                    refreshDiscoverySuiteUi()
+                }
+            )
+            suites.forEach { suite ->
+                add(
+                    ModernActionPopup.Action(
+                        title = suite.displayName.limitDiscoverText(10),
+                        description = suite.alias.takeIf { it.isNotBlank() },
+                        checked = suite.id == current?.id
+                    ) {
+                        DiscoverySuiteConfig.currentSuiteId = suite.id
+                        refreshDiscoverySuiteUi()
+                    }
+                )
+            }
+            if (suites.isEmpty()) {
+                add(
+                    ModernActionPopup.Action(
+                        title = "新建套件",
+                        description = "默认没有套件，从这里开始"
+                    ) {
+                        showCreateDiscoverySuiteDialog()
+                    }
+                )
+            }
+        }
+        discoverySuitePopup = ModernActionPopup.show(
+            binding.topBar.suiteSelect,
+            actions,
+            discoverySuitePopup
+        )
+    }
+
+    private fun showDiscoverySuiteEditor() {
+        val current = currentDiscoverySuiteState.value
+        val suites = discoverySuitesState.value
+        val currentIndex = current?.let { suite -> suites.indexOfFirst { it.id == suite.id } } ?: -1
+        val actions = buildList {
+            add(ModernActionPopup.Action("新建套件") { showCreateDiscoverySuiteDialog() })
+            current?.let { suite ->
+                add(ModernActionPopup.Action("重命名套件", suite.name) { showRenameDiscoverySuiteDialog(suite) })
+                add(ModernActionPopup.Action("设置别名", suite.alias.ifBlank { "未设置" }) { showDiscoverySuiteAliasDialog(suite) })
+                add(
+                    ModernActionPopup.Action(
+                        title = "添加控件",
+                        description = "第一版先预留入口，控件后续逐步接入"
+                    ) {
+                        context?.toastOnUi("控件编辑入口已预留，后续接入具体控件类型")
+                    }
+                )
+                add(ModernActionPopup.Action("上移", enabled = currentIndex > 0) {
+                    DiscoverySuiteConfig.moveSuite(suite.id, -1)
+                    refreshDiscoverySuiteUi()
+                })
+                add(ModernActionPopup.Action("下移", enabled = currentIndex in 0 until suites.lastIndex) {
+                    DiscoverySuiteConfig.moveSuite(suite.id, 1)
+                    refreshDiscoverySuiteUi()
+                })
+                add(ModernActionPopup.Action("删除套件", description = suite.displayName) {
+                    confirmDeleteDiscoverySuite(suite)
+                })
+            }
+        }
+        discoverySuiteEditPopup = ModernActionPopup.show(
+            binding.topBar.suiteSelect,
+            actions,
+            discoverySuiteEditPopup
+        )
+    }
+
+    private fun showCreateDiscoverySuiteDialog() {
+        showComposeTextInputDialog(
+            title = "新建发现套件",
+            hint = "套件名称",
+            initialValue = "发现套件",
+            maxLines = 1,
+            onPositive = { value ->
+                DiscoverySuiteConfig.addSuite(value)
+                refreshDiscoverySuiteUi()
+            }
+        )
+    }
+
+    private fun showRenameDiscoverySuiteDialog(suite: DiscoverySuite) {
+        showComposeTextInputDialog(
+            title = "重命名套件",
+            hint = "套件名称",
+            initialValue = suite.name,
+            maxLines = 1,
+            onPositive = { value ->
+                DiscoverySuiteConfig.updateSuite(suite.copy(name = value.trim().ifBlank { suite.name }))
+                refreshDiscoverySuiteUi()
+            }
+        )
+    }
+
+    private fun showDiscoverySuiteAliasDialog(suite: DiscoverySuite) {
+        showComposeTextInputDialog(
+            title = "设置套件别名",
+            hint = suite.name,
+            initialValue = suite.alias,
+            message = "别名只影响发现页顶部 select/tag 的显示，不修改套件名称。",
+            neutralText = if (suite.alias.isNotBlank()) getString(R.string.delete) else null,
+            maxLines = 1,
+            onPositive = { value ->
+                DiscoverySuiteConfig.updateSuite(suite.copy(alias = value.trim()))
+                refreshDiscoverySuiteUi()
+            },
+            onNeutral = {
+                DiscoverySuiteConfig.updateSuite(suite.copy(alias = ""))
+                refreshDiscoverySuiteUi()
+            }
+        )
+    }
+
+    private fun confirmDeleteDiscoverySuite(suite: DiscoverySuite) {
+        alert(R.string.draw) {
+            setMessage(getString(R.string.sure_del) + "\n" + suite.displayName)
+            noButton()
+            yesButton {
+                DiscoverySuiteConfig.deleteSuite(suite.id)
+                refreshDiscoverySuiteUi()
+            }
+        }
     }
 
     private fun openSelectedSourceLogin() {
@@ -2150,6 +2340,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         } else if (usingModernDiscovery) {
             applyDiscoverBookLayout()
             syncDiscoverComposeState()
+            refreshDiscoverySuiteUi()
         }
         if (!usingModernDiscovery) {
             adapter.upResumed(true)
