@@ -47,6 +47,7 @@ object PreferKey {
     const val showDiscovery = "showDiscovery"
     const val showReadRecord = "showReadRecord"
     const val modernDiscoveryPage = "modernDiscoveryPage"
+    const val discoveryPageMode = "discoveryPageMode"
     const val modernRssPage = "modernRssPage"
     const val discoveryPageLayout = "discoveryPageLayout"
     const val mergeDiscoveryRss = "mergeDiscoveryRss"
