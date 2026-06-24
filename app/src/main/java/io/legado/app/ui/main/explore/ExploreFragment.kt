@@ -89,7 +89,6 @@ import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
-import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
@@ -243,7 +242,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         isInBookshelf(book)
                     },
                     onBookClick = ::showBookInfo,
-                    onBookLongClick = ::previewBook,
                     onLoadMore = { loadDiscoverBooks(reset = false) },
                     onCanScrollBackwardChanged = { composeDiscoverCanScrollBackward = it },
                     fragment = this@ExploreFragment,
@@ -541,7 +539,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 if (source.bookSourceUrl != selectedDiscoverSourcePart?.bookSourceUrl) {
                     selectDiscoverSource(source)
                 }
-                binding.topBar.post { showDiscoverSourceAliasDialog(source) }
+                binding.topBar.post { showDiscoverKindsDialog() }
             }
             true
         }
@@ -703,14 +701,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             title = getString(R.string.book_source),
             items = discoverSources,
             selectedKey = selectedDiscoverSourcePart?.bookSourceUrl,
-            displayName = { it.discoveryDisplayNameWithGroup() },
+            displayName = { it.getDisPlayNameGroup() },
             searchTexts = {
-                listOfNotNull(
-                    it.bookSourceName,
-                    discoveryAlias(it.bookSourceUrl),
-                    it.bookSourceUrl,
-                    it.bookSourceGroup
-                )
+                listOfNotNull(it.bookSourceName, it.bookSourceUrl, it.bookSourceGroup)
             },
             itemKey = { it.bookSourceUrl },
             showTitle = false
@@ -1356,66 +1349,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun updateDiscoverSourceTitle() {
         val name = selectedDiscoverSourcePart?.bookSourceName
             ?: getString(R.string.discovery)
-        val displayName = selectedDiscoverSourcePart?.let { discoveryDisplayName(it) } ?: name
-        binding.topBar.setTitle(if (binding.topBar.isRegularStyle()) getString(R.string.discovery) else displayName)
-        binding.topBar.setSearchHint(displayName)
+        binding.topBar.setTitle(if (binding.topBar.isRegularStyle()) getString(R.string.discovery) else name)
+        binding.topBar.setSearchHint(name)
         renderDiscoverSourceSelector()
         binding.topBar.post(::updateDiscoverSourceNameWidth)
     }
 
     private fun renderDiscoverSourceSelector() {
         binding.topBar.setPrimaryItems(
-            discoverSources.map { RoundedTagBarView.Item(discoveryDisplayName(it)) },
+            discoverSources.map { RoundedTagBarView.Item(it.bookSourceName) },
             discoverSources.indexOfFirst { it.bookSourceUrl == selectedDiscoverSourcePart?.bookSourceUrl }
         )
-    }
-
-    private fun discoveryAlias(sourceUrl: String): String? {
-        return AppConfig.modernDiscoverySourceAliases[sourceUrl]?.takeIf { it.isNotBlank() }
-    }
-
-    private fun discoveryDisplayName(source: BookSourcePart): String {
-        return discoveryAlias(source.bookSourceUrl) ?: source.bookSourceName
-    }
-
-    private fun BookSourcePart.discoveryDisplayNameWithGroup(): String {
-        val displayName = discoveryDisplayName(this)
-        return if (bookSourceGroup.isNullOrBlank()) {
-            displayName
-        } else {
-            String.format("%s (%s)", displayName, bookSourceGroup)
-        }
-    }
-
-    private fun showDiscoverSourceAliasDialog(source: BookSourcePart) {
-        val currentAlias = discoveryAlias(source.bookSourceUrl).orEmpty()
-        showComposeTextInputDialog(
-            title = "发现入口别名",
-            hint = source.bookSourceName,
-            initialValue = currentAlias,
-            message = "只修改发现页顶部 tag 的显示名称，不会修改书源名称。",
-            neutralText = if (currentAlias.isNotBlank()) getString(R.string.delete) else null,
-            maxLines = 1,
-            onPositive = { value ->
-                updateDiscoverSourceAlias(source.bookSourceUrl, value)
-            },
-            onNeutral = {
-                updateDiscoverSourceAlias(source.bookSourceUrl, "")
-            }
-        )
-    }
-
-    private fun updateDiscoverSourceAlias(sourceUrl: String, alias: String) {
-        val aliases = AppConfig.modernDiscoverySourceAliases.toMutableMap()
-        val normalized = alias.trim()
-        if (normalized.isBlank()) {
-            aliases.remove(sourceUrl)
-        } else {
-            aliases[sourceUrl] = normalized
-        }
-        AppConfig.modernDiscoverySourceAliases = aliases
-        updateDiscoverSourceTitle()
-        renderDiscoverSourceSelector()
     }
 
     private fun refreshModernDiscoverKinds() {
@@ -2312,38 +2256,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 )
             }
             SearchBookOpenHelper.open(requireContext(), book, isVideo)
-        }
-    }
-
-    private fun previewBook(book: SearchBook) {
-        val details = buildString {
-            append("作者：").append(book.author.ifBlank { "未知" }).append('\n')
-            book.originName?.takeIf { it.isNotBlank() }?.let {
-                append("来源：").append(it).append('\n')
-            } ?: book.origin?.takeIf { it.isNotBlank() }?.let {
-                append("来源：").append(it).append('\n')
-            }
-            book.latestChapterTitle?.takeIf { it.isNotBlank() }?.let {
-                append("最新：").append(it).append('\n')
-            }
-            book.kind?.takeIf { it.isNotBlank() }?.let {
-                append("分类：").append(it).append('\n')
-            }
-            book.intro?.trim()?.takeIf { it.isNotBlank() }?.let {
-                if (isNotEmpty()) append('\n')
-                append(it)
-            }
-            if (isEmpty()) {
-                append("暂无更多预览信息")
-            }
-        }
-        alert("书籍预览") {
-            setTitle(book.name)
-            setMessage(details)
-            negativeButton(android.R.string.cancel)
-            positiveButton("进入详情") {
-                showBookInfo(book)
-            }
         }
     }
 

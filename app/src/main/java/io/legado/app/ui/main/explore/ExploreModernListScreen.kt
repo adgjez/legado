@@ -71,7 +71,6 @@ fun ExploreModernListScreen(
     hasMore: Boolean,
     isInBookshelf: (SearchBook) -> Boolean,
     onBookClick: (SearchBook) -> Unit,
-    onBookLongClick: (SearchBook) -> Unit,
     onLoadMore: () -> Unit,
     onCanScrollBackwardChanged: (Boolean) -> Unit,
     fragment: Fragment,
@@ -87,7 +86,6 @@ fun ExploreModernListScreen(
             hasMore = hasMore,
             isInBookshelf = isInBookshelf,
             onBookClick = onBookClick,
-            onBookLongClick = onBookLongClick,
             onLoadMore = onLoadMore,
             onCanScrollBackwardChanged = onCanScrollBackwardChanged,
             fragment = fragment,
@@ -154,8 +152,7 @@ fun ExploreModernListScreen(
                 renderConfig = renderConfig,
                 fragment = fragment,
                 lifecycle = lifecycle,
-                onClick = onBookClick,
-                onLongClick = onBookLongClick
+                onClick = onBookClick
             )
         }
         if (isLoading && books.isNotEmpty()) {
@@ -186,7 +183,6 @@ private fun ExploreModernGridScreen(
     hasMore: Boolean,
     isInBookshelf: (SearchBook) -> Boolean,
     onBookClick: (SearchBook) -> Unit,
-    onBookLongClick: (SearchBook) -> Unit,
     onLoadMore: () -> Unit,
     onCanScrollBackwardChanged: (Boolean) -> Unit,
     fragment: Fragment,
@@ -252,8 +248,7 @@ private fun ExploreModernGridScreen(
                 renderConfig = renderConfig,
                 fragment = fragment,
                 lifecycle = lifecycle,
-                onClick = onBookClick,
-                onLongClick = onBookLongClick
+                onClick = onBookClick
             )
         }
         if (isLoading && books.isNotEmpty()) {
@@ -283,17 +278,13 @@ private fun ExploreGridBookItem(
     renderConfig: BookshelfListRenderConfig,
     fragment: Fragment,
     lifecycle: Lifecycle,
-    onClick: (SearchBook) -> Unit,
-    onLongClick: (SearchBook) -> Unit
+    onClick: (SearchBook) -> Unit
 ) {
     val palette = renderConfig.palette
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = { onClick(book) },
-                onLongClick = { onLongClick(book) }
-            )
+            .combinedClickable(onClick = { onClick(book) })
     ) {
         Box {
             AndroidView(
@@ -340,8 +331,7 @@ private fun ExploreBookListItem(
     renderConfig: BookshelfListRenderConfig,
     fragment: Fragment,
     lifecycle: Lifecycle,
-    onClick: (SearchBook) -> Unit,
-    onLongClick: (SearchBook) -> Unit
+    onClick: (SearchBook) -> Unit
 ) {
     val palette = renderConfig.palette
     val rounded = listItemStyle == BookshelfListItemStyle.RoundedCard
@@ -349,8 +339,7 @@ private fun ExploreBookListItem(
         rounded = rounded,
         compact = false,
         renderConfig = renderConfig,
-        onClick = { onClick(book) },
-        onLongClick = { onLongClick(book) }
+        onClick = { onClick(book) }
     ) { metrics ->
         ExploreCoverBlock(
             book = book,
