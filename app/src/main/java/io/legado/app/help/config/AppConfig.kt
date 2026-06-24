@@ -40,6 +40,8 @@ import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.book.read.ReadAiBookHistory
+import org.json.JSONArray
+import org.json.JSONObject
 import splitties.init.appCtx
 import java.net.InetAddress
 import java.net.URI
@@ -552,6 +554,40 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefString(PreferKey.aiReadAloudSoundEffectPrompt) ?: ""
         set(value) { appCtx.putPrefString(PreferKey.aiReadAloudSoundEffectPrompt, value) }
 
+    var aiReadAloudBgmVolume: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudBgmVolume, 100).coerceIn(0, 100)
+        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudBgmVolume, value.coerceIn(0, 100))
+
+    val aiReadAloudBgmVolumeScale: Float
+        get() = aiReadAloudBgmVolume / 100f
+
+    var aiReadAloudSfxVolume: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudSfxVolume, 80).coerceIn(0, 100)
+        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudSfxVolume, value.coerceIn(0, 100))
+
+    val aiReadAloudSfxVolumeScale: Float
+        get() = aiReadAloudSfxVolume / 100f
+
+    var readAloudSpeakerLoudnessEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudSpeakerLoudnessEnabled, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.readAloudSpeakerLoudnessEnabled, value)
+
+    var readAloudTargetVoiceVolume: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudTargetVoiceVolume, 100).coerceIn(60, 160)
+        set(value) = appCtx.putPrefInt(PreferKey.readAloudTargetVoiceVolume, value.coerceIn(60, 160))
+
+    var readAloudMaxSpeakerGain: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudMaxSpeakerGain, 135).coerceIn(100, 200)
+        set(value) = appCtx.putPrefInt(PreferKey.readAloudMaxSpeakerGain, value.coerceIn(100, 200))
+
+    var readAloudNarratorBaseGain: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudNarratorBaseGain, 110).coerceIn(60, 160)
+        set(value) = appCtx.putPrefInt(PreferKey.readAloudNarratorBaseGain, value.coerceIn(60, 160))
+
+    var readAloudSpeakerLoudnessStats: String
+        get() = appCtx.getPrefString(PreferKey.readAloudSpeakerLoudnessStats).orEmpty()
+        set(value) = appCtx.putPrefString(PreferKey.readAloudSpeakerLoudnessStats, value.take(200_000))
+
     val aiReadAloudRoleModelConfig: AiModelConfig?
         get() = aiCurrentModelConfig
 
@@ -832,9 +868,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var aiWorldBookList: List<AiWorldBookConfig>
-        get() = runCatching {
-            GSON.fromJsonArray<AiWorldBookConfig>(appCtx.getPrefString(PreferKey.aiWorldBookList))
-        }.getOrDefault(emptyList())
+        get() = GSON.fromJsonArray<AiWorldBookConfig>(appCtx.getPrefString(PreferKey.aiWorldBookList))
+            .getOrDefault(emptyList())
         set(value) {
             if (value.isEmpty()) appCtx.removePref(PreferKey.aiWorldBookList)
             else appCtx.putPrefString(PreferKey.aiWorldBookList, GSON.toJson(value))

@@ -28,6 +28,10 @@ data class HttpTTS(
     @ColumnInfo(defaultValue = "0")
     override var enabledCookieJar: Boolean? = false,
     var loginCheckJs: String? = null,
+    @ColumnInfo(defaultValue = "")
+    var speakersJson: String = "",
+    @ColumnInfo(defaultValue = "")
+    var emotionsJson: String = "",
     @ColumnInfo(defaultValue = "0")
     var lastUpdateTime: Long = System.currentTimeMillis()
 ) : BaseSource {
@@ -50,7 +54,9 @@ data class HttpTTS(
                 header == source.header &&
                 jsLib == source.jsLib &&
                 enabledCookieJar == source.enabledCookieJar &&
-                loginCheckJs == source.loginCheckJs
+                loginCheckJs == source.loginCheckJs &&
+                speakersJson == source.speakersJson &&
+                emotionsJson == source.emotionsJson
     }
 
     @Suppress("MemberVisibilityCanBePrivate")
@@ -69,6 +75,8 @@ data class HttpTTS(
                     loginUi = if (loginUi is List<*>) GSON.toJson(loginUi) else loginUi?.toString(),
                     header = doc.readString("$.header"),
                     loginCheckJs = doc.readString("$.loginCheckJs"),
+                    speakersJson = doc.readString("$.speakersJson").orEmpty(),
+                    emotionsJson = doc.readString("$.emotionsJson").orEmpty(),
                     lastUpdateTime = doc.readLong("$.lastUpdateTime") ?: System.currentTimeMillis(),
                     jsLib = doc.readString("$.jsLib")
                 )
