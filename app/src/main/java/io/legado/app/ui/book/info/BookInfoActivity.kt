@@ -31,7 +31,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -148,7 +147,6 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.openBookshelf
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
@@ -485,22 +483,14 @@ class BookInfoActivity :
         })
     }
 
-    private fun returnToBookshelf() {
-        finish()
-        openBookshelf()
-    }
-
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         useComposeBookInfo = false
-        onBackPressedDispatcher.addCallback(this) {
-            returnToBookshelf()
-        }
         binding.bgBook.setBackgroundColor(backgroundColor)
         binding.vwBg.alpha = 1f
         binding.titleBar.setBackgroundResource(R.color.transparent)
         binding.titleBar.setNavigationOnClickListener {
-            returnToBookshelf()
+            finish()
         }
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.arcView.setBgColor(backgroundColor)
@@ -575,7 +565,7 @@ class BookInfoActivity :
 
     private fun composeBookInfoActions(): BookInfoActions {
         return BookInfoActions(
-            onBack = ::returnToBookshelf,
+            onBack = ::finish,
             onRefresh = ::refreshBook,
             onRead = {
                 viewModel.getBook()?.let { book ->
