@@ -21,10 +21,10 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.ui.widget.compose.showComposeTextFormDialogWithChecks
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -339,13 +339,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         }
 
         if (locked) {
-            // Locked imported: only allow editing source URLs via source picker
-            showSourcePicker {
-                val saved = LibraryContainerManager.upsert(
-                    item.copy(sourceUrls = editingSourceUrls.toSet(), lockedImported = true)
-                )
-                reload()
-            }
+            showLockedSourcePicker(item)
             return
         }
 
@@ -408,26 +402,37 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         )
     }
 
-    private fun showSourcePicker(onDone: (MutableSet<String>) -> Unit) {
+    private fun showLockedSourcePicker(item: LibraryContainerConfig) {
         lifecycleScope.launch {
             val sources = withContext(Dispatchers.IO) { appDb.bookSourceDao.allEnabled }
-            SourceSelectDialog.show(
-                context = this@LibraryContainerManageActivity,
-                title = "指定书源",
-                items = sources,
-                selectedKey = null,
-                displayName = { source ->
-                    val group = source.bookSourceGroup?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
-                    val checked = if (editingSourceUrls.contains(source.bookSourceUrl)) "✓ " else ""
-                    "$checked${source.bookSourceName}$group"
-                },
-                searchTexts = { listOf(it.bookSourceName, it.bookSourceUrl, it.bookSourceGroup.orEmpty()) },
-                itemKey = { it.bookSourceUrl }
-            ) { source ->
-                if (!editingSourceUrls.add(source.bookSourceUrl)) {
-                    editingSourceUrls.remove(source.bookSourceUrl)
-                }
+            val labels = sources.map { source ->
+                val group = source.bookSourceGroup
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { " · $it" }
+                    .orEmpty()
+                "${source.bookSourceName}$group"
             }
+            val checkedIndices = sources.mapIndexedNotNull { index, source ->
+                index.takeIf { editingSourceUrls.contains(source.bookSourceUrl) }
+            }.toSet()
+            showComposeMultiChoiceDialog(
+                title = "指定书源",
+                labels = labels,
+                checkedIndices = checkedIndices,
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(R.string.cancel),
+                onPositive = { checked ->
+                    val selected = sources.mapIndexedNotNull { index, source ->
+                        source.bookSourceUrl.takeIf { checked.getOrNull(index) == true }
+                    }.toSet()
+                    editingSourceUrls = selected.toMutableSet()
+                    LibraryContainerManager.upsert(
+                        item.copy(sourceUrls = selected, lockedImported = true)
+                    )
+                    reload()
+                    toastOnUi("已保存指定书源")
+                }
+            )
         }
     }
 
