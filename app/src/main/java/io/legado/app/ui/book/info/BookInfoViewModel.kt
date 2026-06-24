@@ -29,7 +29,6 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
-import io.legado.app.help.book.updateTo
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.AudioPlay
@@ -68,27 +67,35 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             val origin = intent.getStringExtra("origin") ?: ""
             val originName = intent.getStringExtra("originName") ?: ""
             if (bookUrl.isNotBlank()) {
-                appDb.bookDao.getBook(bookUrl)?.let {
-                    inBookshelf = !it.isNotShelf
-                    upBook(it)
+                appDb.bookDao.getBook(bookUrl)?.let { book ->
+                    if (!book.isNotShelf) {
+                        inBookshelf = true
+                        upBook(book)
+                        return@execute
+                    }
+                    upResolvedBook(book)
                     return@execute
                 }
-                appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()?.let {
-                    upBook(it)
+                appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()?.let { book ->
+                    upResolvedBook(book)
                     return@execute
                 }
             }
-            appDb.bookDao.getBook(name, author)?.let {
-                inBookshelf = !it.isNotShelf
-                upBook(it)
+            appDb.bookDao.getBook(name, author)?.let { book ->
+                if (!book.isNotShelf) {
+                    inBookshelf = true
+                    upBook(book)
+                } else {
+                    upResolvedBook(book)
+                }
                 return@execute
             }
-            appDb.searchBookDao.getFirstByNameAuthor(name, author)?.toBook()?.let {
-                upBook(it)
+            appDb.searchBookDao.getFirstByNameAuthor(name, author)?.toBook()?.let { book ->
+                upResolvedBook(book)
                 return@execute
             }
             if (bookUrl.isNotBlank() && origin.isNotBlank()) {
-                upBook(
+                upResolvedBook(
                     Book(
                         name = name,
                         author = author,
@@ -113,14 +120,35 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             val bookUrl = intent.getStringExtra("bookUrl") ?: ""
             if (bookUrl.isNotBlank()) {
                 appDb.bookDao.getBook(bookUrl)?.let { book ->
-                    upBook(book)
+                    upResolvedBook(book)
                     return@execute
                 }
             }
             appDb.bookDao.getBook(name, author)?.let { book ->
-                upBook(book)
+                upResolvedBook(book)
             }
         }
+    }
+
+    private fun upResolvedBook(candidate: Book) {
+        resolveShelfBook(candidate)?.let { shelfBook ->
+            inBookshelf = true
+            upBook(shelfBook)
+            return
+        }
+        inBookshelf = false
+        upBook(candidate)
+    }
+
+    private fun resolveShelfBook(candidate: Book): Book? {
+        if (candidate.bookUrl.isNotBlank()) {
+            appDb.bookDao.getBook(candidate.bookUrl)
+                ?.takeUnless { it.isNotShelf }
+                ?.let { return it }
+        }
+        if (candidate.name.isBlank()) return null
+        return appDb.bookDao.getBook(candidate.name, candidate.author)
+            ?.takeUnless { it.isNotShelf }
     }
 
     private fun upBook(book: Book) {
@@ -218,24 +246,22 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             }
             WebBook.getBookInfo(scope, bookSource, book, canReName = canReName)
                 .onSuccess(IO) {
-                    val dbBook = appDb.bookDao.getBook(book.name, book.author)
-                    if (!inBookshelf && dbBook != null && !dbBook.isNotShelf && dbBook.origin == book.origin) {
-                        /**
-                         * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
-                         * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
-                         * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
-                         */
-                        dbBook.updateTo(it)
-                        inBookshelf = true
-                    }
-                    bookData.postValue(it)
-                    if (inBookshelf) {
-                        it.save()
-                    }
-                    if (it.isWebFile) {
-                        loadWebFile(it)
+                    val displayBook = if (!inBookshelf) {
+                        resolveShelfBook(it)?.also {
+                            inBookshelf = true
+                        } ?: it
                     } else {
-                        loadChapter(it, runPreUpdateJs, isFromBookInfo = true)
+                        it
+                    }
+                    bookData.postValue(displayBook)
+                    if (inBookshelf) {
+                        displayBook.removeType(BookType.notShelf)
+                        displayBook.save()
+                    }
+                    if (displayBook.isWebFile) {
+                        loadWebFile(displayBook)
+                    } else {
+                        loadChapter(displayBook, runPreUpdateJs, isFromBookInfo = true)
                     }
                 }.onError {
                     AppLog.put("获取书籍信息失败\n${it.localizedMessage}", it)
@@ -243,7 +269,6 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 }
         }
     }
-
     fun loadChapter(
         book: Book,
         runPreUpdateJs: Boolean = true,
