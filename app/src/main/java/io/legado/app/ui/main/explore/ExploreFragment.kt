@@ -148,7 +148,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var groupsMenu: SubMenu? = null
     private var oldModeInitialized = false
     private var modernModeInitialized = false
+    private var discoveryPageMode = AppConfig.DISCOVERY_PAGE_MODE_MODERN
     private var usingModernDiscovery = false
+    private var usingSuiteDiscovery = false
     private var sourceMenuPopup: PopupWindow? = null
     private var tagFilterPopup: ModernActionPopup.Handle? = null
     private var discoverSourceFlowJob: Job? = null
@@ -171,7 +173,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeDiscoverLayoutMode = mutableIntStateOf(AppConfig.discoveryPageLayout)
     private val composeDiscoverListStyle = mutableIntStateOf(AppConfig.bookshelfListItemStyle)
     private val composeDiscoverScrollToTopSignal = mutableIntStateOf(0)
+    private val composeSuiteScrollToTopSignal = mutableIntStateOf(0)
     private var composeDiscoverCanScrollBackward = false
+    private var composeSuiteCanScrollBackward = false
     private var composeDiscoverBooksSignature = ""
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
     private var selectedDiscoverSourcePart: BookSourcePart? = null
@@ -190,13 +194,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
-        usingModernDiscovery = AppConfig.modernDiscoveryPage
+        discoveryPageMode = AppConfig.discoveryPageMode
+        usingModernDiscovery = discoveryPageMode == AppConfig.DISCOVERY_PAGE_MODE_MODERN
+        usingSuiteDiscovery = discoveryPageMode == AppConfig.DISCOVERY_PAGE_MODE_SUITE
         discoveryModeLoaded = false
         binding.swipeRefreshLayout.setColorSchemeColors(accentColor)
         binding.swipeRefreshLayout.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
         binding.swipeRefreshLayout.setOnChildScrollUpCallback { _, _ ->
             if (usingModernDiscovery && binding.composeDiscoverBooks.isVisible) {
                 composeDiscoverCanScrollBackward
+            } else if (usingSuiteDiscovery && binding.composeDiscoverySuite.isVisible) {
+                composeSuiteCanScrollBackward
             } else {
                 currentDiscoverScrollTarget()?.canScrollVertically(-1) == true
             }
@@ -208,6 +216,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 } else {
                     loadDiscoverBooks(reset = true)
                 }
+            } else if (usingSuiteDiscovery) {
+                binding.swipeRefreshLayout.isRefreshing = false
             } else {
                 if (!adapter.refreshExpandedIfNoKinds()) {
                     upExploreData(searchView?.query?.toString())
@@ -249,13 +259,28 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 )
             }
         }
+        binding.composeDiscoverySuite.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeDiscoverySuite.setContent {
+            LegadoComposeTheme {
+                DiscoverySuiteHomeScreen(
+                    selectedSuiteLabel = null,
+                    scrollToTopSignal = composeSuiteScrollToTopSignal.intValue,
+                    onSearchClick = { SearchActivity.start(requireContext(), key = null) },
+                    onSuiteClick = { requireContext().toastOnUi(R.string.discovery_suite_no_suite) },
+                    onCreateSuiteClick = { requireContext().toastOnUi(R.string.discovery_suite_create) },
+                    onCanScrollBackwardChanged = { composeSuiteCanScrollBackward = it }
+                )
+            }
+        }
         applyDiscoveryMode(loadData = false)
         scheduleDiscoveryWarmup()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
         super.onCompatCreateOptionsMenu(menu)
-        if (usingModernDiscovery) {
+        if (usingModernDiscovery || usingSuiteDiscovery) {
             groupsMenu = null
             return
         }
@@ -265,13 +290,18 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun applyDiscoveryMode(loadData: Boolean = true) {
-        val modern = AppConfig.modernDiscoveryPage
+        val mode = AppConfig.discoveryPageMode
+        val modern = mode == AppConfig.DISCOVERY_PAGE_MODE_MODERN
+        val suite = mode == AppConfig.DISCOVERY_PAGE_MODE_SUITE
+        discoveryPageMode = mode
         usingModernDiscovery = modern
-        binding.titleBar.isGone = modern
+        usingSuiteDiscovery = suite
+        binding.titleBar.isGone = modern || suite
         binding.llModernDiscovery.isVisible = modern
-        binding.rvFind.isGone = modern
-        binding.tvEmptyMsg.isGone = modern
-        searchView?.isGone = modern
+        binding.composeDiscoverySuite.isVisible = suite
+        binding.rvFind.isGone = modern || suite
+        binding.tvEmptyMsg.isGone = modern || suite
+        searchView?.isGone = modern || suite
         if (modern) {
             binding.topBar.post {
                 updateModernTopBarOverlay()
@@ -283,8 +313,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
         if (modern) {
             exploreFlowJob?.cancel()
+            stopSuiteMode()
             initModernMode()
+        } else if (suite) {
+            exploreFlowJob?.cancel()
+            stopModernMode()
+            initSuiteMode()
         } else {
+            stopSuiteMode()
             stopModernMode()
             initClassicMode()
         }
@@ -295,6 +331,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         if (usingModernDiscovery && binding.composeDiscoverBooks.isVisible) {
             return if (composeDiscoverCanScrollBackward) binding.composeDiscoverBooks else null
         }
+        if (usingSuiteDiscovery && binding.composeDiscoverySuite.isVisible) {
+            return if (composeSuiteCanScrollBackward) binding.composeDiscoverySuite else null
+        }
         return when {
             usingModernDiscovery -> binding.rvDiscoverBooks
             else -> binding.rvFind
@@ -303,10 +342,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun scheduleDiscoveryWarmup() {
         discoverWarmupJob?.cancel()
-        if (!AppConfig.modernDiscoveryPage) return
+        if (AppConfig.discoveryPageMode != AppConfig.DISCOVERY_PAGE_MODE_MODERN) return
         discoverWarmupJob = viewLifecycleOwner.lifecycleScope.launch {
             delay(1800)
-            if (!isAdded || discoveryModeLoaded || !AppConfig.modernDiscoveryPage) return@launch
+            if (
+                !isAdded ||
+                discoveryModeLoaded ||
+                AppConfig.discoveryPageMode != AppConfig.DISCOVERY_PAGE_MODE_MODERN
+            ) return@launch
             applyDiscoveryMode(loadData = true)
             discoveryModeLoaded = true
         }
@@ -361,6 +404,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         selectedDiscoverMajorGroup = null
         selectedDiscoverTagIndex = -1
         selectedDiscoverUrlIndex = -1
+    }
+
+    private fun initSuiteMode() {
+        binding.swipeRefreshLayout.isRefreshing = false
+    }
+
+    private fun stopSuiteMode() {
+        composeSuiteCanScrollBackward = false
     }
 
     private fun initSearchView() {
@@ -2144,20 +2195,20 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     override fun onResume() {
         super.onResume()
-        if (usingModernDiscovery != AppConfig.modernDiscoveryPage || !discoveryModeLoaded) {
+        if (discoveryPageMode != AppConfig.discoveryPageMode || !discoveryModeLoaded) {
             applyDiscoveryMode(loadData = true)
             discoveryModeLoaded = true
         } else if (usingModernDiscovery) {
             applyDiscoverBookLayout()
             syncDiscoverComposeState()
         }
-        if (!usingModernDiscovery) {
+        if (!usingModernDiscovery && !usingSuiteDiscovery) {
             adapter.upResumed(true)
         }
     }
 
     override fun onPause() {
-        if (!usingModernDiscovery) {
+        if (!usingModernDiscovery && !usingSuiteDiscovery) {
             adapter.upResumed(false)
             searchView?.clearFocus()
             adapter.onPause()
@@ -2177,6 +2228,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     override fun onDestroyView() {
         stopModernMode()
+        stopSuiteMode()
         WebViewPool.destroyScope(WebViewPool.Scope.DISCOVERY)
         oldModeInitialized = false
         modernModeInitialized = false
@@ -2196,7 +2248,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     override fun onCompatOptionsItemSelected(item: MenuItem) {
         super.onCompatOptionsItemSelected(item)
-        if (usingModernDiscovery) return
+        if (usingModernDiscovery || usingSuiteDiscovery) return
         if (item.groupId == R.id.menu_group_text) {
             searchView?.setQuery("group:${item.title}", true) ?: upExploreData("group:${item.title}")
         }
@@ -2327,6 +2379,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     binding.rvDiscoverBooks.smoothScrollToPosition(0)
                 }
             }
+            return
+        }
+        if (usingSuiteDiscovery) {
+            composeSuiteScrollToTopSignal.intValue++
             return
         }
         if (!adapter.compressExplore()) {
