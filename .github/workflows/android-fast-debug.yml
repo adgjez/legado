@@ -106,8 +106,15 @@ jobs:
           TAG_NAME=$(jq -r '.tag_name' <<< "$LATEST_RELEASE")
           RELEASE_ID=$(jq -r '.id' <<< "$LATEST_RELEASE")
           if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ] || [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
-            echo "No release found to upload debug APK."
-            exit 1
+            echo "No existing release found, creating one..."
+            TAG_NAME="debug-latest"
+            gh release create "$TAG_NAME" \
+              --title "Debug Build" \
+              --notes "Automated debug builds from feature/ai-video branch" \
+              --prerelease \
+              --target feature/ai-video
+            LATEST_RELEASE=$(gh api repos/${{ github.repository }}/releases --jq '.[0]')
+            RELEASE_ID=$(jq -r '.id' <<< "$LATEST_RELEASE")
           fi
           NOTES_FILE="debug-release-notes.md"
           cat > "$NOTES_FILE" <<EOF
@@ -116,6 +123,7 @@ jobs:
           Commit: ${{ github.sha }}
           Branch: ${{ github.ref_name }}
           APK: ${{ steps.apk.outputs.name }}
+          Build time: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
           EOF
 
           gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --paginate \
