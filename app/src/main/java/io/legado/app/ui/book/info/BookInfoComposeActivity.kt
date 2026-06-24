@@ -653,17 +653,8 @@ class BookInfoComposeActivity :
             return
         }
         viewModel.getBook()?.let { book ->
-            if (!viewModel.inBookshelf) {
-                book.addType(BookType.notShelf)
-                viewModel.saveBook(book) {
-                    viewModel.saveChapterList {
-                        tocActivityResult.launch(book.bookUrl)
-                    }
-                }
-            } else {
-                viewModel.saveChapterList {
-                    tocActivityResult.launch(book.bookUrl)
-                }
+            viewModel.prepareBookForEntry(book) { targetBook ->
+                tocActivityResult.launch(targetBook.bookUrl)
             }
         }
     }
@@ -671,24 +662,15 @@ class BookInfoComposeActivity :
     private fun openChapterDirect(chapter: BookChapter) {
         viewModel.getBook()?.let { book ->
             chapterChanged = true
-            viewModel.saveBookAtChapter(book, chapter) {
-                startReadActivity(book)
+            viewModel.saveBookAtChapter(book, chapter) { targetBook ->
+                startReadActivity(targetBook)
             }
         }
     }
 
     private fun readBook(book: Book) {
-        if (!viewModel.inBookshelf) {
-            book.addType(BookType.notShelf)
-            viewModel.saveBook(book) {
-                viewModel.saveChapterList {
-                    startReadActivity(book)
-                }
-            }
-        } else {
-            viewModel.saveBook(book) {
-                startReadActivity(book)
-            }
+        viewModel.prepareBookForEntry(book) { targetBook ->
+            startReadActivity(targetBook)
         }
     }
 

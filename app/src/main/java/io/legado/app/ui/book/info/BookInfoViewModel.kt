@@ -495,25 +495,61 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun saveBookAtChapter(book: Book, chapter: BookChapter, success: (() -> Unit)?) {
+    fun prepareBookForEntry(book: Book, success: ((Book) -> Unit)?) {
         execute {
-            book.durChapterIndex = chapter.index
-            book.durChapterPos = 0
-            book.durChapterTitle = chapter.title
-            if (!inBookshelf) {
-                book.addType(BookType.notShelf)
-                if (book.order == 0) {
-                    book.order = appDb.bookDao.minOrder - 1
+            val resolved = resolveShelfBook(book)
+            if (resolved != null) {
+                inBookshelf = true
+                bookData.postValue(resolved)
+                resolved
+            } else {
+                if (!inBookshelf) {
+                    book.addType(BookType.notShelf)
+                    if (book.order == 0) {
+                        book.order = appDb.bookDao.minOrder - 1
+                    }
+                } else {
+                    book.removeType(BookType.notShelf)
                 }
                 book.save()
-            } else {
-                appDb.bookDao.update(book)
-            }
-            chapterListData.value?.let {
-                appDb.bookChapterDao.insert(*it.toTypedArray())
+                chapterListData.value?.let {
+                    appDb.bookChapterDao.insert(*it.toTypedArray())
+                }
+                bookData.postValue(book)
+                book
             }
         }.onSuccess {
-            success?.invoke()
+            success?.invoke(it)
+        }
+    }
+
+    fun saveBookAtChapter(book: Book, chapter: BookChapter, success: ((Book) -> Unit)?) {
+        execute {
+            val resolved = resolveShelfBook(book)
+            val target = resolved ?: book
+            if (resolved != null) {
+                inBookshelf = true
+            }
+            target.durChapterIndex = chapter.index
+            target.durChapterPos = 0
+            target.durChapterTitle = chapter.title
+            if (!inBookshelf) {
+                target.addType(BookType.notShelf)
+                if (target.order == 0) {
+                    target.order = appDb.bookDao.minOrder - 1
+                }
+                target.save()
+                chapterListData.value?.let {
+                    appDb.bookChapterDao.insert(*it.toTypedArray())
+                }
+            } else {
+                target.removeType(BookType.notShelf)
+                appDb.bookDao.update(target)
+            }
+            bookData.postValue(target)
+            target
+        }.onSuccess {
+            success?.invoke(it)
         }
     }
 
