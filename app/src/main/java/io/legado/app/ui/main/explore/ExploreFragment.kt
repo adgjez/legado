@@ -287,7 +287,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     onSearchClick = { SearchActivity.start(requireContext(), key = null) },
                     onSuiteClick = ::showSuiteSelector,
                     onCreateSuiteClick = ::showCreateSuiteDialog,
-                    onAddWidgetClick = { selectedSuite?.let(::showAddSuiteWidgetDialog) },
                     onBookClick = ::showBookInfo,
                     onBookPreview = ::showSuiteBookPreview,
                     onCanScrollBackwardChanged = { composeSuiteCanScrollBackward = it },
@@ -615,30 +614,29 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun showAddSuiteWidgetDialog(suite: DiscoverySuite) {
-        showComposeTextInputDialog(
-            title = getString(R.string.discovery_suite_add_widget),
-            hint = getString(R.string.discovery_suite_widget_title),
-            initialValue = getString(R.string.discovery_suite_add_widget),
-            validateInput = { it.trim().isNotEmpty() },
-            onPositive = { title ->
-                showSuiteWidgetTypeDialog(suite, title.trim())
-            }
-        )
+        showSuiteWidgetTypeDialog(suite)
     }
 
-    private fun showSuiteWidgetTypeDialog(suite: DiscoverySuite, title: String) {
+    private fun showSuiteWidgetTypeDialog(suite: DiscoverySuite) {
         val types = listOf(
-            DiscoverySuiteWidgetType.HorizontalBooks.value to getString(R.string.discovery_suite_widget_type_horizontal_books),
-            DiscoverySuiteWidgetType.RankedList.value to getString(R.string.discovery_suite_widget_type_ranked_list)
+            Triple(
+                DiscoverySuiteWidgetType.HorizontalBooks.value,
+                getString(R.string.discovery_suite_widget_type_horizontal_books),
+                getString(R.string.discovery_suite_default_recommend_title)
+            ),
+            Triple(
+                DiscoverySuiteWidgetType.RankedList.value,
+                getString(R.string.discovery_suite_widget_type_ranked_list),
+                getString(R.string.discovery_suite_default_rank_title)
+            )
         )
         showComposeChoiceListDialog(
             title = getString(R.string.discovery_suite_widget_type),
             labels = types.map { it.second },
             selectedIndex = 0
         ) { index ->
-            val type = types.getOrNull(index)?.first
-                ?: DiscoverySuiteWidgetType.HorizontalBooks.value
-            showSuiteWidgetSourceDialog(suite, title, type)
+            val selected = types.getOrNull(index) ?: types.first()
+            showSuiteWidgetSourceDialog(suite, selected.third, selected.first)
         }
     }
 

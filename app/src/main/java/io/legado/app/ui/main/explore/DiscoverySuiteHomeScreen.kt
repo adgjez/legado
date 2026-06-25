@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -18,9 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
+import android.content.Context
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
@@ -61,7 +62,6 @@ fun DiscoverySuiteHomeScreen(
     onSearchClick: () -> Unit,
     onSuiteClick: () -> Unit,
     onCreateSuiteClick: () -> Unit,
-    onAddWidgetClick: () -> Unit,
     onBookClick: (SearchBook) -> Unit,
     onBookPreview: (SearchBook) -> Unit,
     onCanScrollBackwardChanged: (Boolean) -> Unit,
@@ -123,9 +123,9 @@ fun DiscoverySuiteHomeScreen(
                         DiscoverySuiteEmptyState(
                             title = context.getString(R.string.discovery_suite_no_widgets_title),
                             summary = context.getString(R.string.discovery_suite_no_widgets_summary),
-                            action = context.getString(R.string.discovery_suite_add_widget),
+                            action = context.getString(R.string.discovery_suite_manage),
                             renderConfig = renderConfig,
-                            onActionClick = onAddWidgetClick
+                            onActionClick = onSuiteClick
                         )
                     }
                 } else {
@@ -160,61 +160,83 @@ private fun DiscoverySuiteSearchBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 24.dp, vertical = 14.dp)
+            .height(54.dp)
+            .clip(RoundedCornerShape(27.dp))
+            .appSettingPanelBackground(
+                normalColor = palette.rowColor,
+                panelImage = renderConfig.panelImage,
+                borderColor = palette.borderColor,
+                radiusPx = palette.panelRadiusPx
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .weight(1f)
-                .height(44.dp)
-                .clip(RoundedCornerShape(palette.actionRadius))
-                .appSettingPanelBackground(
-                    normalColor = palette.rowColor,
-                    panelImage = renderConfig.panelImage,
-                    borderColor = palette.borderColor,
-                    radiusPx = palette.panelRadiusPx
-                )
+                .fillMaxHeight()
                 .clickable(onClick = onSearchClick)
-                .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart
+                .padding(start = 20.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            SearchGlyph(color = palette.secondaryText)
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = LocalContext.current.getString(R.string.search),
                 color = palette.secondaryText,
-                fontSize = 15.sp,
+                fontSize = 20.sp,
                 fontFamily = palette.bodyFontFamily,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
         Box(
             modifier = Modifier
-                .height(44.dp)
-                .clip(RoundedCornerShape(palette.actionRadius))
-                .appSettingPanelBackground(
-                    normalColor = palette.rowColor,
-                    panelImage = renderConfig.panelImage,
-                    borderColor = palette.borderColor,
-                    radiusPx = palette.panelRadiusPx
+                .width(1.dp)
+                .height(28.dp)
+                .background(
+                    palette.borderColor?.let { Color(it) }?.copy(alpha = 0.55f)
+                        ?: palette.secondaryText.copy(alpha = 0.20f)
                 )
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxHeight()
+                .widthIn(min = 96.dp, max = 142.dp)
                 .clickable(onClick = onSuiteClick)
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier.padding(horizontal = 14.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = selectedSuiteLabel,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp,
-                    fontFamily = palette.bodyFontFamily,
-                    color = palette.accent
-                )
-            }
+            Text(
+                text = selectedSuiteLabel,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+                fontFamily = palette.bodyFontFamily,
+                color = palette.primaryText
+            )
         }
+    }
+}
+
+@Composable
+private fun SearchGlyph(color: Color) {
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(24.dp)) {
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.6.dp.toPx())
+        drawCircle(
+            color = color,
+            radius = 7.dp.toPx(),
+            center = androidx.compose.ui.geometry.Offset(10.dp.toPx(), 10.dp.toPx()),
+            style = stroke
+        )
+        drawLine(
+            color = color,
+            start = androidx.compose.ui.geometry.Offset(15.5.dp.toPx(), 15.5.dp.toPx()),
+            end = androidx.compose.ui.geometry.Offset(21.dp.toPx(), 21.dp.toPx()),
+            strokeWidth = 2.6.dp.toPx()
+        )
     }
 }
 
@@ -280,16 +302,17 @@ private fun DiscoverySuiteWidgetSection(
     fragment: Fragment,
     lifecycle: Lifecycle
 ) {
+    val context = LocalContext.current
     val palette = renderConfig.palette
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 20.dp),
+            .padding(horizontal = 28.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = widget.title,
-            fontSize = 24.sp,
+            text = widget.displayTitle(context),
+            fontSize = 25.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = palette.titleFontFamily,
             color = palette.primaryText,
@@ -477,11 +500,11 @@ private fun DiscoverySuiteCoverBookItem(
         modifier = modifier
             .aspectRatio(0.68f)
             .shadow(
-                elevation = 7.dp,
-                shape = RoundedCornerShape(4.dp),
+                elevation = 3.dp,
+                shape = RoundedCornerShape(3.dp),
                 clip = false
             )
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(3.dp))
             .combinedClickable(
                 onClick = { onBookClick(book) },
                 onLongClick = { onBookPreview(book) }
@@ -497,15 +520,15 @@ private fun DiscoverySuiteCoverBookItem(
             Box(
                 modifier = Modifier
                     .padding(7.dp)
-                    .size(26.dp)
+                    .size(22.dp)
                     .align(Alignment.TopStart)
-                    .clip(RoundedCornerShape(9.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(Color(palette.rowColor).copy(alpha = 0.88f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = it.toString(),
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = palette.bodyFontFamily,
                     color = palette.accent
@@ -524,6 +547,19 @@ private fun <T> List<T>.loopSlice(startIndex: Int, count: Int): List<T> {
 
 private fun Int.floorMod(divisor: Int): Int {
     return ((this % divisor) + divisor) % divisor
+}
+
+private fun DiscoverySuiteWidget.displayTitle(context: Context): String {
+    val title = title.trim()
+    val addWidgetTitle = context.getString(R.string.discovery_suite_add_widget)
+    if (title.isBlank() || title == addWidgetTitle) {
+        return if (type == DiscoverySuiteWidgetType.RankedList.value) {
+            context.getString(R.string.discovery_suite_default_rank_title)
+        } else {
+            context.getString(R.string.discovery_suite_default_recommend_title)
+        }
+    }
+    return title
 }
 
 /*

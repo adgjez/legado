@@ -1245,6 +1245,8 @@
     <string name="discovery_suite_widget_type_horizontal_books">Cover recommendations</string>
     <string name="discovery_suite_widget_type_ranked_list">Cover ranking</string>
     <string name="discovery_suite_refresh_batch">Refresh batch</string>
+    <string name="discovery_suite_default_recommend_title">Recommended for you</string>
+    <string name="discovery_suite_default_rank_title">Selected rankings</string>
     <string name="rss_page_mode_modern">Modern subscription</string>
     <string name="rss_page_mode_legacy">Classic subscription</string>
     <string name="style">Style</string>
