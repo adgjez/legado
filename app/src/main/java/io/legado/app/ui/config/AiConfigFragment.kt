@@ -24,6 +24,10 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.main.ai.AiVideoProviderConfig
+import io.legado.app.ui.main.ai.AiAudioProviderConfig
+import io.legado.app.ui.main.ai.AiVideoProviderEditActivity
+import io.legado.app.ui.main.ai.AiAudioProviderEditActivity
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
@@ -47,6 +51,8 @@ class AiConfigFragment : ComposeSettingFragment() {
         const val KEY_DEFAULT_MODEL_SETTINGS = "aiDefaultModelSettings"
         const val KEY_IMAGE_GALLERY = "aiImageGallery"
         const val KEY_IMAGE_PROVIDER_MANAGE = "aiImageProviderManage"
+        const val KEY_VIDEO_PROVIDER_MANAGE = "aiVideoProviderManage"
+        const val KEY_AUDIO_PROVIDER_MANAGE = "aiAudioProviderManage"
         const val KEY_MANAGE_PROVIDERS = "aiManageProviders"
         const val KEY_ADD_MCP_SERVER = "aiAddMcpServer"
         const val KEY_MANAGE_MCP_SERVERS = "aiManageMcpServers"
@@ -190,6 +196,18 @@ class AiConfigFragment : ComposeSettingFragment() {
                             onClick = {
                                 startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
                             }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_VIDEO_PROVIDER_MANAGE,
+                            title = "AI 视频供应商",
+                            summary = videoProviderSummary(),
+                            onClick = ::showVideoProviderManageDialog
+                        ),
+                        SettingActionSpec(
+                            key = KEY_AUDIO_PROVIDER_MANAGE,
+                            title = "AI 音频供应商",
+                            summary = audioProviderSummary(),
+                            onClick = ::showAudioProviderManageDialog
                         )
                     )
                 ),
@@ -915,6 +933,130 @@ class AiConfigFragment : ComposeSettingFragment() {
             content = content.trim(),
             sourceUrl = sourceUrl.ifBlank { oldSkill?.sourceUrl.orEmpty() },
             enabled = oldSkill?.enabled ?: true
+        )
+    }
+
+    private fun videoProviderSummary(): String {
+        val providers = AppConfig.aiVideoProviderList
+        if (providers.isEmpty()) return "未配置"
+        val enabled = providers.count { it.enabled }
+        val current = AppConfig.aiCurrentVideoProvider
+        return "${current?.name ?: "未选择"} · ${enabled}/${providers.size} 启用"
+    }
+
+    private fun audioProviderSummary(): String {
+        val providers = AppConfig.aiAudioProviderList
+        if (providers.isEmpty()) return "未配置"
+        val enabled = providers.count { it.enabled }
+        val current = AppConfig.aiCurrentAudioProvider
+        return "${current?.name ?: "未选择"} · ${enabled}/${providers.size} 启用"
+    }
+
+    private fun showVideoProviderManageDialog() {
+        val providers = AppConfig.aiVideoProviderList
+        val labels = mutableListOf("+ 添加视频供应商")
+        labels += providers.map { p ->
+            buildString {
+                append(p.name)
+                if (!p.enabled) append(" (已禁用)")
+                if (p.id == AppConfig.aiCurrentVideoProviderId) append(" ✓")
+            }
+        }
+        showComposeActionListDialog(title = "AI 视频供应商", labels = labels) { index ->
+            if (index == 0) {
+                AiVideoProviderEditActivity.start(requireContext())
+            } else {
+                val provider = providers[index - 1]
+                showVideoProviderActions(provider)
+            }
+        }
+    }
+
+    private fun showAudioProviderManageDialog() {
+        val providers = AppConfig.aiAudioProviderList
+        val labels = mutableListOf("+ 添加音频供应商")
+        labels += providers.map { p ->
+            buildString {
+                append(p.name)
+                if (!p.enabled) append(" (已禁用)")
+                if (p.id == AppConfig.aiCurrentAudioProviderId) append(" ✓")
+            }
+        }
+        showComposeActionListDialog(title = "AI 音频供应商", labels = labels) { index ->
+            if (index == 0) {
+                AiAudioProviderEditActivity.start(requireContext())
+            } else {
+                val provider = providers[index - 1]
+                showAudioProviderActions(provider)
+            }
+        }
+    }
+
+    private fun showVideoProviderActions(provider: AiVideoProviderConfig) {
+        showComposeActionListDialog(
+            title = provider.name,
+            labels = listOf(
+                getString(if (provider.enabled) R.string.disable else R.string.enable),
+                getString(R.string.edit),
+                getString(R.string.delete)
+            )
+        ) { action ->
+            when (action) {
+                0 -> {
+                    AppConfig.aiVideoProviderList = AppConfig.aiVideoProviderList.map {
+                        if (it.id == provider.id) it.copy(enabled = !it.enabled) else it
+                    }
+                    refreshUi()
+                }
+                1 -> AiVideoProviderEditActivity.start(requireContext(), provider.id)
+                2 -> confirmDeleteVideoProvider(provider)
+            }
+        }
+    }
+
+    private fun showAudioProviderActions(provider: AiAudioProviderConfig) {
+        showComposeActionListDialog(
+            title = provider.name,
+            labels = listOf(
+                getString(if (provider.enabled) R.string.disable else R.string.enable),
+                getString(R.string.edit),
+                getString(R.string.delete)
+            )
+        ) { action ->
+            when (action) {
+                0 -> {
+                    AppConfig.aiAudioProviderList = AppConfig.aiAudioProviderList.map {
+                        if (it.id == provider.id) it.copy(enabled = !it.enabled) else it
+                    }
+                    refreshUi()
+                }
+                1 -> AiAudioProviderEditActivity.start(requireContext(), provider.id)
+                2 -> confirmDeleteAudioProvider(provider)
+            }
+        }
+    }
+
+    private fun confirmDeleteVideoProvider(provider: AiVideoProviderConfig) {
+        showComposeConfirmDialog(
+            title = provider.name,
+            message = "确定删除该视频供应商？",
+            dangerPositive = true,
+            onPositive = {
+                AppConfig.aiVideoProviderList = AppConfig.aiVideoProviderList.filterNot { it.id == provider.id }
+                refreshUi()
+            }
+        )
+    }
+
+    private fun confirmDeleteAudioProvider(provider: AiAudioProviderConfig) {
+        showComposeConfirmDialog(
+            title = provider.name,
+            message = "确定删除该音频供应商？",
+            dangerPositive = true,
+            onPositive = {
+                AppConfig.aiAudioProviderList = AppConfig.aiAudioProviderList.filterNot { it.id == provider.id }
+                refreshUi()
+            }
         )
     }
 
