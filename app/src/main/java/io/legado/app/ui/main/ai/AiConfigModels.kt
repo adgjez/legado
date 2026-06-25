@@ -207,6 +207,7 @@ data class AiImageProviderConfig(
 data class AiVideoProviderConfig(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
+    val template: String = "",          // preset template key, e.g. "agnes_video_2.0"
     val type: String = TYPE_OPENAI,
     val baseUrl: String = "",
     val apiKey: String = "",

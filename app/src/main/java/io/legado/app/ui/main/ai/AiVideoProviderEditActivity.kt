@@ -90,6 +90,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
     private var baseUrlText by mutableStateOf("")
     private var apiKeyText by mutableStateOf("")
     private var modelText by mutableStateOf("")
+    private var templateText by mutableStateOf("")
     private var stylePromptText by mutableStateOf("")
     private var negativePromptText by mutableStateOf("")
     private var submitEndpointText by mutableStateOf("/videos/generations")
@@ -211,6 +212,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                                     currentModel = modelText,
                                     onSelect = { preset ->
                                         modelText = preset.model
+                                        templateText = preset.template
                                         submitEndpointText = preset.submitEndpoint
                                         statusEndpointText = preset.statusEndpoint
                                         if (preset.baseUrl.isNotBlank()) baseUrlText = preset.baseUrl
@@ -548,6 +550,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                 VideoModelPreset(
                     name = "Agnes AI Video 2.0",
                     model = "agnes-video-2.0",
+                    template = "agnes_video_2.0",
                     submitEndpoint = "/videos/generations",
                     statusEndpoint = "/videos/generations/{id}",
                     baseUrl = "https://apihub.agnes-ai.com/v1",
@@ -556,6 +559,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                 VideoModelPreset(
                     name = "自定义模型",
                     model = "",
+                    template = "",
                     submitEndpoint = "/videos/generations",
                     statusEndpoint = "/videos/generations/{id}",
                     baseUrl = "",
@@ -716,6 +720,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
         baseUrlText = provider?.baseUrl.orEmpty()
         apiKeyText = provider?.apiKey.orEmpty()
         modelText = provider?.model.orEmpty()
+        templateText = provider?.template.orEmpty()
         stylePromptText = provider?.stylePrompt.orEmpty()
         negativePromptText = provider?.negativePrompt.orEmpty()
         submitEndpointText = provider?.submitEndpoint ?: "/videos/generations"
@@ -757,6 +762,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
         val updated = (old ?: AiVideoProviderConfig(name = nameText, type = providerType)).copy(
             name = nameText,
             type = providerType,
+            template = templateText,
             baseUrl = baseUrlText,
             apiKey = apiKeyText,
             model = modelText,
@@ -815,6 +821,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
 data class VideoModelPreset(
     val name: String,
     val model: String,
+    val template: String = "",       // matches AiVideoProviderConfig.template
     val submitEndpoint: String,
     val statusEndpoint: String,
     val baseUrl: String,

@@ -290,22 +290,16 @@ object AiVideoService {
         val baseUrl = normalizeBaseUrl(provider.baseUrl)
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         val model = effectiveModel(provider, params)
-        val payload = JSONObject().apply {
-            put("model", model)
-            put("prompt", prompt)
-            val negative = provider.negativePrompt.ifBlank { params.optString("negative_prompt") }
-            negative.takeIf { it.isNotBlank() }?.let { put("negative_prompt", it) }
-            resolveImageAsDataUrl(inputImageId)?.let { put("input_image", it) }
-            resolveImageAsDataUrl(tailImageId)?.let { put("tail_image", it) }
-            resolveImageAsDataUrl(referenceImageId)?.let { put("reference_image", it) }
-            mergeJson(
-                params,
-                ignored = setOf(
-                    "model", "prompt", "negative_prompt",
-                    "input_image", "tail_image", "reference_image"
-                )
-            )
-        }
+        val template = resolveTemplate(provider)
+        val payload = template.buildSubmitPayload(
+            prompt = prompt,
+            model = model,
+            inputImage = resolveImageAsDataUrl(inputImageId),
+            tailImage = resolveImageAsDataUrl(tailImageId),
+            referenceImage = resolveImageAsDataUrl(referenceImageId),
+            extraParams = params,
+            provider = provider
+        )
         val requestUrl = buildSubmitUrl(provider, baseUrl)
         val startedAt = System.currentTimeMillis()
         var status = ""
@@ -323,7 +317,7 @@ object AiVideoService {
                 status = "${response.code} ${response.message}"
                 val text = response.body.string()
                 if (!response.isSuccessful) error(text.ifBlank { status })
-                val result = submitResultFromJson(JSONObject(text))
+                val result = submitResultFromJson(JSONObject(text), template)
                 logRequest(provider, requestUrl, status, startedAt, true, model)
                 return result
             }
@@ -340,6 +334,7 @@ object AiVideoService {
         val baseUrl = normalizeBaseUrl(provider.baseUrl)
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         val requestUrl = buildStatusUrl(provider, baseUrl, remoteTaskId)
+        val template = resolveTemplate(provider)
         val startedAt = System.currentTimeMillis()
         var status = ""
         try {
@@ -354,7 +349,7 @@ object AiVideoService {
                 status = "${response.code} ${response.message}"
                 val text = response.body.string()
                 if (!response.isSuccessful) error(text.ifBlank { status })
-                val taskStatus = statusResultFromJson(JSONObject(text))
+                val taskStatus = statusResultFromJson(JSONObject(text), template)
                 logRequest(provider, requestUrl, status, startedAt, true)
                 return taskStatus
             }
@@ -637,12 +632,10 @@ object AiVideoService {
         }
     }
 
-    private fun submitResultFromJson(json: JSONObject): VideoSubmitResult {
-        val taskId = json.optString("id")
-            .ifBlank { json.optString("task_id") }
-            .ifBlank { json.optString("taskId") }
+    private fun submitResultFromJson(json: JSONObject, template: AiVideoApiTemplate = DefaultVideoTemplate): VideoSubmitResult {
+        val taskId = template.parseSubmitResult(json)
         if (taskId.isBlank()) error("No task id in video submit response: ${jsonShape(json)}")
-        val status = normalizeStatus(json.optString("status", "processing"))
+        val status = normalizeStatus(template.parseStatus(json))
         return VideoSubmitResult(taskId, status)
     }
 
@@ -671,11 +664,11 @@ object AiVideoService {
         }
     }
 
-    private fun statusResultFromJson(json: JSONObject): VideoTaskStatus {
-        val status = normalizeStatus(json.optString("status", "processing"))
-        val progress = extractProgress(json)
-        val downloadUrl = videoFromOpenAiJson(json)
-        val previewUrl = findPreviewUrl(json)
+    private fun statusResultFromJson(json: JSONObject, template: AiVideoApiTemplate = DefaultVideoTemplate): VideoTaskStatus {
+        val status = normalizeStatus(template.parseStatus(json))
+        val progress = template.parseProgress(json)
+        val downloadUrl = template.parseDownloadUrl(json)
+        val previewUrl = template.parsePreviewUrl(json)
         return VideoTaskStatus(status, progress, downloadUrl, previewUrl)
     }
 
@@ -963,10 +956,8 @@ object AiVideoService {
 
     // region json helpers
 
-    private fun JSONObject.mergeJson(extra: JSONObject, ignored: Set<String> = emptySet()) {
-        extra.keys().forEach { key ->
-            if (key !in ignored) put(key, extra.opt(key))
-        }
+    private fun resolveTemplate(provider: AiVideoProviderConfig): AiVideoApiTemplate {
+        return AiVideoApiTemplate.find(provider.template) ?: DefaultVideoTemplate
     }
 
     private fun jsonShape(json: JSONObject): String {

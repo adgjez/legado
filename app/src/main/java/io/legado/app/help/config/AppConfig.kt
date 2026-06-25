@@ -2098,6 +2098,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             aiVideoProviderList = videoProviders + AiVideoProviderConfig(
                 id = videoProviderId,
                 name = "Agnes AI 视频",
+                template = "agnes_video_2.0",
                 baseUrl = agnesBaseUrl,
                 model = "agnes-video-2.0"
             )
