@@ -274,11 +274,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                                 key = PreferKey.showReadTitleAddition,
                                 title = getString(R.string.show_read_title_addition),
                                 defaultValue = true
-                            ),
-                            switch(
-                                key = PreferKey.readBarStyleFollowPage,
-                                title = getString(R.string.read_bar_style_follow_page),
-                                defaultValue = false
                             )
                         )
                     )
@@ -330,7 +325,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 }
 
                 PreferKey.showReadTitleAddition,
-                PreferKey.readBarStyleFollowPage,
                 PreferKey.readMenuAlpha -> {
                     postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
                 }

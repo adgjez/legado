@@ -240,7 +240,10 @@ fun LegadoMiuixActionButton(
         shadowElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(insidePadding),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight)
+                .padding(insidePadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -617,10 +620,13 @@ fun LegadoMiuixChoiceRow(
         shadowElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(
-                horizontal = if (compact) 11.dp else 13.dp,
-                vertical = if (compact) 7.dp else 9.dp
-            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight)
+                .padding(
+                    horizontal = if (compact) 11.dp else 13.dp,
+                    vertical = if (compact) 7.dp else 9.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             leadingIconName?.let { iconName ->

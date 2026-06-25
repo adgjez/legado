@@ -36,25 +36,40 @@ object CoverThumbnailCache {
     }
 
     fun saveAsync(context: Context, key: String?, drawable: Drawable) {
-        if (key.isNullOrBlank()) return
+        val cacheKey = key
+        if (cacheKey.isNullOrBlank()) return
         val source = (drawable as? BitmapDrawable)?.bitmap ?: return
         if (source.isRecycled || source.width <= 0 || source.height <= 0) return
         val appContext = context.applicationContext
         scope.launch {
             runCatching {
-                val thumb = Bitmap.createScaledBitmap(source, thumbWidth, thumbHeight, true)
-                try {
-                    val extension = thumb.preferredCoverExtension()
-                    val target = file(appContext, key, extension) ?: return@runCatching
-                    if (target.exists() && target.length() > 0L) return@runCatching
-                    target.parentFile?.mkdirs()
-                    FileOutputStream(target).use { out ->
-                        thumb.compressPreservingAlpha(out, 86)
-                    }
-                } finally {
-                    if (thumb !== source) thumb.recycle()
-                }
+                saveBitmap(appContext, cacheKey, source)
             }
+        }
+    }
+
+    fun saveBlocking(context: Context, key: String?, drawable: Drawable) {
+        val cacheKey = key
+        if (cacheKey.isNullOrBlank()) return
+        val source = (drawable as? BitmapDrawable)?.bitmap ?: return
+        if (source.isRecycled || source.width <= 0 || source.height <= 0) return
+        runCatching {
+            saveBitmap(context.applicationContext, cacheKey, source)
+        }
+    }
+
+    private fun saveBitmap(context: Context, key: String, source: Bitmap) {
+        val thumb = Bitmap.createScaledBitmap(source, thumbWidth, thumbHeight, true)
+        try {
+            val extension = thumb.preferredCoverExtension()
+            val target = file(context, key, extension) ?: return
+            if (target.exists() && target.length() > 0L) return
+            target.parentFile?.mkdirs()
+            FileOutputStream(target).use { out ->
+                thumb.compressPreservingAlpha(out, 86)
+            }
+        } finally {
+            if (thumb !== source) thumb.recycle()
         }
     }
 }

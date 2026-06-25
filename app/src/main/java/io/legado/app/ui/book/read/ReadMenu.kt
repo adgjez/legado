@@ -409,42 +409,44 @@ class ReadMenu @JvmOverloads constructor(
                         style = style,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    // 操作栏（章节信息 + 操作按钮）
-                    ReadMenuActionBar(
-                        state = ReadMenuActionBarState(
-                            chapterName = currentChapterName,
-                            isLocalBook = ReadBook.isLocalBook,
-                            sourceName = ReadBook.bookSource?.bookSourceName,
-                            showCustomButton = ReadBook.bookSource?.customButton == true,
-                            showCloudIcon = showCloudIcon,
-                            cloudState = cloudState,
-                            hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
-                            hasVipChapter = !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
-                                    && ReadBook.curTextChapter?.isVip == true
-                                    && ReadBook.curTextChapter?.isPay != true
-                        ),
-                        actions = ReadMenuActionBarActions(
-                            onChapterClick = { handleChapterClick() },
-                            onChapterLongClick = { handleChapterLongClick() },
-                            onLoginClick = { callBack.showLogin() },
-                            onPayClick = { callBack.payAction() },
-                            onEditSourceClick = { callBack.openSourceEditActivity() },
-                            onDisableSourceClick = { callBack.disableSource() },
-                            onCustomButtonClick = { handleCustomButtonClick() },
-                            onCustomButtonLongClick = { handleCustomButtonLongClick() },
-                            onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
-                            onCloudLongClick = {
-                                if (io.legado.app.BuildConfig.DEBUG) {
-                                    callBack.showLibraryCloudDebug()
-                                } else {
-                                    callBack.showLibraryCloudChapters(refresh = true)
+                    if (AppConfig.showReadTitleBarAddition) {
+                        // 操作栏（章节信息 + 操作按钮）
+                        ReadMenuActionBar(
+                            state = ReadMenuActionBarState(
+                                chapterName = currentChapterName,
+                                isLocalBook = ReadBook.isLocalBook,
+                                sourceName = ReadBook.bookSource?.bookSourceName,
+                                showCustomButton = ReadBook.bookSource?.customButton == true,
+                                showCloudIcon = showCloudIcon,
+                                cloudState = cloudState,
+                                hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
+                                hasVipChapter = !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
+                                        && ReadBook.curTextChapter?.isVip == true
+                                        && ReadBook.curTextChapter?.isPay != true
+                            ),
+                            actions = ReadMenuActionBarActions(
+                                onChapterClick = { handleChapterClick() },
+                                onChapterLongClick = { handleChapterLongClick() },
+                                onLoginClick = { callBack.showLogin() },
+                                onPayClick = { callBack.payAction() },
+                                onEditSourceClick = { callBack.openSourceEditActivity() },
+                                onDisableSourceClick = { callBack.disableSource() },
+                                onCustomButtonClick = { handleCustomButtonClick() },
+                                onCustomButtonLongClick = { handleCustomButtonLongClick() },
+                                onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
+                                onCloudLongClick = {
+                                    if (io.legado.app.BuildConfig.DEBUG) {
+                                        callBack.showLibraryCloudDebug()
+                                    } else {
+                                        callBack.showLibraryCloudChapters(refresh = true)
+                                    }
+                                    true
                                 }
-                                true
-                            }
-                        ),
-                        style = style,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                            ),
+                            style = style,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
 
