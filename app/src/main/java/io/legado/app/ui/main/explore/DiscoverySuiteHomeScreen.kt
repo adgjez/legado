@@ -1,7 +1,6 @@
 package io.legado.app.ui.main.explore
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,8 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,9 +31,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
+import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
+import io.legado.app.ui.widget.compose.appSettingPanelBackground
 
 @Composable
 fun DiscoverySuiteHomeScreen(
@@ -55,6 +56,8 @@ fun DiscoverySuiteHomeScreen(
 ) {
     val context = LocalContext.current
     val listState = rememberLazyListState()
+    val renderConfig = rememberBookshelfListRenderConfig()
+    val palette = renderConfig.palette
     val canScrollBackward by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
@@ -76,13 +79,13 @@ fun DiscoverySuiteHomeScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
         DiscoverySuiteSearchBar(
             selectedSuiteLabel = selectedSuite?.displayName
                 ?: context.getString(R.string.discovery_suite_no_suite),
+            renderConfig = renderConfig,
             onSearchClick = onSearchClick,
             onSuiteClick = onSuiteClick
         )
@@ -96,6 +99,7 @@ fun DiscoverySuiteHomeScreen(
                             title = context.getString(R.string.discovery_suite_empty_title),
                             summary = context.getString(R.string.discovery_suite_empty_summary),
                             action = context.getString(R.string.discovery_suite_create),
+                            renderConfig = renderConfig,
                             onActionClick = onCreateSuiteClick
                         )
                     }
@@ -105,6 +109,7 @@ fun DiscoverySuiteHomeScreen(
                             title = context.getString(R.string.discovery_suite_no_widgets_title),
                             summary = context.getString(R.string.discovery_suite_no_widgets_summary),
                             action = context.getString(R.string.discovery_suite_add_widget),
+                            renderConfig = renderConfig,
                             onActionClick = onAddWidgetClick
                         )
                     }
@@ -113,9 +118,10 @@ fun DiscoverySuiteHomeScreen(
                         Text(
                             text = selectedSuite.displayName,
                             modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                            style = MaterialTheme.typography.titleLarge,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            fontFamily = palette.titleFontFamily,
+                            color = palette.primaryText
                         )
                     }
                     selectedSuite.widgets.forEach { widget ->
@@ -124,6 +130,7 @@ fun DiscoverySuiteHomeScreen(
                                 widget = widget,
                                 books = widgetBooks[widget.id].orEmpty(),
                                 isLoading = widget.id in loadingWidgetIds,
+                                renderConfig = renderConfig,
                                 onBookClick = onBookClick,
                                 onBookPreview = onBookPreview
                             )
@@ -138,9 +145,11 @@ fun DiscoverySuiteHomeScreen(
 @Composable
 private fun DiscoverySuiteSearchBar(
     selectedSuiteLabel: String,
+    renderConfig: BookshelfListRenderConfig,
     onSearchClick: () -> Unit,
     onSuiteClick: () -> Unit
 ) {
+    val palette = renderConfig.palette
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -151,27 +160,38 @@ private fun DiscoverySuiteSearchBar(
             modifier = Modifier
                 .weight(1f)
                 .height(44.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+                .clip(RoundedCornerShape(palette.actionRadius))
+                .appSettingPanelBackground(
+                    normalColor = palette.rowColor,
+                    panelImage = renderConfig.panelImage,
+                    borderColor = palette.borderColor,
+                    radiusPx = palette.panelRadiusPx
+                )
                 .clickable(onClick = onSearchClick)
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Text(
                 text = LocalContext.current.getString(R.string.search),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = palette.secondaryText,
+                fontSize = 15.sp,
+                fontFamily = palette.bodyFontFamily,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
-        Surface(
+        Box(
             modifier = Modifier
                 .height(44.dp)
-                .clickable(onClick = onSuiteClick),
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                .clip(RoundedCornerShape(palette.actionRadius))
+                .appSettingPanelBackground(
+                    normalColor = palette.rowColor,
+                    panelImage = renderConfig.panelImage,
+                    borderColor = palette.borderColor,
+                    radiusPx = palette.panelRadiusPx
+                )
+                .clickable(onClick = onSuiteClick)
         ) {
             Box(
                 modifier = Modifier.padding(horizontal = 14.dp),
@@ -181,7 +201,10 @@ private fun DiscoverySuiteSearchBar(
                     text = selectedSuiteLabel,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp,
+                    fontFamily = palette.bodyFontFamily,
+                    color = palette.accent
                 )
             }
         }
@@ -193,8 +216,10 @@ private fun DiscoverySuiteEmptyState(
     title: String,
     summary: String,
     action: String,
+    renderConfig: BookshelfListRenderConfig,
     onActionClick: () -> Unit
 ) {
+    val palette = renderConfig.palette
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -204,22 +229,22 @@ private fun DiscoverySuiteEmptyState(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
+            fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground
+            fontFamily = palette.titleFontFamily,
+            color = palette.primaryText
         )
         Text(
             text = summary,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            fontSize = 14.sp,
+            fontFamily = palette.bodyFontFamily,
+            color = palette.secondaryText
         )
-        Surface(
+        Box(
             modifier = Modifier
                 .height(42.dp)
-                .clickable(onClick = onActionClick),
-            shape = RoundedCornerShape(21.dp),
-            color = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
+                .clip(RoundedCornerShape(palette.actionRadius))
+                .clickable(onClick = onActionClick)
         ) {
             Box(
                 modifier = Modifier.padding(horizontal = 18.dp),
@@ -227,7 +252,10 @@ private fun DiscoverySuiteEmptyState(
             ) {
                 Text(
                     text = action,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp,
+                    fontFamily = palette.bodyFontFamily,
+                    color = palette.accent
                 )
             }
         }
@@ -239,16 +267,22 @@ private fun DiscoverySuiteWidgetSection(
     widget: DiscoverySuiteWidget,
     books: List<SearchBook>,
     isLoading: Boolean,
+    renderConfig: BookshelfListRenderConfig,
     onBookClick: (SearchBook) -> Unit,
     onBookPreview: (SearchBook) -> Unit
 ) {
-    Surface(
+    val palette = renderConfig.palette
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(palette.panelRadius))
+            .appSettingPanelBackground(
+                normalColor = palette.rowColor,
+                panelImage = renderConfig.panelImage,
+                borderColor = palette.borderColor,
+                radiusPx = palette.panelRadiusPx
+            )
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -256,23 +290,30 @@ private fun DiscoverySuiteWidgetSection(
         ) {
             Text(
                 text = widget.title,
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
+                fontFamily = palette.titleFontFamily,
+                color = palette.primaryText,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             when {
                 isLoading -> Text(
                     text = LocalContext.current.getString(R.string.discovery_suite_widget_loading),
-                    style = MaterialTheme.typography.bodyMedium
+                    fontSize = 14.sp,
+                    fontFamily = palette.bodyFontFamily,
+                    color = palette.secondaryText
                 )
                 books.isEmpty() -> Text(
                     text = LocalContext.current.getString(R.string.discovery_suite_widget_pending),
-                    style = MaterialTheme.typography.bodyMedium
+                    fontSize = 14.sp,
+                    fontFamily = palette.bodyFontFamily,
+                    color = palette.secondaryText
                 )
                 else -> books.take(widget.displayLimit).forEach { book ->
                     DiscoverySuiteBookRow(
                         book = book,
+                        renderConfig = renderConfig,
                         onBookClick = onBookClick,
                         onBookPreview = onBookPreview
                     )
@@ -286,13 +327,15 @@ private fun DiscoverySuiteWidgetSection(
 @Composable
 private fun DiscoverySuiteBookRow(
     book: SearchBook,
+    renderConfig: BookshelfListRenderConfig,
     onBookClick: (SearchBook) -> Unit,
     onBookPreview: (SearchBook) -> Unit
 ) {
+    val palette = renderConfig.palette
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(palette.actionRadius))
             .combinedClickable(
                 onClick = { onBookClick(book) },
                 onLongClick = { onBookPreview(book) }
@@ -302,8 +345,10 @@ private fun DiscoverySuiteBookRow(
     ) {
         Text(
             text = book.name,
-            style = MaterialTheme.typography.bodyLarge,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
+            fontFamily = palette.titleFontFamily,
+            color = palette.primaryText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -311,8 +356,9 @@ private fun DiscoverySuiteBookRow(
             text = listOf(book.author, book.originName)
                 .filter { it.isNotBlank() }
                 .joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            fontFamily = palette.bodyFontFamily,
+            color = palette.secondaryText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
