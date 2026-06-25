@@ -130,7 +130,15 @@ object AiVideoService {
     suspend fun download(remoteTaskId: String, provider: AiVideoProviderConfig): File {
         return when (provider.type) {
             AiVideoProviderConfig.TYPE_JS -> downloadByJs(remoteTaskId, provider)
-            else -> downloadByOpenAi(remoteTaskId, provider)
+            else -> downloadByOpenAi(remoteTaskId, provider, null)
+        }
+    }
+
+    /** 带预取下载链接的下载，避免重复查询 status */
+    private suspend fun download(remoteTaskId: String, provider: AiVideoProviderConfig, downloadUrl: String?): File {
+        return when (provider.type) {
+            AiVideoProviderConfig.TYPE_JS -> downloadByJs(remoteTaskId, provider)
+            else -> downloadByOpenAi(remoteTaskId, provider, downloadUrl)
         }
     }
 
@@ -177,15 +185,18 @@ object AiVideoService {
         val pollInterval = target.pollIntervalMillisecond.takeIf { it > 0L } ?: DEFAULT_POLL_INTERVAL
         val deadline = System.currentTimeMillis() + target.validTimeout()
         var status = submitResult.status
+        var lastDownloadUrl: String? = null
 
         while (status == "processing" && System.currentTimeMillis() < deadline) {
             delay(pollInterval)
-            status = queryStatus(remoteTaskId, target).status
+            val result = queryStatus(remoteTaskId, target)
+            status = result.status
+            lastDownloadUrl = result.downloadUrl ?: lastDownloadUrl
         }
 
         return when (status) {
             "succeeded" -> {
-                val file = download(remoteTaskId, target)
+                val file = download(remoteTaskId, target, lastDownloadUrl)
                 val model = effectiveModel(target, params)
                 AiVideoGalleryManager.saveGeneratedVideo(file.absolutePath, effective, target, model, metadata)
             }
@@ -359,10 +370,13 @@ object AiVideoService {
         }
     }
 
-    private suspend fun downloadByOpenAi(remoteTaskId: String, provider: AiVideoProviderConfig): File =
-        withContext(Dispatchers.IO) {
-            val status = queryStatusByOpenAi(remoteTaskId, provider)
-            val url = status.downloadUrl
+    private suspend fun downloadByOpenAi(
+        remoteTaskId: String,
+        provider: AiVideoProviderConfig,
+        downloadUrl: String? = null
+    ): File = withContext(Dispatchers.IO) {
+            val url = downloadUrl
+                ?: queryStatusByOpenAi(remoteTaskId, provider).downloadUrl
                 ?: error("No download url for video task $remoteTaskId")
             val tempFile = File.createTempFile("ai_video_${remoteTaskId}_", ".mp4", appCtx.cacheDir)
             val startedAt = System.currentTimeMillis()
