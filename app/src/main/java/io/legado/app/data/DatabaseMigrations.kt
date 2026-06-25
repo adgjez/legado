@@ -33,6 +33,7 @@ object DatabaseMigrations {
             migration_114_115,
             migration_115_116,
             migration_116_117,
+            migration_117_118,
         )
     }
 
@@ -321,6 +322,18 @@ object DatabaseMigrations {
         override fun migrate(db: SupportSQLiteDatabase) {
             // No-op: only the identity hash needs updating, which Room handles
             // automatically after migrate() returns.
+        }
+    }
+
+    /**
+     * v117 → v118: Reverted @ColumnInfo(defaultValue) from AiGeneratedImage.
+     * The table was created by Room onCreate without DEFAULT clauses, but the
+     * entity expected them, causing "Migration didn't properly handle" error.
+     * Removing @ColumnInfo makes the entity match the actual table schema.
+     */
+    private val migration_117_118 = object : Migration(117, 118) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // No-op: entity now matches existing table schema
         }
     }
 
