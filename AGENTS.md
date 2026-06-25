@@ -375,6 +375,34 @@ Book sources, RSS sources, and HTTP TTS use JavaScript rules. `initRhino()` in `
 - APK is split by ABI (`armeabi-v7a`, `arm64-v8a`, plus universal)
 - Firebase Analytics and Performance are included; `google-services` plugin applied
 
+## AI Module
+
+The AI subsystem (`help/ai/`, ~55 files) provides chat, agent runtime, image/video/audio generation, text sanitization, chapter summaries, and narration roles. See `help/ai/README.md` for full architecture.
+
+### Key AI Entry Points
+
+- **AI Chat**: `AiChatActivity` — accessible from main screen search button long-press, sidebar, or floating ball
+- **AI Config**: `AiConfigFragment` — accessible from Settings → AI Settings
+- **AI Galleries**: `AiImageGalleryActivity`, `AiVideoGalleryActivity`, `AiUnifiedGalleryActivity`
+- **Reading AI Panel**: `ReadAiFloatingPanel` — floating AI panel in reader
+- **Reading AI Summary**: `ReadAiSummaryPanel` — chapter summary in reader
+
+### AI Config Model
+
+All AI configuration data classes are in `ui/main/ai/AiConfigModels.kt`:
+- `AiProviderConfig`, `AiModelConfig` — chat provider/model
+- `AiImageProviderConfig`, `AiVideoProviderConfig`, `AiAudioProviderConfig` — generation providers
+- `AiMcpServerConfig` — MCP server configuration
+- `AiSkillConfig`, `AiChatCompanionConfig`, `AiWorldBookConfig`
+
+### AI Tool System
+
+56 native tools registered in `AiToolRegistry` (v12). Tool definitions are in `help/ai/Ai*Tool.kt` files. MCP tools are dynamically registered via `AiMcpClient`.
+
+### AI Database
+
+AI entities are prefixed `Ai*` in `data/entities/`. Database version is 121. When adding AI entities, define migrations in `DatabaseMigrations.kt` and ensure `@Index(name=...)` matches the migration DDL exactly — Room validates identity hash after every migration.
+
 ## Web Frontend
 
 Located in `modules/web/` — a Vue 3 + TypeScript + Vite project for remote bookshelf and source editing. Must connect to the app's built-in HTTP server (started via `WebService` in the main activity settings). Commands:
