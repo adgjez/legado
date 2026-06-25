@@ -93,6 +93,7 @@ object AiAudioGalleryManager {
         model: String?,
         metadata: AudioMetadata = AudioMetadata()
     ): AiGeneratedAudio = withContext(Dispatchers.IO) {
+        cleanupExpiredTemporary()
         val id = UUID.randomUUID().toString()
         val format = metadata.format.trim().ifBlank { "mp3" }
         val ext = formatExtension(format)
@@ -144,6 +145,21 @@ object AiAudioGalleryManager {
         val audio = appDb.aiGeneratedAudioDao.get(id) ?: return
         deleteAudioFile(audio)
         appDb.aiGeneratedAudioDao.delete(id)
+    }
+
+    /**
+     * Delete non-favorite temporary audios older than 7 days, mirroring
+     * [AiVideoGalleryManager.cleanupExpiredTemporary].
+     */
+    fun cleanupExpiredTemporary() {
+        val cutoff = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+        val expired = appDb.aiGeneratedAudioDao.expiredTemporary(cutoff)
+        expired.forEach { audio ->
+            runCatching {
+                File(audio.localPath).delete()
+                appDb.aiGeneratedAudioDao.delete(audio.id)
+            }
+        }
     }
 
     private fun deleteAudioFile(audio: AiGeneratedAudio) {

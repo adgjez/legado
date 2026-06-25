@@ -285,6 +285,10 @@ class AiAudioProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
             toastOnUi("请输入 Base URL")
             return
         }
+        if (providerType == AiAudioProviderConfig.TYPE_OPENAI && apiKeyText.isBlank()) {
+            toastOnUi("请输入 API Key")
+            return
+        }
         val old = currentProvider()
         val updated = (old ?: AiAudioProviderConfig(name = nameText, type = providerType)).copy(
             name = nameText,

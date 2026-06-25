@@ -70,6 +70,8 @@ object AiAssetManager {
         appDb.aiGeneratedVideoDao.expiredTemporary(cutoff).forEach {
             AiVideoGalleryManager.deleteVideo(it.id)
         }
+        // Audios
+        AiAudioGalleryManager.cleanupExpiredTemporary()
     }
 
     private fun lruCleanup(targetBytes: Long) {
@@ -80,8 +82,9 @@ object AiAssetManager {
             val candidates = appDb.aiGeneratedVideoDao.lruCandidates(cutoff, 10)
             if (candidates.isEmpty()) break
             candidates.forEach {
+                val fileSize = File(it.localPath).let { f -> if (f.exists()) f.length() else 0L }
                 AiVideoGalleryManager.deleteVideo(it.id)
-                freed += File(it.localPath).let { f -> if (f.exists()) f.length() else 0L }
+                freed += fileSize
             }
         }
     }

@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiStoryPlaylist
 import io.legado.app.help.ai.AiCharacterConsistency
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -28,6 +29,7 @@ object AiStoryPipeline {
         onProgress: (PipelineProgress) -> Unit = {}
     ): AiStoryPlaylist {
         return withContext(Dispatchers.IO) {
+            var playlist: AiStoryPlaylist? = null
             try {
                 // Step 1: Plan scenes
                 onProgress(PipelineProgress("planning", 0, 1, "正在分析章节，生成分镜脚本..."))
@@ -44,7 +46,7 @@ object AiStoryPipeline {
                 // Create playlist entity
                 val playlistId = UUID.randomUUID().toString()
                 val scenes = AiStoryDirector.plannedScenesToEntities(playlistId, plan).toMutableList()
-                val playlist = AiStoryPlaylist(
+                playlist = AiStoryPlaylist(
                     id = playlistId,
                     bookKey = bookKey,
                     bookName = bookName,
@@ -91,6 +93,7 @@ object AiStoryPipeline {
                                 "关键帧预览", previewImageId = image.id))
                         }
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         AppLog.put("Failed to generate keyframe for scene ${index}", e)
                         appDb.aiStorySceneDao.updateStatus(scene.id, "failed", e.message ?: "Unknown error")
                         scenes[index] = scene.copy(status = "failed", error = e.message)
@@ -121,19 +124,30 @@ object AiStoryPipeline {
                         )
                         appDb.aiStorySceneDao.updateVideo(scene.id, video.id, "video_done")
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         AppLog.put("Failed to generate video for scene ${index}", e)
                         appDb.aiStorySceneDao.updateStatus(scene.id, "failed", e.message ?: "Unknown error")
                     }
                 }
 
                 // Update playlist status
-                val updatedPlaylist = playlist.copy(status = "done")
+                val successCount = scenes.count { it.status == "video_done" }
+                val finalStatus = when {
+                    successCount == 0 -> "failed"
+                    successCount < scenes.size -> "partial"
+                    else -> "done"
+                }
+                val updatedPlaylist = playlist.copy(status = finalStatus)
                 appDb.aiStoryPlaylistDao.insert(updatedPlaylist)
                 onProgress(PipelineProgress("done", scenes.size, scenes.size, "分镜视频生成完成！"))
 
                 updatedPlaylist
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 AppLog.put("Story pipeline failed", e)
+                runCatching {
+                    playlist?.let { appDb.aiStoryPlaylistDao.insert(it.copy(status = "failed")) }
+                }
                 onProgress(PipelineProgress("failed", 0, 0, "生成失败: ${e.message}"))
                 throw e
             }

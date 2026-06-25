@@ -2,6 +2,7 @@ package io.legado.app.ui.main.ai
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -57,6 +58,7 @@ import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -133,6 +135,16 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (videos.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("暂无视频", color = palette.secondaryText)
+                        }
+                    }
+                }
                 items(videos, key = { it.id }) { video ->
                     VideoGridItem(video, palette)
                 }
@@ -382,7 +394,19 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
                     "Provider: ${video.providerName}\n模型: ${video.model}\n来源: ${video.sourceType}"
             ) {
                 positiveButton("关闭")
-                neutralButton(if (video.favorite) "取消收藏" else "收藏") {
+                neutralButton("播放") {
+                    val file = AiVideoGalleryManager.resolveVideoFile(AiVideoGalleryManager.videoUri(video.id))
+                    if (file != null) {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(Uri.fromFile(file), "video/*")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(intent)
+                    } else {
+                        toastOnUi("视频文件不存在")
+                    }
+                }
+                negativeButton(if (video.favorite) "取消收藏" else "收藏") {
                     lifecycleScope.launch {
                         withContext(Dispatchers.IO) {
                             AiVideoGalleryManager.setFavorite(video.id, !video.favorite, null)

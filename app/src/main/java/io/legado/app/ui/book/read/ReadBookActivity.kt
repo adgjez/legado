@@ -1481,6 +1481,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun generateSceneBySelection() {
+        if (AppConfig.aiCurrentImageProvider == null) {
+            toastOnUi("请先配置生图服务商")
+            return
+        }
+        if (AppConfig.aiCurrentVideoProvider == null) {
+            toastOnUi("请先配置视频服务商")
+            return
+        }
         if (epubCoreActive) {
             toastOnUi("EPUB 模式暂不支持分镜视频生成")
             return

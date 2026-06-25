@@ -23,6 +23,9 @@ interface AiGeneratedAudioDao {
     @Query("select * from ai_generated_audios where name like :keyword or prompt like :keyword")
     fun search(keyword: String): List<AiGeneratedAudio>
 
+    @Query("select * from ai_generated_audios where favorite = 0 and createdAt < :cutoff")
+    fun expiredTemporary(cutoff: Long): List<AiGeneratedAudio>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(audio: AiGeneratedAudio)
 

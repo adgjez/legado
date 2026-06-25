@@ -40,6 +40,11 @@ object AiSanitizeService {
         // Sanitize
         val systemPrompt = buildSystemPrompt(intensity)
         val sanitized = sanitizeText(text, systemPrompt, providerId)
+        // Guard against empty AI responses: never cache or replace chapter
+        // content with blank text, which would cause data loss.
+        if (sanitized.isBlank()) {
+            return SanitizeResult(text, text.length, text.length, false)
+        }
         // Save to cache
         val cache = AiPurifiedTextCache(
             bookKey = bookKey,

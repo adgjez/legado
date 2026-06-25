@@ -166,17 +166,17 @@ class AiUnifiedGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
             ) {
                 Tab(
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    onClick = { stopAudio(); selectedTab = 0 },
                     text = { Text("图片") }
                 )
                 Tab(
                     selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    onClick = { stopAudio(); selectedTab = 1 },
                     text = { Text("视频") }
                 )
                 Tab(
                     selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
+                    onClick = { stopAudio(); selectedTab = 2 },
                     text = { Text("音频") }
                 )
             }

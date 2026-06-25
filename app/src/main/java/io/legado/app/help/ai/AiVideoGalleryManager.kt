@@ -303,23 +303,23 @@ object AiVideoGalleryManager {
 
     private fun extractThumbnail(videoPath: String): String {
         val retriever = MediaMetadataRetriever()
+        var frame: Bitmap? = null
+        var scaled: Bitmap? = null
         return try {
             retriever.setDataSource(videoPath)
-            val frame = retriever.getFrameAtTime(0) ?: return ""
-            val scaled = Bitmap.createScaledBitmap(frame, 320, 180, true)
-            if (scaled !== frame) {
-                frame.recycle()
-            }
+            frame = retriever.getFrameAtTime(0) ?: return ""
+            scaled = Bitmap.createScaledBitmap(frame, 320, 180, true)
             val thumbFile = File(thumbsDir, "${UUID.randomUUID()}.jpg")
             thumbFile.outputStream().use { out ->
                 scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
             }
-            scaled.recycle()
             thumbFile.absolutePath
         } catch (e: Exception) {
             AppLog.put("抽取视频缩略图失败: $videoPath", e)
             ""
         } finally {
+            scaled?.recycle()
+            frame?.recycle()
             runCatching { retriever.release() }
         }
     }

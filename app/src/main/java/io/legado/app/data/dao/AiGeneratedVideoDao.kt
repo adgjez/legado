@@ -73,7 +73,7 @@ interface AiGeneratedVideoDao {
     @Query("select * from ai_generated_videos where favorite = 0 and createdAt < :cutoff")
     fun expiredTemporary(cutoff: Long): List<AiGeneratedVideo>
 
-    @Query("select * from ai_generated_videos where lastAccessTime < :cutoff order by lastAccessTime asc limit :limit")
+    @Query("select * from ai_generated_videos where favorite = 0 and lastAccessTime < :cutoff order by lastAccessTime asc limit :limit")
     fun lruCandidates(cutoff: Long, limit: Int): List<AiGeneratedVideo>
 
     @Query("select count(*) from ai_generated_videos")

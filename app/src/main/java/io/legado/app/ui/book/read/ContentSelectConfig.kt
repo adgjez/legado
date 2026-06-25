@@ -130,7 +130,8 @@ object ContentSelectConfig {
             ?.filterNot { it in removedActionIds }
             ?.toSet()
             ?: return defaultActions
-        return if (saved == oldDefaultActions) defaultActions else saved
+        val newActions = defaultActions - oldDefaultActions
+        return (saved + newActions).filter { it in defaultActions }.toSet()
     }
 
     fun searchEngines(context: Context): List<SearchEngine> {

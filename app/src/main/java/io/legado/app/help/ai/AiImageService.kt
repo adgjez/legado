@@ -68,6 +68,7 @@ object AiImageService {
             runCatching {
                 generateAndStore(prompt, targetProvider, metadata ?: AiImageGalleryManager.ImageMetadata())
             }.onSuccess { results.add(it) }
+                .onFailure { AppLog.put("Batch image generation failed", it) }
         }
         return results
     }

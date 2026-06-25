@@ -6,6 +6,7 @@ import io.legado.app.data.entities.AiGenTask
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.ConcurrentHashMap
 
 object AiGenPoller {
@@ -63,6 +64,10 @@ object AiGenPoller {
 
     // taskId -> PollState, shared by foreground and background loops.
     private val pollStates = ConcurrentHashMap<Long, PollState>()
+
+    // Per-task mutex to prevent concurrent polling of the same task by the
+    // foreground and background loops, which would cause duplicate downloads.
+    private val taskLocks = ConcurrentHashMap<Long, Mutex>()
 
     fun startForegroundPolling() {
         if (foregroundJob?.isActive == true) return
@@ -160,85 +165,102 @@ object AiGenPoller {
                     continue
                 }
 
-                when (task.modality) {
-                    "video" -> pollVideoTask(task)
-                    "audio" -> pollAudioTask(task)
-                    // image and text_sanitize are synchronous, skip polling
+                try {
+                    when (task.modality) {
+                        "video" -> pollVideoTask(task)
+                        "audio" -> pollAudioTask(task)
+                        // image and text_sanitize are synchronous, skip polling
+                    }
+                } finally {
+                    // Grow the interval for the next poll (exponential backoff, capped).
+                    // Placed in finally so backoff is still applied when the poll throws.
+                    val cap = maxIntervals[task.modality] ?: 30_000L
+                    state.interval = (state.interval * BACKOFF_MULTIPLIER).toLong().coerceAtMost(cap)
                 }
-
-                // Grow the interval for the next poll (exponential backoff, capped).
-                val cap = maxIntervals[task.modality] ?: 30_000L
-                state.interval = (state.interval * BACKOFF_MULTIPLIER).toLong().coerceAtMost(cap)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 AppLog.put("Poll error for task ${task.id}", e)
             }
         }
-        // Clean up poll states for tasks that are no longer active.
+        // Clean up poll states and task locks for tasks that are no longer active.
         pollStates.entries.removeIf { it.key !in activeIds }
+        taskLocks.entries.removeIf { it.key !in activeIds }
     }
 
     private suspend fun pollVideoTask(task: AiGenTask) {
-        if (task.status == "submitted" || task.status == "processing") {
-            val provider = AiVideoService.providerByIdOrNull(task.providerId)
-                ?: AiVideoService.currentProviderOrNull() ?: return
-            val status = AiVideoService.queryStatus(task.remoteTaskId, provider)
-            val newStatus = when (status.status) {
-                "succeeded" -> "downloading"
-                "failed" -> "failed"
-                else -> "processing"
+        val mutex = taskLocks.computeIfAbsent(task.id) { Mutex() }
+        if (!mutex.tryLock()) return  // Another poller is already handling this task
+        try {
+            if (task.status == "submitted" || task.status == "processing" || task.status == "downloading") {
+                val provider = AiVideoService.providerByIdOrNull(task.providerId)
+                    ?: AiVideoService.currentProviderOrNull() ?: return
+                val status = AiVideoService.queryStatus(task.remoteTaskId, provider)
+                val newStatus = when (status.status) {
+                    "succeeded" -> "downloading"
+                    "failed" -> "failed"
+                    else -> "processing"
+                }
+                val hint = AiPromptRewriter.generateProgressHint(task.modality, "")
+                AiGenTaskManager.updateEmotionalHint(task.id, hint)
+                AiGenTaskManager.updateProgress(task.id, newStatus, status.progress, status.previewUrl ?: "")
+                if (newStatus == "downloading") {
+                    val file = AiVideoService.download(task.remoteTaskId, provider)
+                    // Store via gallery manager
+                    val metadata = AiVideoGalleryManager.VideoMetadata(
+                        bookName = "", sourceType = task.sourceType
+                    )
+                    val video = AiVideoGalleryManager.saveGeneratedVideo(
+                        videoSource = file.absolutePath,
+                        prompt = task.prompt,
+                        provider = provider,
+                        model = task.model,
+                        metadata = metadata
+                    )
+                    AiGenTaskManager.completeTask(task.id, video.id, video.localPath, 0.0)
+                } else if (newStatus == "failed") {
+                    AiGenTaskManager.failTask(task.id, "Video generation failed")
+                }
             }
-            val hint = AiPromptRewriter.generateProgressHint(task.modality, "")
-            AiGenTaskManager.updateEmotionalHint(task.id, hint)
-            AiGenTaskManager.updateProgress(task.id, newStatus, status.progress, status.previewUrl ?: "")
-            if (newStatus == "downloading") {
-                val file = AiVideoService.download(task.remoteTaskId, provider)
-                // Store via gallery manager
-                val metadata = AiVideoGalleryManager.VideoMetadata(
-                    bookName = "", sourceType = task.sourceType
-                )
-                val video = AiVideoGalleryManager.saveGeneratedVideo(
-                    videoSource = file.absolutePath,
-                    prompt = task.prompt,
-                    provider = provider,
-                    model = task.model,
-                    metadata = metadata
-                )
-                AiGenTaskManager.completeTask(task.id, video.id, video.localPath, 0.0)
-            } else if (newStatus == "failed") {
-                AiGenTaskManager.failTask(task.id, "Video generation failed")
-            }
+        } finally {
+            mutex.unlock()
         }
     }
 
     private suspend fun pollAudioTask(task: AiGenTask) {
-        if (task.status == "submitted" || task.status == "processing") {
-            val provider = AiAudioService.providerByIdOrNull(task.providerId)
-                ?: AiAudioService.currentProviderOrNull() ?: return
-            val status = AiAudioService.queryStatus(task.remoteTaskId, provider)
-            val newStatus = when (status.status) {
-                "succeeded" -> "downloading"
-                "failed" -> "failed"
-                else -> "processing"
+        val mutex = taskLocks.computeIfAbsent(task.id) { Mutex() }
+        if (!mutex.tryLock()) return  // Another poller is already handling this task
+        try {
+            if (task.status == "submitted" || task.status == "processing" || task.status == "downloading") {
+                val provider = AiAudioService.providerByIdOrNull(task.providerId)
+                    ?: AiAudioService.currentProviderOrNull() ?: return
+                val status = AiAudioService.queryStatus(task.remoteTaskId, provider)
+                val newStatus = when (status.status) {
+                    "succeeded" -> "downloading"
+                    "failed" -> "failed"
+                    else -> "processing"
+                }
+                val hint = AiPromptRewriter.generateProgressHint(task.modality, "")
+                AiGenTaskManager.updateEmotionalHint(task.id, hint)
+                AiGenTaskManager.updateProgress(task.id, newStatus, status.progress, "")
+                if (newStatus == "downloading") {
+                    val file = AiAudioService.download(task.remoteTaskId, provider)
+                    val metadata = AiAudioGalleryManager.AudioMetadata(
+                        sourceType = task.sourceType
+                    )
+                    val audio = AiAudioGalleryManager.saveGeneratedAudio(
+                        audioSource = file.absolutePath,
+                        prompt = task.prompt,
+                        provider = provider,
+                        model = task.model,
+                        metadata = metadata
+                    )
+                    AiGenTaskManager.completeTask(task.id, audio.id, audio.localPath, 0.0)
+                } else if (newStatus == "failed") {
+                    AiGenTaskManager.failTask(task.id, "Audio generation failed")
+                }
             }
-            val hint = AiPromptRewriter.generateProgressHint(task.modality, "")
-            AiGenTaskManager.updateEmotionalHint(task.id, hint)
-            AiGenTaskManager.updateProgress(task.id, newStatus, status.progress, "")
-            if (newStatus == "downloading") {
-                val file = AiAudioService.download(task.remoteTaskId, provider)
-                val metadata = AiAudioGalleryManager.AudioMetadata(
-                    sourceType = task.sourceType
-                )
-                val audio = AiAudioGalleryManager.saveGeneratedAudio(
-                    audioSource = file.absolutePath,
-                    prompt = task.prompt,
-                    provider = provider,
-                    model = task.model,
-                    metadata = metadata
-                )
-                AiGenTaskManager.completeTask(task.id, audio.id, audio.localPath, 0.0)
-            } else if (newStatus == "failed") {
-                AiGenTaskManager.failTask(task.id, "Audio generation failed")
-            }
+        } finally {
+            mutex.unlock()
         }
     }
 }

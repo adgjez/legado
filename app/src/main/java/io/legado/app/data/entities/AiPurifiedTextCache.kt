@@ -1,5 +1,6 @@
 package io.legado.app.data.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -24,6 +25,8 @@ data class AiPurifiedTextCache(
     val sanitizedText: String,
     val originalLength: Int,
     val sanitizedLength: Int,
+    @ColumnInfo(defaultValue = "")
     val providerId: String = "",
+    @ColumnInfo(defaultValue = "0")
     val createdAt: Long = System.currentTimeMillis()
 )

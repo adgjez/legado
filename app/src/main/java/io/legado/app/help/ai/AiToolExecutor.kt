@@ -2,7 +2,6 @@ package io.legado.app.help.ai
 
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiGenTask
-import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -20,7 +19,10 @@ internal object AiToolExecutor {
 
     private val imageToolNames = setOf(
         "generate_image",
-        "generate_book_character_avatar"
+        "generate_book_character_avatar",
+        "generate_images",
+        "edit_image",
+        "inpaint_image"
     )
 
     private val videoToolNames = setOf(
@@ -60,6 +62,9 @@ internal object AiToolExecutor {
         "search_web_tavily",
         "generate_image",
         "generate_book_character_avatar",
+        "generate_images",
+        "edit_image",
+        "inpaint_image",
         "list_book_characters",
         "list_book_character_relations",
         "get_app_settings",
@@ -78,7 +83,7 @@ internal object AiToolExecutor {
         toolMap: Map<String, AiResolvedTool>,
         options: AiToolExecutionOptions
     ): String {
-        val enabled = AppConfig.aiEnabledToolNames.ifEmpty { AiToolRegistry.defaultEnabledTools }
+        val enabled = AiToolRegistry.effectiveEnabledToolNames()
         if (!options.useAllTools && toolCall.name !in enabled && toolCall.name !in options.extraToolNames) {
             return JSONObject().apply {
                 put("ok", false)
@@ -168,7 +173,7 @@ internal object AiToolExecutor {
         toolMap: Map<String, AiResolvedTool>,
         options: AiToolExecutionOptions
     ): String {
-        val enabled = AppConfig.aiEnabledToolNames.ifEmpty { AiToolRegistry.defaultEnabledTools }
+        val enabled = AiToolRegistry.effectiveEnabledToolNames()
         if (!options.useAllTools && toolCall.name !in enabled && toolCall.name !in options.extraToolNames) {
             return JSONObject().apply {
                 put("ok", false)
@@ -319,7 +324,7 @@ internal object AiToolExecutor {
         options: AiToolExecutionOptions,
         onProgress: ((Int, String) -> Unit)? = null
     ): String {
-        val enabled = AppConfig.aiEnabledToolNames.ifEmpty { AiToolRegistry.defaultEnabledTools }
+        val enabled = AiToolRegistry.effectiveEnabledToolNames()
         if (!options.useAllTools && toolCall.name !in enabled && toolCall.name !in options.extraToolNames) {
             return JSONObject().apply {
                 put("ok", false)
