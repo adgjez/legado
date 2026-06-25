@@ -1241,6 +1241,9 @@
     <string name="discovery_suite_delete">Delete suite</string>
     <string name="discovery_suite_name">Suite name</string>
     <string name="discovery_suite_widget_title">Widget title</string>
+    <string name="discovery_suite_widget_type">Widget style</string>
+    <string name="discovery_suite_widget_type_horizontal_books">Cover shelf</string>
+    <string name="discovery_suite_widget_type_ranked_list">Compact ranking</string>
     <string name="rss_page_mode_modern">Modern subscription</string>
     <string name="rss_page_mode_legacy">Classic subscription</string>
     <string name="style">Style</string>

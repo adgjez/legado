@@ -40,7 +40,16 @@ data class DiscoverySuiteWidgetTarget(
 )
 
 enum class DiscoverySuiteWidgetType(val value: String) {
-    BookList("book_list")
+    BookList("book_list"),
+    HorizontalBooks("horizontal_books"),
+    RankedList("ranked_list");
+
+    companion object {
+        fun sanitize(value: String): String {
+            return values().firstOrNull { it.value == value }?.value
+                ?: BookList.value
+        }
+    }
 }
 
 object DiscoverySuiteStore {
@@ -89,11 +98,14 @@ object DiscoverySuiteStore {
         )
     }
 
-    fun newBookWidget(title: String): DiscoverySuiteWidget {
+    fun newBookWidget(
+        title: String,
+        type: String = DiscoverySuiteWidgetType.HorizontalBooks.value
+    ): DiscoverySuiteWidget {
         return DiscoverySuiteWidget(
             id = newId("widget"),
             title = title.cleanTitle().ifBlank { "Books" },
-            type = DiscoverySuiteWidgetType.BookList.value,
+            type = DiscoverySuiteWidgetType.sanitize(type),
             order = Int.MAX_VALUE
         )
     }
@@ -120,10 +132,7 @@ object DiscoverySuiteStore {
                         .mapIndexed { widgetIndex, widget ->
                             widget.copy(
                                 id = widget.id.take(MAX_ID_CHARS),
-                                type = when (widget.type) {
-                                    DiscoverySuiteWidgetType.BookList.value -> widget.type
-                                    else -> DiscoverySuiteWidgetType.BookList.value
-                                },
+                                type = DiscoverySuiteWidgetType.sanitize(widget.type),
                                 title = widget.title.cleanTitle()
                                     .ifBlank { "Books ${widgetIndex + 1}" },
                                 targets = widget.targets.cleanTargets(),

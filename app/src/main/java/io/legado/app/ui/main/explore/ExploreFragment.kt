@@ -290,7 +290,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     onAddWidgetClick = { selectedSuite?.let(::showAddSuiteWidgetDialog) },
                     onBookClick = ::showBookInfo,
                     onBookPreview = ::showSuiteBookPreview,
-                    onCanScrollBackwardChanged = { composeSuiteCanScrollBackward = it }
+                    onCanScrollBackwardChanged = { composeSuiteCanScrollBackward = it },
+                    fragment = this@ExploreFragment,
+                    lifecycle = viewLifecycleOwner.lifecycle
                 )
             }
         }
@@ -619,12 +621,32 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             initialValue = getString(R.string.discovery_suite_add_widget),
             validateInput = { it.trim().isNotEmpty() },
             onPositive = { title ->
-                showSuiteWidgetSourceDialog(suite, title.trim())
+                showSuiteWidgetTypeDialog(suite, title.trim())
             }
         )
     }
 
-    private fun showSuiteWidgetSourceDialog(suite: DiscoverySuite, title: String) {
+    private fun showSuiteWidgetTypeDialog(suite: DiscoverySuite, title: String) {
+        val types = listOf(
+            DiscoverySuiteWidgetType.HorizontalBooks.value to getString(R.string.discovery_suite_widget_type_horizontal_books),
+            DiscoverySuiteWidgetType.RankedList.value to getString(R.string.discovery_suite_widget_type_ranked_list)
+        )
+        showComposeChoiceListDialog(
+            title = getString(R.string.discovery_suite_widget_type),
+            labels = types.map { it.second },
+            selectedIndex = 0
+        ) { index ->
+            val type = types.getOrNull(index)?.first
+                ?: DiscoverySuiteWidgetType.HorizontalBooks.value
+            showSuiteWidgetSourceDialog(suite, title, type)
+        }
+    }
+
+    private fun showSuiteWidgetSourceDialog(
+        suite: DiscoverySuite,
+        title: String,
+        widgetType: String
+    ) {
         viewLifecycleOwner.lifecycleScope.launch {
             val sources = withContext(IO) {
                 appDb.bookSourceDao.allEnabledPart
@@ -647,7 +669,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     if (selected.isEmpty()) {
                         requireContext().toastOnUi(R.string.screen_find)
                     } else {
-                        showSuiteWidgetTagDialog(suite, title, selected)
+                        showSuiteWidgetTagDialog(suite, title, widgetType, selected)
                     }
                 }
             )
@@ -657,6 +679,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun showSuiteWidgetTagDialog(
         suite: DiscoverySuite,
         title: String,
+        widgetType: String,
         sources: List<BookSourcePart>
     ) {
         viewLifecycleOwner.lifecycleScope.launch {
@@ -692,7 +715,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         requireContext().toastOnUi(R.string.find_empty)
                         return@showComposeMultiChoiceDialog
                     }
-                    val widget = DiscoverySuiteStore.newBookWidget(title)
+                    val widget = DiscoverySuiteStore.newBookWidget(title, widgetType)
                         .copy(targets = selectedTargets)
                     updateSuite(suite.id) { it.copy(widgets = it.widgets + widget) }
                 }
