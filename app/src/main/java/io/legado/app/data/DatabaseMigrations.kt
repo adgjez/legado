@@ -32,9 +32,6 @@ object DatabaseMigrations {
             migration_113_114,
             migration_114_115,
             migration_115_116,
-            migration_116_117,
-            migration_117_118,
-            migration_118_119,
         )
     }
 
