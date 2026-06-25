@@ -69,8 +69,8 @@ class AiAudioProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
     private var modelText by mutableStateOf("")
     private var defaultParamsJsonText by mutableStateOf("")
     private var scriptText by mutableStateOf("")
-    private var submitEndpointText by mutableStateOf("/v1/audio/generations")
-    private var statusEndpointText by mutableStateOf("/v1/audio/generations")
+    private var submitEndpointText by mutableStateOf("/audio/generations")
+    private var statusEndpointText by mutableStateOf("/audio/generations/{id}")
     private var pollIntervalText by mutableStateOf("5000")
     private var timeoutText by mutableStateOf("300000")
     private var costExpressionText by mutableStateOf("")
@@ -268,8 +268,8 @@ class AiAudioProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
         modelText = provider?.model.orEmpty()
         defaultParamsJsonText = provider?.defaultParamsJson.orEmpty()
         scriptText = provider?.script.orEmpty()
-        submitEndpointText = provider?.submitEndpoint ?: "/v1/audio/generations"
-        statusEndpointText = provider?.statusEndpoint ?: "/v1/audio/generations"
+        submitEndpointText = provider?.submitEndpoint ?: "/audio/generations"
+        statusEndpointText = provider?.statusEndpoint ?: "/audio/generations/{id}"
         pollIntervalText = (provider?.pollIntervalMillisecond ?: 5_000L).toString()
         timeoutText = (provider?.timeoutMillisecond ?: 300_000L).toString()
         costExpressionText = provider?.costExpression.orEmpty()

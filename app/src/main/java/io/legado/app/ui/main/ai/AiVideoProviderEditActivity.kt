@@ -69,8 +69,8 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
     private var modelText by mutableStateOf("")
     private var stylePromptText by mutableStateOf("")
     private var negativePromptText by mutableStateOf("")
-    private var submitEndpointText by mutableStateOf("/v1/videos/generations")
-    private var statusEndpointText by mutableStateOf("/v1/videos/generations")
+    private var submitEndpointText by mutableStateOf("/videos/generations")
+    private var statusEndpointText by mutableStateOf("/videos/generations/{id}")
     private var pollIntervalText by mutableStateOf("5000")
     private var timeoutText by mutableStateOf("600000")
     private var supportsTailFrame by mutableStateOf(false)
@@ -317,8 +317,8 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
         modelText = provider?.model.orEmpty()
         stylePromptText = provider?.stylePrompt.orEmpty()
         negativePromptText = provider?.negativePrompt.orEmpty()
-        submitEndpointText = provider?.submitEndpoint ?: "/v1/videos/generations"
-        statusEndpointText = provider?.statusEndpoint ?: "/v1/videos/generations"
+        submitEndpointText = provider?.submitEndpoint ?: "/videos/generations"
+        statusEndpointText = provider?.statusEndpoint ?: "/videos/generations/{id}"
         pollIntervalText = (provider?.pollIntervalMillisecond ?: 5_000L).toString()
         timeoutText = (provider?.timeoutMillisecond ?: 600_000L).toString()
         supportsTailFrame = provider?.supportsTailFrame ?: false

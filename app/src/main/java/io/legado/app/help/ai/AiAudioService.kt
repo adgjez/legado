@@ -697,6 +697,8 @@ object AiAudioService {
         return when {
             normalized.isBlank() -> ""
             normalized.endsWith("/v1") -> normalized
+            normalized.endsWith("/audio/generations") -> normalized.removeSuffix("/audio/generations")
+            normalized.endsWith("/responses") -> normalized.removeSuffix("/responses")
             else -> "$normalized/v1"
         }
     }

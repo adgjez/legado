@@ -877,6 +877,8 @@ object AiVideoService {
         return when {
             normalized.isBlank() -> ""
             normalized.endsWith("/v1") -> normalized
+            normalized.endsWith("/videos/generations") -> normalized.removeSuffix("/videos/generations")
+            normalized.endsWith("/responses") -> normalized.removeSuffix("/responses")
             else -> "$normalized/v1"
         }
     }
