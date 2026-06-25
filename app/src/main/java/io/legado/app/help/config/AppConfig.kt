@@ -477,7 +477,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     val aiCurrentProvider: AiProviderConfig?
-        get() = aiProviderList.firstOrNull { it.id == aiCurrentProviderId }
+        get() {
+            val providers = aiProviderList
+            val currentId = aiCurrentProviderId
+            if (currentId.isNullOrBlank()) {
+                return providers.firstOrNull()?.also { aiCurrentProviderId = it.id }
+            }
+            return providers.firstOrNull { it.id == currentId }
+                ?: providers.firstOrNull()?.also { aiCurrentProviderId = it.id }
+        }
 
     var aiModelConfigList: List<AiModelConfig>
         get() {
@@ -514,7 +522,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     val aiCurrentModelConfig: AiModelConfig?
-        get() = aiModelConfigList.firstOrNull { it.id == aiCurrentModelId }
+        get() {
+            val models = aiModelConfigList
+            val currentId = aiCurrentModelId
+            if (currentId.isNullOrBlank()) {
+                return models.firstOrNull()?.also { aiCurrentModelId = it.id }
+            }
+            return models.firstOrNull { it.id == currentId }
+                ?: models.firstOrNull()?.also { aiCurrentModelId = it.id }
+        }
 
     var aiAskModelId: String?
         get() = sceneAiModelId(PreferKey.aiAskModelId)
@@ -2077,6 +2093,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 modelId = "agnes-2.0-flash"
             )
         }
+        // 确保内置供应商被设为当前选中
+        if (aiCurrentProviderId.isNullOrBlank() || aiCurrentProviderId == chatProviderId) {
+            aiCurrentProviderId = chatProviderId
+        }
+        if (aiCurrentModelId.isNullOrBlank()) {
+            val models = aiModelConfigList
+            val model = models.firstOrNull { it.modelId == "agnes-2.0-flash" }
+                ?: models.firstOrNull()
+            if (model != null) aiCurrentModelId = model.id
+        }
 
         // --- 图片供应商 ---
         val imageProviderId = "builtin_agnes_image"
@@ -2090,6 +2116,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 defaultParamsJson = "{\n  \"size\": \"1024x1024\"\n}"
             )
         }
+        if (aiCurrentImageProviderId.isNullOrBlank() || aiCurrentImageProviderId == imageProviderId) {
+            aiCurrentImageProviderId = imageProviderId
+        }
 
         // --- 视频供应商 ---
         val videoProviderId = "builtin_agnes_video"
@@ -2102,6 +2131,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 baseUrl = agnesBaseUrl,
                 model = "agnes-video-2.0"
             )
+        }
+        if (aiCurrentVideoProviderId.isNullOrBlank() || aiCurrentVideoProviderId == videoProviderId) {
+            aiCurrentVideoProviderId = videoProviderId
         }
     }
 
