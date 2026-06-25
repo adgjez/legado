@@ -475,12 +475,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     return@forEach
                 }
                 composeSuiteLoadingWidgets[widget.id] = true
-                val books = runCatching {
+                val books = try {
                     withContext(IO) {
                         loadSuiteWidgetBooks(widget)
                     }
-                }.getOrElse {
-                    AppLog.put("套件发现控件加载失败", it)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    AppLog.put("套件发现控件加载失败", e)
                     emptyList()
                 }
                 if (!isAdded || !usingSuiteDiscovery) return@launch
@@ -627,7 +629,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             val sources = withContext(IO) {
                 appDb.bookSourceDao.allEnabledPart
                     .filter { it.enabledExplore && it.hasExploreUrl }
+                    .take(MAX_SUITE_SELECTOR_SOURCES)
             }
+            if (!canShowSuiteDialog()) return@launch
             if (sources.isEmpty()) {
                 requireContext().toastOnUi(R.string.explore_empty)
                 return@launch
@@ -669,8 +673,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                                 )
                             }
                     }.getOrElse { emptyList() }
-                }
+                }.take(MAX_SUITE_SELECTOR_TARGETS)
             }
+            if (!canShowSuiteDialog()) return@launch
             if (targets.isEmpty()) {
                 requireContext().toastOnUi(R.string.find_empty)
                 return@launch
@@ -693,6 +698,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 }
             )
         }
+    }
+
+    private fun canShowSuiteDialog(): Boolean {
+        return isAdded &&
+            usingSuiteDiscovery &&
+            view != null &&
+            viewLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
     }
 
     private fun confirmDeleteSuite(suite: DiscoverySuite) {
@@ -2536,6 +2548,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             discoverRequestVersion += 1
             syncDiscoverComposeState()
         }
+        if (usingSuiteDiscovery) {
+            suiteLoadJob?.cancel()
+            suiteLoadJob = null
+            composeSuiteLoadingWidgets.clear()
+            binding.swipeRefreshLayout.isRefreshing = false
+        }
         WebViewPool.scheduleDestroyScope(WebViewPool.Scope.DISCOVERY)
         super.onPause()
     }
@@ -2725,6 +2743,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private companion object {
         private const val DISCOVER_DIALOG_WIDTH_RATIO = 0.90f
         private const val DISCOVER_DIALOG_HEIGHT_RATIO = 0.72f
+        private const val MAX_SUITE_SELECTOR_SOURCES = 80
+        private const val MAX_SUITE_SELECTOR_TARGETS = 160
     }
 
 }

@@ -32,6 +32,15 @@ object AiSettingsTool {
         SettingDef(PreferKey.showRss, "boolean"),
         SettingDef(PreferKey.showReadRecord, "boolean"),
         SettingDef(PreferKey.modernDiscoveryPage, "boolean"),
+        SettingDef(
+            PreferKey.discoveryPageMode,
+            "string",
+            values = setOf(
+                AppConfig.DISCOVERY_PAGE_MODE_LEGACY,
+                AppConfig.DISCOVERY_PAGE_MODE_MODERN,
+                AppConfig.DISCOVERY_PAGE_MODE_SUITE
+            )
+        ),
         SettingDef(PreferKey.modernRssPage, "boolean"),
         SettingDef(PreferKey.mergeDiscoveryRss, "boolean"),
         SettingDef(PreferKey.defaultHomePage, "string", values = setOf("bookshelf", "explore", "rss", "my")),
@@ -207,7 +216,15 @@ object AiSettingsTool {
                         is Number -> rawValue.toInt() != 0
                         else -> throw IllegalArgumentException("invalid boolean")
                     }
-                    appCtx.putPrefBoolean(key, value)
+                    if (key == PreferKey.modernDiscoveryPage) {
+                        AppConfig.discoveryPageMode = if (value) {
+                            AppConfig.DISCOVERY_PAGE_MODE_MODERN
+                        } else {
+                            AppConfig.DISCOVERY_PAGE_MODE_LEGACY
+                        }
+                    } else {
+                        appCtx.putPrefBoolean(key, value)
+                    }
                 }
 
                 "int" -> {
@@ -226,7 +243,11 @@ object AiSettingsTool {
                     if (def.values.isNotEmpty() && value !in def.values) {
                         throw IllegalArgumentException("invalid enum")
                     }
-                    appCtx.putPrefString(key, value)
+                    if (key == PreferKey.discoveryPageMode) {
+                        AppConfig.discoveryPageMode = value
+                    } else {
+                        appCtx.putPrefString(key, value)
+                    }
                 }
             }
             JSONObject().apply {
@@ -244,6 +265,12 @@ object AiSettingsTool {
     }
 
     private fun readSettingValue(key: String, type: String): Any? {
+        if (key == PreferKey.discoveryPageMode) {
+            return AppConfig.discoveryPageMode
+        }
+        if (key == PreferKey.modernDiscoveryPage) {
+            return AppConfig.modernDiscoveryPage
+        }
         return when (type) {
             "boolean" -> appCtx.getPrefBoolean(key, false)
             "int" -> appCtx.getPrefInt(key, 0)
@@ -255,6 +282,7 @@ object AiSettingsTool {
         return when (category) {
             "discovery" -> listOf(
                 PreferKey.showDiscovery,
+                PreferKey.discoveryPageMode,
                 PreferKey.modernDiscoveryPage
             )
 
