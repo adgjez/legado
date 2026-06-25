@@ -1242,8 +1242,9 @@
     <string name="discovery_suite_name">Suite name</string>
     <string name="discovery_suite_widget_title">Widget title</string>
     <string name="discovery_suite_widget_type">Widget style</string>
-    <string name="discovery_suite_widget_type_horizontal_books">Cover shelf</string>
-    <string name="discovery_suite_widget_type_ranked_list">Compact ranking</string>
+    <string name="discovery_suite_widget_type_horizontal_books">Cover recommendations</string>
+    <string name="discovery_suite_widget_type_ranked_list">Cover ranking</string>
+    <string name="discovery_suite_refresh_batch">Refresh batch</string>
     <string name="rss_page_mode_modern">Modern subscription</string>
     <string name="rss_page_mode_legacy">Classic subscription</string>
     <string name="style">Style</string>

@@ -1029,8 +1029,9 @@
     <string name="discovery_suite_name">套件名称</string>
     <string name="discovery_suite_widget_title">控件标题</string>
     <string name="discovery_suite_widget_type">控件样式</string>
-    <string name="discovery_suite_widget_type_horizontal_books">横向书架</string>
-    <string name="discovery_suite_widget_type_ranked_list">紧凑榜单</string>
+    <string name="discovery_suite_widget_type_horizontal_books">封面推荐</string>
+    <string name="discovery_suite_widget_type_ranked_list">封面榜单</string>
+    <string name="discovery_suite_refresh_batch">换一批</string>
     <string name="rss_page_mode_modern">新版订阅</string>
     <string name="rss_page_mode_legacy">经典订阅</string>
     <string name="style">样式</string>

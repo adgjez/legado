@@ -28,10 +28,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,16 +129,6 @@ fun DiscoverySuiteHomeScreen(
                         )
                     }
                 } else {
-                    item(key = "suite_header") {
-                        Text(
-                            text = selectedSuite.displayName,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = palette.titleFontFamily,
-                            color = palette.primaryText
-                        )
-                    }
                     selectedSuite.widgets.forEach { widget ->
                         item(key = widget.id) {
                             DiscoverySuiteWidgetSection(
@@ -288,62 +281,53 @@ private fun DiscoverySuiteWidgetSection(
     lifecycle: Lifecycle
 ) {
     val palette = renderConfig.palette
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(palette.panelRadius))
-            .appSettingPanelBackground(
-                normalColor = palette.rowColor,
-                panelImage = renderConfig.panelImage,
-                borderColor = palette.borderColor,
-                radiusPx = palette.panelRadiusPx
-            )
+            .padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = widget.title,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = palette.titleFontFamily,
-                color = palette.primaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        Text(
+            text = widget.title,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = palette.titleFontFamily,
+            color = palette.primaryText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        when {
+            isLoading -> Text(
+                text = LocalContext.current.getString(R.string.discovery_suite_widget_loading),
+                fontSize = 14.sp,
+                fontFamily = palette.bodyFontFamily,
+                color = palette.secondaryText
             )
-            when {
-                isLoading -> Text(
-                    text = LocalContext.current.getString(R.string.discovery_suite_widget_loading),
-                    fontSize = 14.sp,
-                    fontFamily = palette.bodyFontFamily,
-                    color = palette.secondaryText
+            books.isEmpty() -> Text(
+                text = LocalContext.current.getString(R.string.discovery_suite_widget_pending),
+                fontSize = 14.sp,
+                fontFamily = palette.bodyFontFamily,
+                color = palette.secondaryText
+            )
+            else -> when (widget.type) {
+                DiscoverySuiteWidgetType.RankedList.value -> DiscoverySuiteRankedWidget(
+                    widget = widget,
+                    books = books,
+                    renderConfig = renderConfig,
+                    onBookClick = onBookClick,
+                    onBookPreview = onBookPreview,
+                    fragment = fragment,
+                    lifecycle = lifecycle
                 )
-                books.isEmpty() -> Text(
-                    text = LocalContext.current.getString(R.string.discovery_suite_widget_pending),
-                    fontSize = 14.sp,
-                    fontFamily = palette.bodyFontFamily,
-                    color = palette.secondaryText
+                else -> DiscoverySuiteHorizontalBooksWidget(
+                    widget = widget,
+                    books = books,
+                    renderConfig = renderConfig,
+                    onBookClick = onBookClick,
+                    onBookPreview = onBookPreview,
+                    fragment = fragment,
+                    lifecycle = lifecycle
                 )
-                else -> when (widget.type) {
-                    DiscoverySuiteWidgetType.RankedList.value -> DiscoverySuiteRankedWidget(
-                        widget = widget,
-                        books = books,
-                        renderConfig = renderConfig,
-                        onBookClick = onBookClick,
-                        onBookPreview = onBookPreview
-                    )
-                    else -> DiscoverySuiteHorizontalBooksWidget(
-                        widget = widget,
-                        books = books,
-                        renderConfig = renderConfig,
-                        onBookClick = onBookClick,
-                        onBookPreview = onBookPreview,
-                        fragment = fragment,
-                        lifecycle = lifecycle
-                    )
-                }
             }
         }
     }
@@ -351,6 +335,200 @@ private fun DiscoverySuiteWidgetSection(
 
 @Composable
 private fun DiscoverySuiteHorizontalBooksWidget(
+    widget: DiscoverySuiteWidget,
+    books: List<SearchBook>,
+    renderConfig: BookshelfListRenderConfig,
+    onBookClick: (SearchBook) -> Unit,
+    onBookPreview: (SearchBook) -> Unit,
+    fragment: Fragment,
+    lifecycle: Lifecycle
+) {
+    val pageSize = 6
+    val pageState = remember(widget.id, books.size) { mutableIntStateOf(0) }
+    val displayBooks = remember(widget.id, books, pageState.intValue) {
+        books
+            .take(widget.displayLimit)
+            .loopSlice(pageState.intValue * pageSize, pageSize)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        DiscoverySuiteCoverGrid(
+            books = displayBooks,
+            maxCount = pageSize,
+            rankStart = null,
+            renderConfig = renderConfig,
+            onBookClick = onBookClick,
+            onBookPreview = onBookPreview,
+            fragment = fragment,
+            lifecycle = lifecycle
+        )
+        if (books.take(widget.displayLimit).size > pageSize) {
+            DiscoverySuiteRefreshButton(renderConfig = renderConfig) {
+                pageState.intValue += 1
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoverySuiteRankedWidget(
+    widget: DiscoverySuiteWidget,
+    books: List<SearchBook>,
+    renderConfig: BookshelfListRenderConfig,
+    onBookClick: (SearchBook) -> Unit,
+    onBookPreview: (SearchBook) -> Unit,
+    fragment: Fragment,
+    lifecycle: Lifecycle
+) {
+    DiscoverySuiteCoverGrid(
+        books = books.take(widget.displayLimit.coerceAtMost(9)),
+        maxCount = 9,
+        rankStart = 1,
+        renderConfig = renderConfig,
+        onBookClick = onBookClick,
+        onBookPreview = onBookPreview,
+        fragment = fragment,
+        lifecycle = lifecycle
+    )
+}
+
+@Composable
+private fun DiscoverySuiteCoverGrid(
+    books: List<SearchBook>,
+    maxCount: Int,
+    rankStart: Int?,
+    renderConfig: BookshelfListRenderConfig,
+    onBookClick: (SearchBook) -> Unit,
+    onBookPreview: (SearchBook) -> Unit,
+    fragment: Fragment,
+    lifecycle: Lifecycle
+) {
+    val displayBooks = books.take(maxCount)
+    Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
+        displayBooks.chunked(3).forEachIndexed { rowIndex, rowBooks ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(26.dp)
+            ) {
+                rowBooks.forEachIndexed { columnIndex, book ->
+                    val rank = rankStart?.plus(rowIndex * 3 + columnIndex)
+                    DiscoverySuiteCoverBookItem(
+                        book = book,
+                        rank = rank,
+                        modifier = Modifier.weight(1f),
+                        renderConfig = renderConfig,
+                        onBookClick = onBookClick,
+                        onBookPreview = onBookPreview,
+                        fragment = fragment,
+                        lifecycle = lifecycle
+                    )
+                }
+                repeat(3 - rowBooks.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoverySuiteRefreshButton(
+    renderConfig: BookshelfListRenderConfig,
+    onClick: () -> Unit
+) {
+    val palette = renderConfig.palette
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(palette.actionRadius))
+            .appSettingPanelBackground(
+                normalColor = palette.rowColor,
+                panelImage = renderConfig.panelImage,
+                borderColor = palette.borderColor,
+                radiusPx = palette.panelRadiusPx
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = LocalContext.current.getString(R.string.discovery_suite_refresh_batch),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = palette.bodyFontFamily,
+            color = palette.secondaryText
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DiscoverySuiteCoverBookItem(
+    book: SearchBook,
+    rank: Int?,
+    modifier: Modifier = Modifier,
+    renderConfig: BookshelfListRenderConfig,
+    onBookClick: (SearchBook) -> Unit,
+    onBookPreview: (SearchBook) -> Unit,
+    fragment: Fragment,
+    lifecycle: Lifecycle
+) {
+    val palette = renderConfig.palette
+    Box(
+        modifier = modifier
+            .aspectRatio(0.68f)
+            .shadow(
+                elevation = 7.dp,
+                shape = RoundedCornerShape(4.dp),
+                clip = false
+            )
+            .clip(RoundedCornerShape(4.dp))
+            .combinedClickable(
+                onClick = { onBookClick(book) },
+                onLongClick = { onBookPreview(book) }
+            )
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context -> CoverImageView(context) },
+            update = { view -> view.load(book, AppConfig.loadCoverOnlyWifi, fragment, lifecycle) },
+            onRelease = { it.releaseComposeImage() }
+        )
+        rank?.let {
+            Box(
+                modifier = Modifier
+                    .padding(7.dp)
+                    .size(26.dp)
+                    .align(Alignment.TopStart)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(palette.rowColor).copy(alpha = 0.88f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = it.toString(),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = palette.bodyFontFamily,
+                    color = palette.accent
+                )
+            }
+        }
+    }
+}
+
+private fun <T> List<T>.loopSlice(startIndex: Int, count: Int): List<T> {
+    if (isEmpty() || count <= 0) return emptyList()
+    val resultSize = minOf(count, this.size)
+    val start = startIndex.floorMod(this.size)
+    return List(resultSize) { index -> this[(start + index).floorMod(this.size)] }
+}
+
+private fun Int.floorMod(divisor: Int): Int {
+    return ((this % divisor) + divisor) % divisor
+}
+
+/*
+@Composable
+private fun DiscoverySuiteLegacyHorizontalBooksWidget(
     widget: DiscoverySuiteWidget,
     books: List<SearchBook>,
     renderConfig: BookshelfListRenderConfig,
@@ -367,7 +545,7 @@ private fun DiscoverySuiteHorizontalBooksWidget(
             items = books.take(widget.displayLimit),
             key = { index, book -> "${widget.id}|$index|${book.bookUrl}|${book.origin}" }
         ) { _, book ->
-            DiscoverySuiteCoverBookItem(
+            DiscoverySuiteLegacyCoverBookItem(
                 book = book,
                 renderConfig = renderConfig,
                 onBookClick = onBookClick,
@@ -378,9 +556,10 @@ private fun DiscoverySuiteHorizontalBooksWidget(
         }
     }
 }
+*/
 
 @Composable
-private fun DiscoverySuiteRankedWidget(
+private fun DiscoverySuiteLegacyRankedWidget(
     widget: DiscoverySuiteWidget,
     books: List<SearchBook>,
     renderConfig: BookshelfListRenderConfig,
@@ -402,7 +581,7 @@ private fun DiscoverySuiteRankedWidget(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DiscoverySuiteCoverBookItem(
+private fun DiscoverySuiteLegacyCoverBookItem(
     book: SearchBook,
     renderConfig: BookshelfListRenderConfig,
     onBookClick: (SearchBook) -> Unit,
