@@ -544,7 +544,7 @@ object AiVideoService {
                 }
             }
             logRequest(provider, "js:download", responseStatus, startedAt, true)
-            tempFile
+            return tempFile
         } catch (e: Throwable) {
             runCatching { tempFile.delete() }
             logRequest(

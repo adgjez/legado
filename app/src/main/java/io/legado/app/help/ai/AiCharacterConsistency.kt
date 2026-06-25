@@ -12,7 +12,7 @@ object AiCharacterConsistency {
     )
 
     fun getReferenceImage(characterId: String): ReferenceImage? {
-        val character = appDb.bookCharacterDao.getCharacter(characterId) ?: return null
+        val character = appDb.bookCharacterDao.getCharacter(characterId.toLongOrNull() ?: return null) ?: return null
         val refId = character.referenceImageId.takeIf { it.isNotBlank() } ?: return null
         val image = appDb.aiGeneratedImageDao.get(refId) ?: return null
         return ReferenceImage(characterId, image.id, image.localPath)

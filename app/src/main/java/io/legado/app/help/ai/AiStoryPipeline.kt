@@ -95,7 +95,7 @@ object AiStoryPipeline {
                         if (e is CancellationException) throw e
                         AppLog.put("Failed to generate keyframe for scene ${index}", e)
                         appDb.aiStorySceneDao.updateStatus(scene.id, "failed", e.message ?: "Unknown error")
-                        scenes[index] = scene.copy(status = "failed", error = e.message)
+                        scenes[index] = scene.copy(status = "failed", error = e.message ?: "Unknown error")
                     }
                 }
 

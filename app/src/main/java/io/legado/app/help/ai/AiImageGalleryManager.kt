@@ -27,6 +27,7 @@ object AiImageGalleryManager {
     const val SOURCE_TYPE_CHAT = "chat"
     const val SOURCE_TYPE_READ_INSERT = "read_insert"
     const val SOURCE_TYPE_CHARACTER_AVATAR = "character_avatar"
+    const val SOURCE_TYPE_STORY_MODE = "story_mode"
     private const val DEFAULT_GROUP_NAME = "默认分组"
     private const val TEMP_KEEP_DAYS = 3L
     private const val MAX_IMAGE_BYTES = 32 * 1024 * 1024

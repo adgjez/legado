@@ -1533,7 +1533,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         val textChapter = ReadBook.curTextChapter ?: return
         val book = ReadBook.book ?: return
-        val chapterIndex = ReadBook.curTextChapter?.index ?: -1
+        val chapterIndex = ReadBook.curTextChapter?.chapter?.index ?: -1
         val text = selectedText.trim().ifBlank {
             textChapter.getParagraphs(pageSplit = false).joinToString("\n") { it.text }
         }

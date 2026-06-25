@@ -83,7 +83,7 @@ object AiSandboxBridge {
      * script cannot escape the sandbox. Only a small, explicit allow-list of
      * safe classes (String, Math, java.util.*, org.json.*, ...) is exposed.
      */
-    inner class AiSandboxClassShutter : ClassShutter {
+    class AiSandboxClassShutter : ClassShutter {
 
         private val blockedExact = setOf(
             "java.lang.Runtime",

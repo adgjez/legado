@@ -76,9 +76,11 @@ object AiSanitizeService {
             return callSanitizeModel(text, systemPrompt, providerId)
         }
         val chunks = splitIntoChunks(text, MAX_CHUNK_CHARS)
-        return chunks.joinToString("") { chunk ->
-            callSanitizeModel(chunk, systemPrompt, providerId)
+        val sb = StringBuilder()
+        for (chunk in chunks) {
+            sb.append(callSanitizeModel(chunk, systemPrompt, providerId))
         }
+        return sb.toString()
     }
 
     private fun splitIntoChunks(text: String, maxChars: Int): List<String> {
