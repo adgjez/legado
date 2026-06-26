@@ -66,6 +66,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             val bookUrl = intent.getStringExtra("bookUrl") ?: ""
             val origin = intent.getStringExtra("origin") ?: ""
             val originName = intent.getStringExtra("originName") ?: ""
+            val coverUrl = intent.getStringExtra("coverUrl") ?: ""
             if (bookUrl.isNotBlank()) {
                 appDb.bookDao.getBook(bookUrl)?.let { book ->
                     if (!book.isNotShelf) {
@@ -101,7 +102,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                         author = author,
                         bookUrl = bookUrl,
                         origin = origin,
-                        originName = originName
+                        originName = originName,
+                        coverUrl = coverUrl.takeIf { it.isNotBlank() }
                     )
                 )
                 return@execute

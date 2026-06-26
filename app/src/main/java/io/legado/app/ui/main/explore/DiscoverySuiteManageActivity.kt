@@ -201,6 +201,7 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
                                 onRenameSuite = ::showRenameSuiteDialog,
                                 onAliasSuite = ::showSuiteAliasDialog,
                                 onDeleteSuite = ::confirmDeleteSuite,
+                                onOpacityMultiplierChange = ::updateSuiteOpacityMultiplier,
                                 onEditWidget = { targetSuite, targetWidget ->
                                     openWidgetEditor(targetSuite, targetWidget)
                                 },
@@ -254,10 +255,7 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
     private fun updateTitleBar() {
         binding.titleBar.title = when (val mode = screenModeState) {
             DiscoverySuiteManageMode.List -> getString(R.string.discovery_suite_manage_title)
-            is DiscoverySuiteManageMode.Detail -> {
-                configState.suites.firstOrNull { it.id == mode.suiteId }?.displayName
-                    ?: getString(R.string.discovery_suite_manage_title)
-            }
+            is DiscoverySuiteManageMode.Detail -> getString(R.string.discovery_suite_manage)
             is DiscoverySuiteManageMode.WidgetEditor -> {
                 val suite = configState.suites.firstOrNull { it.id == mode.suiteId }
                 val widget = suite?.widgets?.firstOrNull { it.id == mode.widgetId }
@@ -511,6 +509,12 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
         )
     }
 
+    private fun updateSuiteOpacityMultiplier(suite: DiscoverySuite, value: Float) {
+        updateSuite(suite.id) { current ->
+            current.copy(opacityMultiplier = value.coerceIn(1f, 4f))
+        }
+    }
+
     private fun updateSuite(
         suiteId: String,
         transform: (DiscoverySuite) -> DiscoverySuite
@@ -676,6 +680,7 @@ private fun DiscoverySuiteDetailScreen(
     onRenameSuite: (DiscoverySuite) -> Unit,
     onAliasSuite: (DiscoverySuite) -> Unit,
     onDeleteSuite: (DiscoverySuite) -> Unit,
+    onOpacityMultiplierChange: (DiscoverySuite, Float) -> Unit,
     onEditWidget: (DiscoverySuite, DiscoverySuiteWidget) -> Unit,
     onDeleteWidget: (DiscoverySuite, DiscoverySuiteWidget) -> Unit,
     onReorderWidgets: (DiscoverySuite, List<DiscoverySuiteWidget>) -> Unit
@@ -692,7 +697,7 @@ private fun DiscoverySuiteDetailScreen(
     LaunchedEffect(suite?.id, widgetSignature) {
         orderedWidgets = widgetSnapshot
     }
-    val widgetStartIndex = 3
+    val widgetStartIndex = 1
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
         val fromIndex = from.index - widgetStartIndex
         val toIndex = to.index - widgetStartIndex
@@ -739,6 +744,14 @@ private fun DiscoverySuiteDetailScreen(
             }
         } else {
             item {
+                SuiteOpacityMultiplierRow(
+                    suite = suite,
+                    renderConfig = renderConfig,
+                    onValueChange = { value -> onOpacityMultiplierChange(suite, value) }
+                )
+            }
+            if (false) {
+            item {
                 val isCurrent = suite.id == selectedSuiteId
                 AppManagementListRow(
                     title = suite.displayName,
@@ -761,6 +774,7 @@ private fun DiscoverySuiteDetailScreen(
                     }
                 )
             }
+            }
             if (orderedWidgets.isEmpty()) {
                 item {
                     Text(
@@ -782,19 +796,24 @@ private fun DiscoverySuiteDetailScreen(
                         onEdit = { onEditWidget(suite, widget) },
                         onDelete = { onDeleteWidget(suite, widget) },
                         dragHandle = {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_drag_handle),
-                                contentDescription = stringResource(R.string.sort),
-                                tint = palette.secondaryText,
+                            Box(
                                 modifier = Modifier
-                                    .padding(end = 8.dp)
-                                    .size(22.dp)
+                                    .padding(end = 4.dp)
+                                    .size(42.dp)
                                     .draggableHandle(
                                         onDragStopped = {
                                             onReorderWidgets(suite, orderedWidgets)
                                         }
-                                    )
-                            )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_drag_handle),
+                                    contentDescription = stringResource(R.string.sort),
+                                    tint = palette.secondaryText,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
                     )
                 }
@@ -802,6 +821,55 @@ private fun DiscoverySuiteDetailScreen(
         }
         item {
             Spacer(modifier = Modifier.height(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun SuiteOpacityMultiplierRow(
+    suite: DiscoverySuite,
+    renderConfig: BookshelfListRenderConfig,
+    onValueChange: (Float) -> Unit
+) {
+    val palette = renderConfig.palette
+    val value = suite.opacityMultiplier.coerceIn(1f, 4f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(palette.panelRadius))
+            .appSettingPanelBackground(
+                normalColor = palette.rowColor,
+                panelImage = renderConfig.panelImage,
+                borderColor = palette.borderColor,
+                radiusPx = palette.panelRadiusPx
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "透明度倍率",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = palette.bodyFontFamily,
+                color = palette.primaryText
+            )
+            Text(
+                text = "当前 ${"%.2f".format(value)}x，仅增强套件页面板不透明度",
+                fontSize = 12.sp,
+                fontFamily = palette.bodyFontFamily,
+                color = palette.secondaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        CompactAction(text = "-0.25", renderConfig = renderConfig) {
+            onValueChange((value - 0.25f).coerceAtLeast(1f))
+        }
+        CompactAction(text = "+0.25", renderConfig = renderConfig) {
+            onValueChange((value + 0.25f).coerceAtMost(4f))
         }
     }
 }
@@ -898,12 +966,6 @@ private fun DiscoverySuiteWidgetEditorScreen(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = suite?.displayName ?: "",
-                        fontSize = 13.sp,
-                        fontFamily = palette.bodyFontFamily,
-                        color = palette.secondaryText
-                    )
                     Text(
                         text = if (widget == null) {
                             "添加控件"

@@ -989,7 +989,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 AndroidView(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(0.72f)
+                        .aspectRatio(0.75f)
                         .clip(RoundedCornerShape(style.metrics.chipRadius)),
                     factory = {
                         CoverImageView(it).apply {

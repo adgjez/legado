@@ -81,6 +81,7 @@ class CoverImageView @JvmOverloads constructor(
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
+        scaleType = ScaleType.CENTER_CROP
     }
 
     override fun setLayoutParams(params: ViewGroup.LayoutParams?) {

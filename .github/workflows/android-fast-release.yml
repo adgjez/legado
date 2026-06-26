@@ -48,31 +48,38 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           cat > release-notes.md <<'EOF'
-          阅读Archive 发现套件功能更新
+          阅读 Archive 发现套件功能更新
 
-          本次更新新增发现页“套件”模式，支持像主题一样管理发现页布局，可按书源和 Tag 组合不同书籍控件，并修复套件编辑页按钮圆角、文字对齐和主题一致性问题。
+          本次更新新增发现页“套件”模式，并围绕套件管理、控件展示、主题一致性和书封显示做了一轮完整修复。
 
           新增：
           - 新增发现页“套件”模式，可在“界面设置 - 发现与订阅 - 发现页模式”中选择。
           - 新增发现套件管理页，支持新建套件、设为当前套件、重命名、设置别名和删除套件。
           - 新增套件详情页，支持给单个套件添加、编辑、删除控件。
           - 新增控件长按拖拽排序，可调整套件内控件显示顺序。
-          - 新增控件编辑页，可按书源选择发现 Tag，不再只显示零散 Tag 列表。
+          - 新增按书源选择发现 Tag 的控件编辑方式，减少零散 Tag 列表带来的选择成本。
           - 新增随机推荐、Tag 按键栏、横排滑动、排行榜列表和瀑布流等套件控件。
-          - 新增发现页右上角三点菜单入口，可直接进入“编辑套件”。
-
-          调整：
-          - 调整发现套件首页搜索栏和套件入口样式，使其更贴近当前主题风格。
-          - 调整发现套件编辑流程，由“套件列表 - 套件详情 - 控件编辑”分层管理，避免在发现页直接堆叠编辑操作。
-          - 调整书籍控件封面展示方式，统一封面裁切、圆角和列表视觉风格。
-          - 调整排行榜和横排控件加载逻辑，减少滑动时内容跳动。
+          - 新增发现页右上角三点菜单入口，可进入“编辑套件”并快速切换套件。
+          - 新增套件透明度倍率设置，用于在主题透明度基础上单独增强套件卡片不透明度。
 
           修复：
-          - 修复套件编辑页胶囊按钮未跟随主题圆角的问题。
-          - 修复“编辑套件”等弹出菜单文字不在按钮中心的问题。
-          - 修复套件编辑页保存、取消、编辑、删除等操作按钮垂直对齐不一致的问题。
-          - 修复部分套件控件按钮圆角写死，导致与应用主题不统一的问题。
-          - 修复套件管理页返回层级不清晰的问题，现在控件编辑返回套件详情，套件详情返回套件列表。
+          - 修复套件编辑页拖拽排序拖不动的问题。
+          - 修复套件编辑页层级标题重复、进入详情后仍像停留在上一层的问题。
+          - 修复套件空状态按钮文字不居中的问题。
+          - 修复书封预览卡片打开后系统返回直接退出页面的问题，现在优先关闭预览卡片。
+          - 修复书封预览卡片按钮离底部过远、内部留白过大的问题。
+          - 修复发现和搜索进入详情页时封面重复加载导致闪动的问题。
+          - 修复详情页进入时主题色先变化再恢复的问题。
+          - 修复套件卡片不透明度没有受到倍率影响的问题。
+          - 修复 Compose 书架从正文返回后没有按预期回到顶部的问题。
+          - 修复全面屏小白条导航栏不沉浸的问题。
+          - 修复书封显示比例不统一的问题，发现套件、搜索、发现、书架、详情页、阅读统计和 AI 书籍卡片中的书封统一按 3:4 裁剪显示。
+
+          调整：
+          - 调整发现套件首页搜索栏、三点菜单和套件入口样式，使其更贴近当前主题风格。
+          - 调整发现套件编辑流程，按“套件列表 - 套件详情 - 控件编辑”分层管理，避免在发现页直接堆叠编辑操作。
+          - 调整套件控件书封裁剪、圆角和列表视觉风格，提升控件整体一致性。
+          - 调整排行榜和横排控件加载逻辑，减少滑动时内容跳动。
           EOF
 
       - name: Build arm64 release APK
@@ -121,7 +128,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: 阅读Archive 发现套件功能更新
+          name: 阅读 Archive 发现套件功能更新
           prerelease: false
           make_latest: true
           generate_release_notes: false
@@ -142,11 +149,11 @@ jobs:
                 done
             gh release upload "$CHANNEL_TAG" release-apks/*.apk --clobber
             gh release edit "$CHANNEL_TAG" \
-              --title "阅读Archive 更新通道" \
+              --title "阅读 Archive 更新通道" \
               --notes-file release-notes.md
           else
             gh release create "$CHANNEL_TAG" release-apks/*.apk \
-              --title "阅读Archive 更新通道" \
+              --title "阅读 Archive 更新通道" \
               --notes-file release-notes.md
           fi
 
@@ -162,7 +169,7 @@ jobs:
           set +e
           API="https://gitee.com/api/v5/repos/zziji/legado"
           TAG_NAME="${{ steps.version.outputs.tag }}"
-          RELEASE_NAME="阅读Archive 发现套件功能更新"
+          RELEASE_NAME="阅读 Archive 发现套件功能更新"
           CHANNEL_TAG="latest-arm64-release"
           TOKEN_QUERY="$(python3 -c 'import os, urllib.parse; print(urllib.parse.urlencode({"access_token": os.environ["GITEE_TOKEN"]}))')"
 

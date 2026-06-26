@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -140,13 +139,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private val useComposeList get() = bookshelfLayout < 2
     private val useComposeGrid get() = bookshelfLayout >= 2
     private val useComposeBookshelf get() = useComposeList || useComposeGrid
-    private data class ComposeScrollPosition(val index: Int, val offset: Int)
     private var composeItems by mutableStateOf<List<BookshelfItemUi>>(emptyList())
     private var shelfDisplays: List<BookShelfDisplay> = emptyList()
     private var composeCanScrollBackward by mutableStateOf(false)
     private var composeScrollToTopTick by mutableStateOf(0)
+    private var composeImmediateScrollToTopTick by mutableStateOf(0)
     private var composeListItemStyle by mutableIntStateOf(AppConfig.bookshelfListItemStyle)
-    private var composeScrollPosition: ComposeScrollPosition? = null
+    private var scrollToTopWhenReturnFromRead = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -159,6 +158,16 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
         initRecyclerView()
         upRecyclerData()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (scrollToTopWhenReturnFromRead) {
+            scrollToTopWhenReturnFromRead = false
+            binding.root.post {
+                scrollBookshelfToTop(immediate = true)
+            }
+        }
     }
 
     private fun initRecyclerView() {
@@ -284,10 +293,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     @Composable
     private fun BookshelfGridContent() {
-        val gridState = rememberLazyGridState(
-            initialFirstVisibleItemIndex = composeScrollPosition?.index ?: 0,
-            initialFirstVisibleItemScrollOffset = composeScrollPosition?.offset ?: 0
-        )
+        val gridState = rememberLazyGridState()
         val canScrollBackward by remember {
             derivedStateOf {
                 gridState.firstVisibleItemIndex > 0 ||
@@ -319,16 +325,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val bottomBarPadding = with(LocalDensity.current) {
             resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
         }
-        DisposableEffect(Unit) {
-            onDispose {
-                composeScrollPosition = ComposeScrollPosition(
-                    index = gridState.firstVisibleItemIndex,
-                    offset = gridState.firstVisibleItemScrollOffset
-                )
-            }
-        }
         LaunchedEffect(canScrollBackward) {
             composeCanScrollBackward = canScrollBackward
+        }
+        LaunchedEffect(composeImmediateScrollToTopTick) {
+            if (composeImmediateScrollToTopTick > 0) {
+                gridState.scrollToItem(0)
+            }
         }
         LaunchedEffect(composeScrollToTopTick) {
             if (composeScrollToTopTick > 0) {
@@ -376,10 +379,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     @Composable
     private fun BookshelfListContent() {
-        val listState = rememberLazyListState(
-            initialFirstVisibleItemIndex = composeScrollPosition?.index ?: 0,
-            initialFirstVisibleItemScrollOffset = composeScrollPosition?.offset ?: 0
-        )
+        val listState = rememberLazyListState()
         val canScrollBackward by remember {
             derivedStateOf {
                 listState.firstVisibleItemIndex > 0 ||
@@ -412,16 +412,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
         }
         val renderConfig = rememberBookshelfListRenderConfig()
-        DisposableEffect(Unit) {
-            onDispose {
-                composeScrollPosition = ComposeScrollPosition(
-                    index = listState.firstVisibleItemIndex,
-                    offset = listState.firstVisibleItemScrollOffset
-                )
-            }
-        }
         LaunchedEffect(canScrollBackward) {
             composeCanScrollBackward = canScrollBackward
+        }
+        LaunchedEffect(composeImmediateScrollToTopTick) {
+            if (composeImmediateScrollToTopTick > 0) {
+                listState.scrollToItem(0)
+            }
         }
         LaunchedEffect(composeScrollToTopTick) {
             if (composeScrollToTopTick > 0) {
@@ -696,11 +693,19 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun gotoTop() {
+        scrollBookshelfToTop(immediate = false)
+    }
+
+    private fun scrollBookshelfToTop(immediate: Boolean) {
         if (useComposeBookshelf) {
-            composeScrollToTopTick++
+            if (immediate) {
+                composeImmediateScrollToTopTick++
+            } else {
+                composeScrollToTopTick++
+            }
             return
         }
-        if (AppConfig.isEInkMode) {
+        if (immediate || AppConfig.isEInkMode) {
             binding.rvBookshelf.scrollToPosition(0)
         } else {
             binding.rvBookshelf.smoothScrollToPosition(0)
@@ -729,6 +734,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun open(book: Book) {
+        scrollToTopWhenReturnFromRead = true
         startActivityForBook(book)
     }
 

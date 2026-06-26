@@ -196,6 +196,7 @@ class BookInfoComposeActivity :
         refreshLayout.setOnRefreshListener {
             refreshBook()
         }
+        uiState = buildInitialUiStateFromIntent()
         composeView.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
@@ -498,7 +499,11 @@ class BookInfoComposeActivity :
             if (::refreshLayout.isInitialized) {
                 refreshLayout.isRefreshing = false
             }
-            uiState = BookInfoUiState(loading = true)
+            uiState = if (uiState.name.isBlank() && uiState.bookUrl.isBlank()) {
+                buildInitialUiStateFromIntent()
+            } else {
+                uiState.copy(loading = true)
+            }
             return
         }
         val chapterList = viewModel.chapterListData.value.orEmpty()
@@ -515,6 +520,7 @@ class BookInfoComposeActivity :
         val currentChapterEnd = (currentChapterPosition + 5)
             .coerceAtMost(readableChapters.size)
         val intro = resolveStableIntro(book)
+        val coverPath = resolveStableCoverPath(CoverDisplayResolver.resolve(book).path)
         uiState = BookInfoUiState(
             bookUrl = book.bookUrl,
             name = book.name,
@@ -522,7 +528,7 @@ class BookInfoComposeActivity :
             originName = getString(R.string.origin_show, book.originName),
             latestChapterTitle = getString(R.string.lasted_show, book.latestChapterTitle),
             readTimeText = readTimeText,
-            coverPath = CoverDisplayResolver.resolve(book).path,
+            coverPath = coverPath,
             intro = intro,
             kinds = book.getKindList(),
             groupText = groupText,
@@ -549,6 +555,67 @@ class BookInfoComposeActivity :
         if (::refreshLayout.isInitialized) {
             refreshLayout.isRefreshing = false
         }
+    }
+
+    private fun buildInitialUiStateFromIntent(): BookInfoUiState {
+        val name = intent.getStringExtra("name").orEmpty()
+        val author = intent.getStringExtra("author").orEmpty()
+        val bookUrl = intent.getStringExtra("bookUrl").orEmpty()
+        val origin = intent.getStringExtra("origin").orEmpty()
+        val originName = intent.getStringExtra("originName").orEmpty()
+        val coverUrl = intent.getStringExtra("coverUrl").orEmpty()
+        if (name.isBlank() && author.isBlank() && bookUrl.isBlank() && coverUrl.isBlank()) {
+            return BookInfoUiState(loading = true)
+        }
+        val coverPath = resolveInitialCoverPathFromIntent(
+            name = name,
+            author = author,
+            bookUrl = bookUrl,
+            origin = origin,
+            originName = originName,
+            coverUrl = coverUrl
+        )
+        return BookInfoUiState(
+            bookUrl = bookUrl,
+            name = name,
+            author = author,
+            originName = originName.takeIf { it.isNotBlank() }?.let {
+                getString(R.string.origin_show, it)
+            }.orEmpty(),
+            coverPath = coverPath,
+            hasBookSource = origin.isNotBlank(),
+            loading = true
+        )
+    }
+
+    private fun resolveInitialCoverPathFromIntent(
+        name: String,
+        author: String,
+        bookUrl: String,
+        origin: String,
+        originName: String,
+        coverUrl: String
+    ): String? {
+        val rawCover = coverUrl.takeIf { it.isNotBlank() }
+        if (name.isBlank() && author.isBlank() && bookUrl.isBlank()) {
+            return rawCover
+        }
+        return CoverDisplayResolver.resolve(
+            Book(
+                bookUrl = bookUrl,
+                origin = origin,
+                originName = originName,
+                name = name,
+                author = author,
+                coverUrl = rawCover
+            )
+        ).path ?: rawCover
+    }
+
+    private fun resolveStableCoverPath(nextPath: String?): String? {
+        val next = nextPath?.takeIf { it.isNotBlank() }
+        val current = uiState.coverPath?.takeIf { it.isNotBlank() }
+        return next ?: current
     }
 
     private fun resolveStableIntro(book: Book): String {

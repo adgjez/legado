@@ -328,7 +328,7 @@ private fun BookshelfListCover(
     BookshelfComposeCover(
         item = item,
         modifier = modifier
-            .then(if (fillWidth) Modifier else Modifier.width(width).aspectRatio(0.72f))
+            .then(if (fillWidth) Modifier else Modifier.width(width).aspectRatio(0.75f))
             .clip(RoundedCornerShape(cornerRadius)),
         fragment = fragment,
         lifecycle = lifecycle,

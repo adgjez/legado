@@ -147,7 +147,11 @@ object UiCorner {
         )
     }
 
-    fun panelImageDrawable(context: Context, radius: Float): Drawable? {
+    fun panelImageDrawable(
+        context: Context,
+        radius: Float,
+        alphaMultiplier: Float = 1f
+    ): Drawable? {
         val path = context.getPrefString(
             if (AppConfig.isNightTheme) PreferKey.panelBgImageN else PreferKey.panelBgImage
         )
@@ -155,7 +159,12 @@ object UiCorner {
         val mode = context.getPrefString(
             if (AppConfig.isNightTheme) PreferKey.panelBgScaleTypeN else PreferKey.panelBgScaleType
         ) ?: ThemeConfig.PANEL_BG_CROP
-        return RoundedBitmapDrawable(bitmap, radius, mode == ThemeConfig.PANEL_BG_FIT)
+        return RoundedBitmapDrawable(
+            bitmap = bitmap,
+            radius = radius,
+            fitInside = mode == ThemeConfig.PANEL_BG_FIT,
+            alphaMultiplier = alphaMultiplier
+        )
     }
 
     fun warmPanelBitmap(context: Context = appCtx) {
@@ -259,12 +268,13 @@ object UiCorner {
     class RoundedBitmapDrawable(
         private val bitmap: Bitmap,
         private val radius: Float,
-        private val fitInside: Boolean
+        private val fitInside: Boolean,
+        alphaMultiplier: Float = 1f
     ) : Drawable() {
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-            alpha = (layoutAlpha() * 255).toInt().coerceIn(0, 255)
+            alpha = (layoutAlpha() * alphaMultiplier.coerceIn(1f, 4f) * 255).toInt().coerceIn(0, 255)
         }
         private val rect = RectF()
         private val matrix = Matrix()

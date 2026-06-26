@@ -311,6 +311,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 val selectedSuite = selectedSuite(suiteConfig)
                 DiscoverySuiteHomeScreen(
                     selectedSuite = selectedSuite,
+                    suites = suiteConfig.suites,
+                    selectedSuiteId = composeSelectedSuiteId.value,
                     widgetBooks = composeSuiteWidgetBooks,
                     rankedWidgetBooks = composeSuiteRankedWidgetBooks,
                     loadingWidgetIds = composeSuiteLoadingWidgets
@@ -319,6 +321,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     scrollToTopSignal = composeSuiteScrollToTopSignal.intValue,
                     onSearchClick = { SearchActivity.start(requireContext(), key = null) },
                     onSuiteClick = ::openSuiteManagePage,
+                    onSuiteSelect = ::selectDiscoverySuite,
                     onBookClick = ::showBookInfo,
                     onBookPreviewOpen = ::showBookInfo,
                     onTagClick = ::openSuiteTarget,

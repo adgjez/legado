@@ -15,6 +15,7 @@ data class DiscoverySuite(
     val id: String = "",
     val name: String = "",
     val alias: String = "",
+    val opacityMultiplier: Float = 1f,
     val order: Int = 0,
     val widgets: List<DiscoverySuiteWidget> = emptyList()
 ) {
@@ -143,6 +144,7 @@ object DiscoverySuiteStore {
                     id = suite.id.take(MAX_ID_CHARS),
                     name = suite.name.cleanName().ifBlank { "Suite ${index + 1}" },
                     alias = suite.alias.cleanName(),
+                    opacityMultiplier = suite.opacityMultiplier.coerceIn(1f, 4f),
                     order = index,
                     widgets = suite.widgets
                         .asSequence()

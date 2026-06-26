@@ -290,7 +290,7 @@ private fun ExploreGridBookItem(
             AndroidView(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(0.72f)
+                    .aspectRatio(0.75f)
                     .clip(RoundedCornerShape(palette.actionRadius)),
                 factory = { context -> CoverImageView(context) },
                 update = { view ->
@@ -374,7 +374,7 @@ private fun ExploreCoverBlock(
         AndroidView(
             modifier = Modifier
                 .width(width)
-                .aspectRatio(0.72f)
+                .aspectRatio(0.75f)
                 .clip(RoundedCornerShape(cornerRadius)),
             factory = { context ->
                 CoverImageView(context)

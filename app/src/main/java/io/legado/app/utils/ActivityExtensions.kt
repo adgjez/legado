@@ -188,6 +188,9 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
 @Suppress("DEPRECATION")
 fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
     val isLightBor = ColorUtils.isColorLight(color)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        window.isNavigationBarContrastEnforced = false
+    }
     window.navigationBarColor = color
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         window.insetsController?.let {

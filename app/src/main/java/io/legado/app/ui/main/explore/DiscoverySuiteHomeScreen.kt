@@ -1,5 +1,7 @@
 package io.legado.app.ui.main.explore
 
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -37,11 +39,13 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -71,6 +75,7 @@ import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
@@ -82,15 +87,20 @@ import io.legado.app.ui.widget.image.CoverImageView
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+private const val BOOK_COVER_ASPECT_RATIO = 0.75f
+
 @Composable
 fun DiscoverySuiteHomeScreen(
     selectedSuite: DiscoverySuite?,
+    suites: List<DiscoverySuite>,
+    selectedSuiteId: String,
     widgetBooks: Map<String, List<SearchBook>>,
     rankedWidgetBooks: Map<String, Map<String, List<SearchBook>>>,
     loadingWidgetIds: Set<String>,
     scrollToTopSignal: Int,
     onSearchClick: () -> Unit,
     onSuiteClick: () -> Unit,
+    onSuiteSelect: (DiscoverySuite) -> Unit,
     onBookClick: (SearchBook) -> Unit,
     onBookPreviewOpen: (SearchBook) -> Unit,
     onTagClick: (DiscoverySuiteWidgetTarget) -> Unit,
@@ -104,7 +114,11 @@ fun DiscoverySuiteHomeScreen(
 ) {
     val context = LocalContext.current
     val listState = rememberLazyListState()
-    val renderConfig = rememberBookshelfListRenderConfig()
+    val baseRenderConfig = rememberBookshelfListRenderConfig()
+    val opacityMultiplier = selectedSuite?.opacityMultiplier ?: 1f
+    val renderConfig = remember(context, baseRenderConfig, opacityMultiplier) {
+        baseRenderConfig.withSuiteOpacityMultiplier(context, opacityMultiplier)
+    }
     val bottomBarPadding = with(LocalDensity.current) {
         context.resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
     }
@@ -142,9 +156,12 @@ fun DiscoverySuiteHomeScreen(
                 .navigationBarsPadding()
         ) {
             DiscoverySuiteSearchBar(
+                selectedSuiteId = selectedSuiteId,
+                suites = suites,
                 renderConfig = renderConfig,
                 onSearchClick = onSearchClick,
-                onSuiteClick = onSuiteClick
+                onSuiteClick = onSuiteClick,
+                onSuiteSelect = onSuiteSelect
             )
             LazyColumn(
                 state = listState,
@@ -250,14 +267,15 @@ private fun DiscoverySuiteBookPreviewOverlay(
             onDismissed()
         }
     }
+    DiscoverySuitePreviewBackHandler(enabled = true, onBack = ::dismiss)
 
     val rootWidthPx = with(density) { rootWidth.toPx() }
     val rootHeightPx = with(density) { rootHeight.toPx() }
     val minMarginPx = with(density) { 18.dp.toPx() }
     val targetWidthPx = minOf(rootWidthPx - minMarginPx * 2f, with(density) { 420.dp.toPx() })
         .coerceAtLeast(with(density) { 280.dp.toPx() })
-    val targetHeightPx = minOf(rootHeightPx - with(density) { 104.dp.toPx() }, with(density) { 470.dp.toPx() })
-        .coerceAtLeast(with(density) { 320.dp.toPx() })
+    val targetHeightPx = minOf(rootHeightPx - with(density) { 96.dp.toPx() }, with(density) { 322.dp.toPx() })
+        .coerceAtLeast(with(density) { 292.dp.toPx() })
     val targetLeft = (rootWidthPx - targetWidthPx) / 2f
     val targetTop = (rootHeightPx - targetHeightPx) / 2f
     val fallbackOrigin = Rect(
@@ -343,8 +361,7 @@ private fun DiscoverySuiteBookPreviewContent(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer { alpha = contentAlpha }
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(18.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -354,7 +371,7 @@ private fun DiscoverySuiteBookPreviewContent(
             Box(
                 modifier = Modifier
                     .width(96.dp)
-                    .height(132.dp)
+                    .aspectRatio(BOOK_COVER_ASPECT_RATIO)
                     .shadow(6.dp, RoundedCornerShape(7.dp), clip = false)
                     .clip(RoundedCornerShape(7.dp))
             ) {
@@ -391,23 +408,24 @@ private fun DiscoverySuiteBookPreviewContent(
                             fontFamily = palette.bodyFontFamily,
                             color = palette.secondaryText
                         )
-                    }
+                }
             }
         }
+        Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = book.intro?.trim()?.takeIf { it.isNotBlank() }
                 ?: context.getString(R.string.intro_show_null),
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false)
-                .heightIn(max = 156.dp),
-            maxLines = 7,
+                .heightIn(max = 66.dp),
+            maxLines = 3,
             overflow = TextOverflow.Ellipsis,
             fontSize = 14.sp,
             lineHeight = 21.sp,
             fontFamily = palette.bodyFontFamily,
             color = palette.primaryText.copy(alpha = 0.82f)
         )
+        Spacer(modifier = Modifier.weight(1f))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -426,6 +444,26 @@ private fun DiscoverySuiteBookPreviewContent(
                 emphatic = true,
                 onClick = onOpen
             )
+        }
+    }
+}
+
+@Composable
+private fun DiscoverySuitePreviewBackHandler(
+    enabled: Boolean,
+    onBack: () -> Unit
+) {
+    val activity = LocalContext.current as? AppCompatActivity ?: return
+    val currentOnBack by rememberUpdatedState(onBack)
+    DisposableEffect(activity, enabled) {
+        val callback = object : OnBackPressedCallback(enabled) {
+            override fun handleOnBackPressed() {
+                currentOnBack()
+            }
+        }
+        activity.onBackPressedDispatcher.addCallback(callback)
+        onDispose {
+            callback.remove()
         }
     }
 }
@@ -468,9 +506,12 @@ private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {
 
 @Composable
 private fun DiscoverySuiteSearchBar(
+    selectedSuiteId: String,
+    suites: List<DiscoverySuite>,
     renderConfig: BookshelfListRenderConfig,
     onSearchClick: () -> Unit,
-    onSuiteClick: () -> Unit
+    onSuiteClick: () -> Unit,
+    onSuiteSelect: (DiscoverySuite) -> Unit
 ) {
     val context = LocalContext.current
     val palette = renderConfig.palette
@@ -525,12 +566,26 @@ private fun DiscoverySuiteSearchBar(
         ) {
             AppManagementMoreActionButton(
                 actionsProvider = {
-                    listOf(
-                        AppManagementMenuAction(
-                            text = context.getString(R.string.discovery_suite_manage),
-                            onClick = onSuiteClick
+                    buildList {
+                        add(
+                            AppManagementMenuAction(
+                                text = context.getString(R.string.discovery_suite_manage),
+                                onClick = onSuiteClick
+                            )
                         )
-                    )
+                        suites.forEach { suite ->
+                            add(
+                                AppManagementMenuAction(
+                                    text = if (suite.id == selectedSuiteId) {
+                                        "当前 ${suite.displayName}"
+                                    } else {
+                                        suite.displayName
+                                    },
+                                    onClick = { onSuiteSelect(suite) }
+                                )
+                            )
+                        }
+                    }
                 },
                 palette = managementPalette,
                 contentDescription = context.getString(R.string.more_menu),
@@ -593,6 +648,7 @@ private fun DiscoverySuiteEmptyState(
         Box(
             modifier = Modifier
                 .height(42.dp)
+                .clip(RoundedCornerShape(palette.actionRadius))
                 .appSettingPanelBackground(
                     normalColor = palette.rowColor,
                     panelImage = renderConfig.panelImage,
@@ -600,19 +656,16 @@ private fun DiscoverySuiteEmptyState(
                     radiusPx = with(LocalDensity.current) { palette.actionRadius.toPx() }
                 )
                 .clickable(onClick = onActionClick)
+                .padding(horizontal = 18.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier.padding(horizontal = 18.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = action,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp,
-                    fontFamily = palette.bodyFontFamily,
-                    color = palette.accent
-                )
-            }
+            Text(
+                text = action,
+                fontWeight = FontWeight.Medium,
+                fontSize = 15.sp,
+                fontFamily = palette.bodyFontFamily,
+                color = palette.accent
+            )
         }
     }
 }
@@ -635,8 +688,7 @@ private fun DiscoverySuiteWidgetSection(
 ) {
     val context = LocalContext.current
     val palette = renderConfig.palette
-    val showTitle = widget.type == DiscoverySuiteWidgetType.RandomBooks.value ||
-        widget.type == DiscoverySuiteWidgetType.WaterfallBooks.value
+    val showTitle = widget.type == DiscoverySuiteWidgetType.RandomBooks.value
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -828,7 +880,7 @@ private fun DiscoverySuiteWaterfallBookCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.75f)
+                .aspectRatio(BOOK_COVER_ASPECT_RATIO)
                 .shadow(2.dp, coverShape, clip = false)
                 .clip(coverShape)
                 .onGloballyPositioned { coordinates ->
@@ -1227,11 +1279,11 @@ private fun DiscoverySuiteRankedListBookRow(
             color = if (rank <= 3) palette.accent else palette.primaryText.copy(alpha = 0.88f)
         )
         Box(
-            modifier = Modifier
-                .width(40.dp)
-                .height(54.dp)
-                .shadow(3.dp, coverShape, clip = false)
-                .clip(coverShape)
+                modifier = Modifier
+                    .width(40.dp)
+                    .aspectRatio(BOOK_COVER_ASPECT_RATIO)
+                    .shadow(3.dp, coverShape, clip = false)
+                    .clip(coverShape)
                 .onGloballyPositioned { coordinates ->
                     coverBounds = coordinates.boundsInRoot()
                 }
@@ -1418,7 +1470,7 @@ private fun DiscoverySuiteCoverBookItem(
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
-                .aspectRatio(0.72f)
+                .aspectRatio(BOOK_COVER_ASPECT_RATIO)
                 .shadow(
                     elevation = 4.dp,
                     shape = coverShape,
@@ -1476,6 +1528,33 @@ private fun String.compactTagTitle(): String {
 
 private fun SearchBook.displayKey(): String {
     return "$origin|$bookUrl|${coverUrl.orEmpty()}"
+}
+
+private fun BookshelfListRenderConfig.withSuiteOpacityMultiplier(
+    context: Context,
+    multiplier: Float
+): BookshelfListRenderConfig {
+    val safeMultiplier = multiplier.coerceIn(1f, 4f)
+    if (safeMultiplier <= 1.001f) return this
+    return copy(
+        palette = palette.copy(
+            rowColor = palette.rowColor.withAlphaMultiplier(safeMultiplier),
+            rowPressedColor = palette.rowPressedColor.withAlphaMultiplier(safeMultiplier),
+            borderColor = palette.borderColor?.withAlphaMultiplier(safeMultiplier)
+        ),
+        panelImage = UiCorner.panelImageDrawable(
+            context = context,
+            radius = palette.panelRadiusPx,
+            alphaMultiplier = safeMultiplier
+        )
+    )
+}
+
+private fun Int.withAlphaMultiplier(multiplier: Float): Int {
+    val alpha = android.graphics.Color.alpha(this)
+    if (alpha >= 255) return this
+    val nextAlpha = (alpha * multiplier).roundToInt().coerceIn(alpha, 255)
+    return (this and 0x00ffffff) or (nextAlpha shl 24)
 }
 
 private fun CoverImageView.loadSuiteThumb(
@@ -1621,7 +1700,7 @@ private fun DiscoverySuiteLegacyCoverBookItem(
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.72f)
+                .aspectRatio(BOOK_COVER_ASPECT_RATIO)
                 .clip(RoundedCornerShape(palette.actionRadius)),
             factory = { context -> CoverImageView(context) },
             update = { view -> view.load(book, AppConfig.loadCoverOnlyWifi, fragment, lifecycle) },
