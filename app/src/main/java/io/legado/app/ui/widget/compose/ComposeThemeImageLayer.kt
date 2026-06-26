@@ -32,7 +32,8 @@ import java.io.File
 fun ComposeThemeImageLayer(
     state: ComposeThemeImageState,
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 0.dp
+    cornerRadius: Dp = 0.dp,
+    stableWidthScale: Boolean = false
 ) {
     val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
     Box(
@@ -46,7 +47,8 @@ fun ComposeThemeImageLayer(
                 file = state.file,
                 animate = state.animated,
                 alpha = state.alpha,
-                crop = state.crop
+                crop = state.crop,
+                stableWidthScale = stableWidthScale
             )
         }
     }
@@ -57,7 +59,8 @@ private fun ComposeThemeImage(
     file: File,
     animate: Boolean,
     alpha: Float,
-    crop: ComposeThemeImageCrop?
+    crop: ComposeThemeImageCrop?,
+    stableWidthScale: Boolean
 ) {
     // 在 composition 内缓存 loadKey，避免每次重组都执行 file.lastModified() 磁盘 IO
     val loadKey = remember(file.absolutePath, animate, crop) {
@@ -77,6 +80,7 @@ private fun ComposeThemeImage(
         },
         update = { imageView ->
             imageView.alpha = alpha.coerceIn(0f, 1f)
+            imageView.stableWidthScale = stableWidthScale
             imageView.crop = crop
             if (imageView.loadKey == loadKey) {
                 (imageView.drawable as? Animatable)?.start()
@@ -84,7 +88,7 @@ private fun ComposeThemeImage(
             }
             imageView.loadKey = loadKey
             val requestManager = Glide.with(imageView.context.applicationContext ?: imageView.context)
-            if (crop != null) {
+            if (crop != null || stableWidthScale) {
                 imageView.scaleType = ImageView.ScaleType.MATRIX
                 if (animate) {
                     requestManager.load(file)
@@ -115,6 +119,11 @@ private fun ComposeThemeImage(
 private class CropAwareImageView(context: Context) : AppCompatImageView(context) {
 
     var loadKey: ComposeThemeImageLoadKey? = null
+    var stableWidthScale: Boolean = false
+        set(value) {
+            field = value
+            applyCropMatrixIfNeeded()
+        }
 
     var crop: ComposeThemeImageCrop? = null
         set(value) {
@@ -165,17 +174,33 @@ private class CropAwareImageView(context: Context) : AppCompatImageView(context)
     }
 
     private fun applyCropMatrixIfNeeded() {
-        val crop = crop ?: return
+        val crop = crop
+        if (crop == null && !stableWidthScale) return
         if (scaleType != ImageView.ScaleType.MATRIX) return
         val drawable = drawable ?: return
         val drawableWidth = drawable.intrinsicWidth.takeIf { it > 0 } ?: return
         val drawableHeight = drawable.intrinsicHeight.takeIf { it > 0 } ?: return
         val viewWidth = width.takeIf { it > 0 } ?: return
         val viewHeight = height.takeIf { it > 0 } ?: return
-        val cropRect = crop.toRect(drawableWidth.toFloat(), drawableHeight.toFloat()) ?: return
-        val scale = maxOf(viewWidth / cropRect.width(), viewHeight / cropRect.height())
+        val cropRect = crop?.toRect(drawableWidth.toFloat(), drawableHeight.toFloat())
+            ?: RectF(0f, 0f, drawableWidth.toFloat(), drawableHeight.toFloat())
+        val widthScale = viewWidth / cropRect.width()
+        val scale = if (stableWidthScale) {
+            val heightScale = if (cropRect.height() * widthScale < viewHeight) {
+                viewHeight / cropRect.height()
+            } else {
+                0f
+            }
+            maxOf(widthScale, heightScale)
+        } else {
+            maxOf(widthScale, viewHeight / cropRect.height())
+        }
         val dx = -cropRect.left * scale + (viewWidth - cropRect.width() * scale) / 2f
-        val dy = -cropRect.top * scale + (viewHeight - cropRect.height() * scale) / 2f
+        val dy = if (stableWidthScale) {
+            -cropRect.top * scale
+        } else {
+            -cropRect.top * scale + (viewHeight - cropRect.height() * scale) / 2f
+        }
         imageMatrix = Matrix().apply {
             setScale(scale, scale)
             postTranslate(dx, dy)

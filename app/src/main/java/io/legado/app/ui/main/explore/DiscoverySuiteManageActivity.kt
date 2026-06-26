@@ -193,14 +193,9 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
                             val suite = configState.suites.firstOrNull { it.id == mode.suiteId }
                             DiscoverySuiteDetailScreen(
                                 suite = suite,
-                                selectedSuiteId = selectedSuiteIdState,
                                 loadingOptions = loadingTagsState,
                                 sourceCount = sourceTagOptionsState.size,
                                 tagOptionCount = sourceTagOptionsState.sumOf { it.tags.size },
-                                onSetCurrentSuite = ::selectSuite,
-                                onRenameSuite = ::showRenameSuiteDialog,
-                                onAliasSuite = ::showSuiteAliasDialog,
-                                onDeleteSuite = ::confirmDeleteSuite,
                                 onOpacityMultiplierChange = ::updateSuiteOpacityMultiplier,
                                 onEditWidget = { targetSuite, targetWidget ->
                                     openWidgetEditor(targetSuite, targetWidget)
@@ -672,21 +667,15 @@ private fun DiscoverySuiteListScreen(
 @Composable
 private fun DiscoverySuiteDetailScreen(
     suite: DiscoverySuite?,
-    selectedSuiteId: String,
     loadingOptions: Boolean,
     sourceCount: Int,
     tagOptionCount: Int,
-    onSetCurrentSuite: (DiscoverySuite) -> Unit,
-    onRenameSuite: (DiscoverySuite) -> Unit,
-    onAliasSuite: (DiscoverySuite) -> Unit,
-    onDeleteSuite: (DiscoverySuite) -> Unit,
     onOpacityMultiplierChange: (DiscoverySuite, Float) -> Unit,
     onEditWidget: (DiscoverySuite, DiscoverySuiteWidget) -> Unit,
     onDeleteWidget: (DiscoverySuite, DiscoverySuiteWidget) -> Unit,
     onReorderWidgets: (DiscoverySuite, List<DiscoverySuiteWidget>) -> Unit
 ) {
     val renderConfig = rememberBookshelfListRenderConfig()
-    val managementPalette = rememberAppManagementPalette()
     val palette = renderConfig.palette
     val listState = rememberLazyListState()
     val widgetSnapshot = suite?.widgets.orEmpty()
@@ -697,130 +686,100 @@ private fun DiscoverySuiteDetailScreen(
     LaunchedEffect(suite?.id, widgetSignature) {
         orderedWidgets = widgetSnapshot
     }
-    val widgetStartIndex = 1
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
-        val fromIndex = from.index - widgetStartIndex
-        val toIndex = to.index - widgetStartIndex
+        val fromIndex = from.index
+        val toIndex = to.index
         if (fromIndex in orderedWidgets.indices && toIndex in orderedWidgets.indices) {
             orderedWidgets = orderedWidgets.toMutableList().apply {
                 add(toIndex, removeAt(fromIndex))
             }
         }
     }
-    LazyColumn(
-        state = listState,
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .navigationBarsPadding(),
-        contentPadding = PaddingValues(bottom = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .navigationBarsPadding()
     ) {
-        item {
+        Text(
+            text = if (loadingOptions) {
+                "Tag 加载中..."
+            } else {
+                "${sourceCount} 个书源 / ${tagOptionCount} 个 Tag"
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 18.dp, top = 14.dp, end = 18.dp),
+            fontSize = 13.sp,
+            fontFamily = palette.bodyFontFamily,
+            color = palette.secondaryText
+        )
+        if (suite == null) {
             Text(
-                text = if (loadingOptions) {
-                    "Tag 加载中..."
-                } else {
-                    "${sourceCount} 个书源 / ${tagOptionCount} 个 Tag"
-                },
+                text = "套件不存在",
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 18.dp, top = 14.dp, end = 18.dp),
-                fontSize = 13.sp,
+                    .padding(horizontal = 18.dp, vertical = 48.dp),
+                fontSize = 16.sp,
                 fontFamily = palette.bodyFontFamily,
                 color = palette.secondaryText
             )
-        }
-        if (suite == null) {
-            item {
+        } else {
+            SuiteOpacityMultiplierRow(
+                suite = suite,
+                renderConfig = renderConfig,
+                onValueChange = { value -> onOpacityMultiplierChange(suite, value) }
+            )
+            if (orderedWidgets.isEmpty()) {
                 Text(
-                    text = "套件不存在",
+                    text = "还没有控件",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 48.dp),
-                    fontSize = 16.sp,
+                        .padding(horizontal = 18.dp, vertical = 24.dp),
+                    fontSize = 15.sp,
                     fontFamily = palette.bodyFontFamily,
                     color = palette.secondaryText
                 )
-            }
-        } else {
-            item {
-                SuiteOpacityMultiplierRow(
-                    suite = suite,
-                    renderConfig = renderConfig,
-                    onValueChange = { value -> onOpacityMultiplierChange(suite, value) }
-                )
-            }
-            if (false) {
-            item {
-                val isCurrent = suite.id == selectedSuiteId
-                AppManagementListRow(
-                    title = suite.displayName,
-                    subtitle = if (isCurrent) {
-                        "当前套件 · ${suite.widgets.size} 个控件"
-                    } else {
-                        "未启用 · ${suite.widgets.size} 个控件"
-                    },
-                    selected = isCurrent,
-                    selectionVisible = false,
-                    palette = managementPalette,
-                    minHeight = 58.dp,
-                    moreActions = buildList {
-                        if (!isCurrent) {
-                            add(AppManagementMenuAction(text = "设为当前", onClick = { onSetCurrentSuite(suite) }))
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentPadding = PaddingValues(bottom = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(orderedWidgets, key = { it.id }) { widget ->
+                        ReorderableItem(reorderState, key = widget.id) {
+                            WidgetManageRow(
+                                widget = widget,
+                                renderConfig = renderConfig,
+                                onEdit = { onEditWidget(suite, widget) },
+                                onDelete = { onDeleteWidget(suite, widget) },
+                                dragHandle = {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 4.dp)
+                                            .size(42.dp)
+                                            .draggableHandle(
+                                                onDragStopped = {
+                                                    onReorderWidgets(suite, orderedWidgets)
+                                                }
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_drag_handle),
+                                            contentDescription = stringResource(R.string.sort),
+                                            tint = palette.secondaryText,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            )
                         }
-                        add(AppManagementMenuAction(text = "重命名", onClick = { onRenameSuite(suite) }))
-                        add(AppManagementMenuAction(text = "别名", onClick = { onAliasSuite(suite) }))
-                        add(AppManagementMenuAction(text = "删除", danger = true, onClick = { onDeleteSuite(suite) }))
                     }
-                )
-            }
-            }
-            if (orderedWidgets.isEmpty()) {
-                item {
-                    Text(
-                        text = "还没有控件",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 24.dp),
-                        fontSize = 15.sp,
-                        fontFamily = palette.bodyFontFamily,
-                        color = palette.secondaryText
-                    )
                 }
-            }
-            items(orderedWidgets, key = { it.id }) { widget ->
-                ReorderableItem(reorderState, key = widget.id) {
-                    WidgetManageRow(
-                        widget = widget,
-                        renderConfig = renderConfig,
-                        onEdit = { onEditWidget(suite, widget) },
-                        onDelete = { onDeleteWidget(suite, widget) },
-                        dragHandle = {
-                            Box(
-                                modifier = Modifier
-                                    .padding(end = 4.dp)
-                                    .size(42.dp)
-                                    .draggableHandle(
-                                        onDragStopped = {
-                                            onReorderWidgets(suite, orderedWidgets)
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_drag_handle),
-                                    contentDescription = stringResource(R.string.sort),
-                                    tint = palette.secondaryText,
-                                    modifier = Modifier.size(24.dp)
-                                )
                             }
-                        }
-                    )
-                }
-            }
-        }
-        item {
-            Spacer(modifier = Modifier.height(18.dp))
         }
     }
 }

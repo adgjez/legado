@@ -9,7 +9,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.getLocalUri
-import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SystemUtils
 import io.legado.app.utils.compressPreservingAlpha
@@ -18,7 +17,9 @@ import io.legado.app.utils.preferredCoverExtension
 import io.legado.app.utils.printOnDebug
 import splitties.init.appCtx
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.FilterInputStream
 import java.io.InputStream
 import kotlin.math.ceil
 
@@ -164,13 +165,39 @@ class PdfFile(var book: Book) {
             val index = href.toInt()
             val bitmap = openPdfPage(pdfRenderer!!, index)
             if (bitmap != null) {
-                BitmapUtils.toInputStream(bitmap)
+                bitmap.toTempJpegInputStream()
             } else {
                 null
             }
 
         } catch (_: Exception) {
             return null
+        }
+    }
+
+    private fun Bitmap.toTempJpegInputStream(): InputStream {
+        val file = File.createTempFile("pdf_page_", ".jpg", appCtx.cacheDir)
+        try {
+            FileOutputStream(file).use { output ->
+                check(compress(Bitmap.CompressFormat.JPEG, 90, output)) {
+                    "PDF page image compress failed"
+                }
+            }
+            val input = FileInputStream(file)
+            return object : FilterInputStream(input) {
+                override fun close() {
+                    try {
+                        super.close()
+                    } finally {
+                        file.delete()
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            file.delete()
+            throw e
+        } finally {
+            if (!isRecycled) recycle()
         }
     }
 

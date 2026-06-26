@@ -2146,6 +2146,9 @@ Selected text or question:
     <string name="top_bar_filter_default">Filter bar default state</string>
     <string name="top_bar_filter_default_collapsed">Collapsed by default</string>
     <string name="top_bar_filter_default_expanded">Expanded by default</string>
+    <string name="top_bar_filter_toggle_button">Expand arrow button</string>
+    <string name="top_bar_filter_toggle_show">Show</string>
+    <string name="top_bar_filter_toggle_hide_when_expanded">Hide when expanded</string>
     <string name="top_bar_follow_theme">Follow theme</string>
     <string name="read_record_top_bar_summary">Today %1$s · This month %2$s</string>
     <string name="read_record_select_year">Select year</string>

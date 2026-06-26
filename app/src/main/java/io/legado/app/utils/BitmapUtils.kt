@@ -175,16 +175,16 @@ object BitmapUtils {
         width: Int,
         height: Int
     ): Bitmap? {
-        var inputStream = context.assets.open(fileNameInAssets)
-        return inputStream.use {
+        context.assets.open(fileNameInAssets).use { inputStream ->
             val op = BitmapFactory.Options()
             // inJustDecodeBounds如果设置为true,仅仅返回图片实际的宽和高,宽和高是赋值给opts.outWidth,opts.outHeight;
             op.inJustDecodeBounds = true
             BitmapFactory.decodeStream(inputStream, null, op) //获取尺寸信息
             op.inSampleSize = calculateInSampleSize(op, width, height)
-            inputStream = context.assets.open(fileNameInAssets)
             op.inJustDecodeBounds = false
-            BitmapFactory.decodeStream(inputStream, null, op)
+            return context.assets.open(fileNameInAssets).use { decodeStream ->
+                BitmapFactory.decodeStream(decodeStream, null, op)
+            }
         }
     }
 
@@ -340,6 +340,7 @@ fun Bitmap.stackBlur(radius: Int = 8): Bitmap {
 fun Bitmap.getMeanColor(): Int {
     val width: Int = this.width
     val height: Int = this.height
+    if (width <= 0 || height <= 0 || isRecycled) return Color.TRANSPARENT
     var pixel: Int
     var pixelSumRed = 0
     var pixelSumBlue = 0
@@ -347,8 +348,8 @@ fun Bitmap.getMeanColor(): Int {
     for (i in 0..99) {
         for (j in 70..99) {
             pixel = this.getPixel(
-                (i * width / 100.toFloat()).roundToInt(),
-                (j * height / 100.toFloat()).roundToInt()
+                (i * width / 100.toFloat()).roundToInt().coerceIn(0, width - 1),
+                (j * height / 100.toFloat()).roundToInt().coerceIn(0, height - 1)
             )
             pixelSumRed += Color.red(pixel)
             pixelSumGreen += Color.green(pixel)

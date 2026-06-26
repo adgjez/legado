@@ -85,6 +85,7 @@ object Restore {
     private val mutex = Mutex()
 
     private const val TAG = "Restore"
+    private const val RESTORE_INSERT_BATCH_SIZE = 500
 
     internal val backgroundAssetDirNames = arrayOf(
         PreferKey.bgImage,
@@ -158,16 +159,16 @@ object Restore {
                     newBooks.add(book)
                 }
             }
-            appDb.bookDao.insert(*newBooks.toTypedArray())
+            insertRestored(newBooks) { appDb.bookDao.insert(*it) }
         }
         fileToListT<Bookmark>(path, "bookmark.json")?.let {
-            appDb.bookmarkDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.bookmarkDao.insert(*items) }
         }
         fileToListT<BookGroup>(path, "bookGroup.json")?.let {
-            appDb.bookGroupDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.bookGroupDao.insert(*items) }
         }
         fileToListT<BookSource>(path, "bookSource.json")?.let {
-            appDb.bookSourceDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.bookSourceDao.insert(*items) }
         } ?: run {
             val bookSourceFile = File(path, "bookSource.json")
             if (bookSourceFile.exists()) {
@@ -176,32 +177,32 @@ object Restore {
             }
         }
         fileToListT<RssSource>(path, "rssSources.json")?.let {
-            appDb.rssSourceDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.rssSourceDao.insert(*items) }
         }
         fileToListT<RssStar>(path, "rssStar.json")?.let {
-            appDb.rssStarDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.rssStarDao.insert(*items) }
         }
         fileToListT<ReplaceRule>(path, "replaceRule.json")?.let {
-            appDb.replaceRuleDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.replaceRuleDao.insert(*items) }
         }
         fileToListT<SearchKeyword>(path, "searchHistory.json")?.let {
-            appDb.searchKeywordDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.searchKeywordDao.insert(*items) }
         }
         fileToListT<RuleSub>(path, "sourceSub.json")?.let {
-            appDb.ruleSubDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.ruleSubDao.insert(*items) }
         }
         fileToListT<TxtTocRule>(path, "txtTocRule.json")?.let {
-            appDb.txtTocRuleDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.txtTocRuleDao.insert(*items) }
         }
         fileToListT<HttpTTS>(path, "httpTTS.json")?.let {
-            appDb.httpTTSDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.httpTTSDao.insert(*items) }
         }
         fileToListT<DictRule>(path, "dictRule.json")?.let {
-            appDb.dictRuleDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.dictRuleDao.insert(*items) }
         }
         fileToListT<KeyboardAssist>(path, "keyboardAssists.json")?.let {
             appDb.keyboardAssistsDao.deleteAll() //先删除所有,保证和备份数据一样
-            appDb.keyboardAssistsDao.insert(*it.toTypedArray())
+            insertRestored(it) { items -> appDb.keyboardAssistsDao.insert(*items) }
         }
         fileToListT<ReadRecord>(path, "readRecord.json")?.let {
             it.forEach { readRecord ->
@@ -226,7 +227,7 @@ object Restore {
                 json = aes.decryptStr(json)
             }
             GSON.fromJsonArray<Server>(json).getOrNull()?.let {
-                appDb.serverDao.insert(*it.toTypedArray())
+                insertRestored(it) { items -> appDb.serverDao.insert(*items) }
             }
         }?.onFailure {
             AppLog.put("恢复服务器配置出错\n${it.localizedMessage}", it)
@@ -448,6 +449,15 @@ object Restore {
         source.putVariable(item.sourceVariable?.takeIf { it.isNotBlank() })
         item.sourceValues.forEach { (key, value) ->
             source.put(key, value)
+        }
+    }
+
+    private inline fun <reified T> insertRestored(
+        items: List<T>,
+        insert: (Array<T>) -> Unit
+    ) {
+        items.chunked(RESTORE_INSERT_BATCH_SIZE).forEach { chunk ->
+            insert(chunk.toTypedArray())
         }
     }
 

@@ -233,7 +233,7 @@ private fun BookshelfStatusBadge(item: BookshelfBookItemUi) {
         Color.Black.copy(alpha = 0.55f)
     }
     Text(
-        text = item.unreadCount.coerceAtMost(999).toString(),
+        text = item.unreadCount.coerceAtMost(99999).toString(),
         modifier = Modifier
             .padding(5.dp)
             .clip(CircleShape)

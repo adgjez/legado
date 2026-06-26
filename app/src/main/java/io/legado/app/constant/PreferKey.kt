@@ -55,6 +55,7 @@ object PreferKey {
     const val mergeDiscoveryRss = "mergeDiscoveryRss"
     const val mergedDiscoveryRssTarget = "mergedDiscoveryRssTarget"
     const val modernDiscoverySourceUrl = "modernDiscoverySourceUrl"
+    const val modernDiscoveryTagUrls = "modernDiscoveryTagUrls"
     const val modernRssSourceUrl = "modernRssSourceUrl"
     const val paragraphBubblePackage = "paragraphBubblePackage"
     const val aiAssistantEnabled = "aiAssistantEnabled"

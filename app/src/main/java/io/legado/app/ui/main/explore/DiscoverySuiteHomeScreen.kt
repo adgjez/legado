@@ -3,7 +3,7 @@ package io.legado.app.ui.main.explore
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -88,6 +88,8 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private const val BOOK_COVER_ASPECT_RATIO = 0.75f
+private val DiscoverySuiteEmphasizedEasing = CubicBezierEasing(0.20f, 0.00f, 0.00f, 1.00f)
+private val DiscoverySuiteStandardEasing = CubicBezierEasing(0.20f, 0.00f, 0.20f, 1.00f)
 
 @Composable
 fun DiscoverySuiteHomeScreen(
@@ -191,21 +193,23 @@ fun DiscoverySuiteHomeScreen(
                     } else {
                         selectedSuite.widgets.forEach { widget ->
                             item(key = widget.id) {
-                                DiscoverySuiteWidgetSection(
-                                    widget = widget,
-                                    books = widgetBooks[widget.id].orEmpty(),
-                                    rankedBooks = rankedWidgetBooks[widget.id].orEmpty(),
-                                    isLoading = widget.id in loadingWidgetIds,
-                                    renderConfig = renderConfig,
-                                    onBookClick = onBookClick,
-                                    onBookPreview = onBookPreview,
-                                    onTagClick = onTagClick,
-                                    onRefreshWidget = onRefreshWidget,
-                                    onHorizontalLoadMore = onHorizontalLoadMore,
-                                    onRankedLoadMore = onRankedLoadMore,
-                                    fragment = fragment,
-                                    lifecycle = lifecycle
-                                )
+                                DiscoverySuiteAnimatedWidgetContainer(widgetKey = widget.id) {
+                                    DiscoverySuiteWidgetSection(
+                                        widget = widget,
+                                        books = widgetBooks[widget.id].orEmpty(),
+                                        rankedBooks = rankedWidgetBooks[widget.id].orEmpty(),
+                                        isLoading = widget.id in loadingWidgetIds,
+                                        renderConfig = renderConfig,
+                                        onBookClick = onBookClick,
+                                        onBookPreview = onBookPreview,
+                                        onTagClick = onTagClick,
+                                        onRefreshWidget = onRefreshWidget,
+                                        onHorizontalLoadMore = onHorizontalLoadMore,
+                                        onRankedLoadMore = onRankedLoadMore,
+                                        fragment = fragment,
+                                        lifecycle = lifecycle
+                                    )
+                                }
                             }
                         }
                     }
@@ -217,6 +221,7 @@ fun DiscoverySuiteHomeScreen(
             rootWidth = maxWidth,
             rootHeight = maxHeight,
             renderConfig = renderConfig,
+            opacityMultiplier = opacityMultiplier,
             fragment = fragment,
             lifecycle = lifecycle,
             onDismissed = { previewState = null },
@@ -225,6 +230,33 @@ fun DiscoverySuiteHomeScreen(
                 onBookPreviewOpen(book)
             }
         )
+    }
+}
+
+@Composable
+private fun DiscoverySuiteAnimatedWidgetContainer(
+    widgetKey: String,
+    content: @Composable () -> Unit
+) {
+    val density = LocalDensity.current
+    val progress = remember(widgetKey) { Animatable(if (AppConfig.isEInkMode) 1f else 0f) }
+    LaunchedEffect(widgetKey) {
+        if (AppConfig.isEInkMode) {
+            progress.snapTo(1f)
+        } else {
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 260, easing = DiscoverySuiteEmphasizedEasing)
+            )
+        }
+    }
+    Box(
+        modifier = Modifier.graphicsLayer {
+            alpha = 0.88f + 0.12f * progress.value
+            translationY = with(density) { 10.dp.toPx() } * (1f - progress.value)
+        }
+    ) {
+        content()
     }
 }
 
@@ -239,6 +271,7 @@ private fun DiscoverySuiteBookPreviewOverlay(
     rootWidth: Dp,
     rootHeight: Dp,
     renderConfig: BookshelfListRenderConfig,
+    opacityMultiplier: Float,
     fragment: Fragment,
     lifecycle: Lifecycle,
     onDismissed: () -> Unit,
@@ -253,7 +286,7 @@ private fun DiscoverySuiteBookPreviewOverlay(
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 270, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 300, easing = DiscoverySuiteEmphasizedEasing)
         )
     }
     fun dismiss() {
@@ -262,7 +295,7 @@ private fun DiscoverySuiteBookPreviewOverlay(
         scope.launch {
             progress.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 210, easing = DiscoverySuiteStandardEasing)
             )
             onDismissed()
         }
@@ -294,6 +327,7 @@ private fun DiscoverySuiteBookPreviewOverlay(
     val height = lerpFloat(origin.height, targetHeightPx, p)
     val radius = lerpFloat(6f, with(density) { renderConfig.palette.panelRadius.toPx() }, p)
     val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
+    val scrimAlpha = 0.34f.withSuiteAlphaMultiplier(opacityMultiplier, maxAlpha = 0.52f)
 
     Box(
         modifier = Modifier
@@ -303,7 +337,7 @@ private fun DiscoverySuiteBookPreviewOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.38f * p))
+                .background(Color.Black.copy(alpha = scrimAlpha * p))
                 .clickable { dismiss() }
         )
         Box(
@@ -330,6 +364,7 @@ private fun DiscoverySuiteBookPreviewOverlay(
             DiscoverySuiteBookPreviewContent(
                 book = state.book,
                 renderConfig = renderConfig,
+                opacityMultiplier = opacityMultiplier,
                 fragment = fragment,
                 lifecycle = lifecycle,
                 contentAlpha = contentAlpha,
@@ -349,6 +384,7 @@ private fun DiscoverySuiteBookPreviewOverlay(
 private fun DiscoverySuiteBookPreviewContent(
     book: SearchBook,
     renderConfig: BookshelfListRenderConfig,
+    opacityMultiplier: Float,
     fragment: Fragment,
     lifecycle: Lifecycle,
     contentAlpha: Float,
@@ -377,8 +413,15 @@ private fun DiscoverySuiteBookPreviewContent(
             ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
-                    factory = { viewContext -> CoverImageView(viewContext) },
-                    update = { view -> view.loadSuiteThumb(book, fragment, lifecycle) },
+                    factory = { viewContext ->
+                        CoverImageView(viewContext).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                        }
+                    },
+                    update = { view ->
+                        view.scaleType = ImageView.ScaleType.CENTER_CROP
+                        view.loadSuiteThumb(book, fragment, lifecycle)
+                    },
                     onRelease = { it.releaseComposeImage() }
                 )
             }
@@ -433,6 +476,7 @@ private fun DiscoverySuiteBookPreviewContent(
             DiscoverySuitePreviewAction(
                 text = context.getString(R.string.close),
                 renderConfig = renderConfig,
+                opacityMultiplier = opacityMultiplier,
                 modifier = Modifier.weight(1f),
                 emphatic = false,
                 onClick = onClose
@@ -440,6 +484,7 @@ private fun DiscoverySuiteBookPreviewContent(
             DiscoverySuitePreviewAction(
                 text = context.getString(R.string.read_record_open_book_info),
                 renderConfig = renderConfig,
+                opacityMultiplier = opacityMultiplier,
                 modifier = Modifier.weight(1f),
                 emphatic = true,
                 onClick = onOpen
@@ -472,18 +517,24 @@ private fun DiscoverySuitePreviewBackHandler(
 private fun DiscoverySuitePreviewAction(
     text: String,
     renderConfig: BookshelfListRenderConfig,
+    opacityMultiplier: Float,
     modifier: Modifier = Modifier,
     emphatic: Boolean,
     onClick: () -> Unit
 ) {
     val palette = renderConfig.palette
+    val backgroundAlpha = if (emphatic) {
+        0.16f.withSuiteAlphaMultiplier(opacityMultiplier, maxAlpha = 0.42f)
+    } else {
+        0.08f.withSuiteAlphaMultiplier(opacityMultiplier, maxAlpha = 0.28f)
+    }
     Box(
         modifier = modifier
             .height(42.dp)
             .clip(RoundedCornerShape(palette.actionRadius))
             .background(
-                if (emphatic) palette.accent.copy(alpha = 0.16f)
-                else palette.secondaryText.copy(alpha = 0.08f)
+                if (emphatic) palette.accent.copy(alpha = backgroundAlpha)
+                else palette.secondaryText.copy(alpha = backgroundAlpha)
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -1290,8 +1341,15 @@ private fun DiscoverySuiteRankedListBookRow(
         ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
-                factory = { context -> CoverImageView(context) },
-                update = { view -> view.loadSuiteThumb(book, fragment, lifecycle) },
+                factory = { context ->
+                    CoverImageView(context).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                    }
+                },
+                update = { view ->
+                    view.scaleType = ImageView.ScaleType.CENTER_CROP
+                    view.loadSuiteThumb(book, fragment, lifecycle)
+                },
                 onRelease = { it.releaseComposeImage() }
             )
         }
@@ -1395,7 +1453,7 @@ private fun DiscoverySuiteFlippingCoverBookItem(
         rotation.snapTo(0f)
         rotation.animateTo(
             targetValue = 180f,
-            animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 560, easing = DiscoverySuiteEmphasizedEasing)
         )
         frontBook = book
         backBook = null
@@ -1489,8 +1547,15 @@ private fun DiscoverySuiteCoverBookItem(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(coverShape),
-                factory = { context -> CoverImageView(context) },
-                update = { view -> view.loadSuiteThumb(book, fragment, lifecycle) },
+                factory = { context ->
+                    CoverImageView(context).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                    }
+                },
+                update = { view ->
+                    view.scaleType = ImageView.ScaleType.CENTER_CROP
+                    view.loadSuiteThumb(book, fragment, lifecycle)
+                },
                 onRelease = { it.releaseComposeImage() }
             )
             rank?.let {
@@ -1555,6 +1620,14 @@ private fun Int.withAlphaMultiplier(multiplier: Float): Int {
     if (alpha >= 255) return this
     val nextAlpha = (alpha * multiplier).roundToInt().coerceIn(alpha, 255)
     return (this and 0x00ffffff) or (nextAlpha shl 24)
+}
+
+private fun Float.withSuiteAlphaMultiplier(
+    multiplier: Float,
+    maxAlpha: Float = 1f
+): Float {
+    val safeMultiplier = multiplier.coerceIn(1f, 4f)
+    return (this * safeMultiplier).coerceIn(this, maxAlpha.coerceIn(this, 1f))
 }
 
 private fun CoverImageView.loadSuiteThumb(
@@ -1702,8 +1775,15 @@ private fun DiscoverySuiteLegacyCoverBookItem(
                 .fillMaxWidth()
                 .aspectRatio(BOOK_COVER_ASPECT_RATIO)
                 .clip(RoundedCornerShape(palette.actionRadius)),
-            factory = { context -> CoverImageView(context) },
-            update = { view -> view.load(book, AppConfig.loadCoverOnlyWifi, fragment, lifecycle) },
+            factory = { context ->
+                CoverImageView(context).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                }
+            },
+            update = { view ->
+                view.scaleType = ImageView.ScaleType.CENTER_CROP
+                view.loadSuiteThumb(book, fragment, lifecycle)
+            },
             onRelease = { it.releaseComposeImage() }
         )
         Text(

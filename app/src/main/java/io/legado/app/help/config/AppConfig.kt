@@ -399,6 +399,35 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             }
         }
 
+    fun modernDiscoveryTagUrl(sourceUrl: String?): String? {
+        val sourceKey = sourceUrl?.takeIf { it.isNotBlank() } ?: return null
+        return modernDiscoveryTagUrlMap()[sourceKey]?.takeIf { it.isNotBlank() }
+    }
+
+    fun rememberModernDiscoveryTagUrl(sourceUrl: String?, tagUrl: String?) {
+        val sourceKey = sourceUrl?.takeIf { it.isNotBlank() } ?: return
+        val current = modernDiscoveryTagUrlMap().toMutableMap()
+        val normalizedTag = tagUrl?.takeIf { it.isNotBlank() }
+        if (normalizedTag == null) {
+            current.remove(sourceKey)
+        } else {
+            current[sourceKey] = normalizedTag
+        }
+        if (current.isEmpty()) {
+            appCtx.removePref(PreferKey.modernDiscoveryTagUrls)
+        } else {
+            appCtx.putPrefString(PreferKey.modernDiscoveryTagUrls, GSON.toJson(current))
+        }
+    }
+
+    private fun modernDiscoveryTagUrlMap(): Map<String, String> {
+        return GSON.fromJsonObject<Map<String, String>>(
+            appCtx.getPrefString(PreferKey.modernDiscoveryTagUrls)
+        ).getOrDefault(emptyMap())
+            .filterKeys { it.isNotBlank() }
+            .filterValues { it.isNotBlank() }
+    }
+
     var modernRssSourceUrl: String?
         get() = appCtx.getPrefString(PreferKey.modernRssSourceUrl)
         set(value) {

@@ -302,7 +302,7 @@ private fun BookshelfUnreadBadge(
         Color.Black.copy(alpha = 0.58f)
     }
     Text(
-        text = item.unreadCount.coerceAtMost(999).toString(),
+        text = item.unreadCount.coerceAtMost(99999).toString(),
         modifier = modifier
             .clip(CircleShape)
             .background(badgeColor)

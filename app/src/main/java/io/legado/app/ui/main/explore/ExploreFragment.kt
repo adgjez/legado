@@ -50,7 +50,6 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.bumptech.glide.Priority
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.Target
 import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -71,6 +70,7 @@ import io.legado.app.databinding.FragmentExploreBinding
 import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.CoverThumbnailCache
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.TopBarConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.help.source.clearExploreKindsCache
@@ -209,6 +209,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeSuiteWidgetBooks = mutableStateMapOf<String, List<SearchBook>>()
     private val composeSuiteRankedWidgetBooks = mutableStateMapOf<String, Map<String, List<SearchBook>>>()
     private val composeSuiteLoadingWidgets = mutableStateMapOf<String, Boolean>()
+    private val suiteWidgetSignatures = hashMapOf<String, String>()
     private val suiteRandomDecks = hashMapOf<String, SuiteRandomDeck>()
     private val suitePreparedRandomBatches = hashMapOf<String, SuitePreparedBatch>()
     private val suiteRandomPrepareJobs = hashMapOf<String, Job>()
@@ -234,6 +235,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var discoverSourceVersion = 0L
     private var discoveryModeLoaded = false
     private var modernTopOverlaySpace = -1
+    private var discoverDefaultFiltersAppliedKey: String? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -472,11 +474,20 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun stopSuiteMode() {
+        saveCurrentSuiteSnapshot()
         suiteLoadJob?.cancel()
         suiteLoadJob = null
+        clearSuiteRuntimeState()
+    }
+
+    private fun clearSuiteRuntimeState() {
         composeSuiteLoadingWidgets.clear()
+        composeSuiteWidgetBooks.clear()
         composeSuiteRankedWidgetBooks.clear()
-        suiteRandomDecks.clear()
+        suiteWidgetSignatures.clear()
+        synchronized(suiteRandomDecks) {
+            suiteRandomDecks.clear()
+        }
         suitePreparedRandomBatches.clear()
         suiteRandomPrepareJobs.values.forEach { it.cancel() }
         suiteRandomPrepareJobs.clear()
@@ -491,6 +502,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             ?: config.suites.firstOrNull()
     }
 
+    private fun isCurrentSuiteWidget(widget: DiscoverySuiteWidget): Boolean {
+        if (!isAdded || !usingSuiteDiscovery) return false
+        val currentWidget = selectedSuite()?.widgets?.firstOrNull { it.id == widget.id } ?: return false
+        return currentWidget.cacheSignature() == widget.cacheSignature()
+    }
+
     private fun refreshSuiteConfig() {
         val config = DiscoverySuiteStore.load()
         val selectedId = DiscoverySuiteStore.selectedSuiteId()
@@ -501,15 +518,18 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
         composeSuiteConfig.value = config
         composeSelectedSuiteId.value = selectedId
+        restoreSuiteSnapshot(selectedSuite(config))
         loadSelectedSuiteWidgets()
     }
 
     private fun loadSelectedSuiteWidgets() {
         suiteLoadJob?.cancel()
+        suiteLoadJob = null
         composeSuiteLoadingWidgets.clear()
         val suite = selectedSuite() ?: run {
             composeSuiteWidgetBooks.clear()
             composeSuiteRankedWidgetBooks.clear()
+            suiteWidgetSignatures.clear()
             return
         }
         val widgetIds = suite.widgets.map { it.id }.toSet()
@@ -519,9 +539,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         composeSuiteRankedWidgetBooks.keys
             .filterNot { it in widgetIds }
             .forEach { composeSuiteRankedWidgetBooks.remove(it) }
-        suiteRandomDecks.keys
+        suiteWidgetSignatures.keys
             .filterNot { it in widgetIds }
-            .forEach { suiteRandomDecks.remove(it) }
+            .forEach { suiteWidgetSignatures.remove(it) }
+        synchronized(suiteRandomDecks) {
+            suiteRandomDecks.keys
+                .filterNot { it in widgetIds }
+                .forEach { suiteRandomDecks.remove(it) }
+        }
         suitePreparedRandomBatches.keys
             .filterNot { it in widgetIds }
             .forEach { suitePreparedRandomBatches.remove(it) }
@@ -534,14 +559,45 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         suiteRankedPagingStates.keys
             .filterNot { key -> key.substringBefore('\n') in widgetIds }
             .forEach { suiteRankedPagingStates.remove(it) }
+        val widgetsToLoad = suite.widgets.filterNot { widget ->
+            val signature = widget.cacheSignature()
+            when {
+                widget.isSuiteButtonOnlyWidget() || widget.targets.isEmpty() -> {
+                    composeSuiteWidgetBooks[widget.id] = emptyList()
+                    composeSuiteRankedWidgetBooks.remove(widget.id)
+                    suiteWidgetSignatures[widget.id] = signature
+                    true
+                }
+                suiteWidgetSignatures[widget.id] == signature &&
+                    composeSuiteWidgetBooks.containsKey(widget.id) &&
+                    (widget.type != DiscoverySuiteWidgetType.RankedList.value ||
+                        composeSuiteRankedWidgetBooks.containsKey(widget.id)) -> {
+                    prefetchSuiteCovers(composeSuiteWidgetBooks[widget.id].orEmpty())
+                    true
+                }
+                else -> false
+            }
+        }
+        if (widgetsToLoad.isEmpty()) {
+            suite.widgets.forEach { widget ->
+                if (widget.type == DiscoverySuiteWidgetType.HorizontalBooks.value) {
+                    loadMoreSuiteHorizontalWidget(widget)
+                } else {
+                    prepareSuiteNextRandomBatch(widget)
+                }
+            }
+            saveCurrentSuiteSnapshot()
+            return
+        }
         suiteLoadJob = viewLifecycleOwner.lifecycleScope.launch {
             coroutineScope {
-                suite.widgets.map { widget ->
+                widgetsToLoad.map { widget ->
                     async {
                         suiteWidgetLoadSemaphore.withPermit {
                 if (widget.isSuiteButtonOnlyWidget() || widget.targets.isEmpty()) {
                     composeSuiteWidgetBooks[widget.id] = emptyList()
                     composeSuiteRankedWidgetBooks.remove(widget.id)
+                    suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                     return@withPermit
                 }
                 composeSuiteLoadingWidgets[widget.id] = true
@@ -554,9 +610,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         AppLog.put("套件发现排行榜控件加载失败", e)
                         emptyMap()
                     }
-                    if (!isAdded || !usingSuiteDiscovery) return@async
+                    if (!isCurrentSuiteWidget(widget)) return@async
                     composeSuiteRankedWidgetBooks[widget.id] = rankedBooks
                     composeSuiteWidgetBooks[widget.id] = rankedBooks.values.flatten()
+                    suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                     composeSuiteLoadingWidgets[widget.id] = false
                     prefetchSuiteCovers(rankedBooks.values.flatten())
                     return@withPermit
@@ -570,8 +627,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     AppLog.put("套件发现控件加载失败", e)
                     emptyList()
                 }
-                if (!isAdded || !usingSuiteDiscovery) return@async
+                if (!isCurrentSuiteWidget(widget)) return@async
                 composeSuiteWidgetBooks[widget.id] = books
+                suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                 composeSuiteLoadingWidgets[widget.id] = false
                 prefetchSuiteCovers(books)
                 if (widget.type == DiscoverySuiteWidgetType.HorizontalBooks.value) {
@@ -584,7 +642,51 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     }
                 }.awaitAll()
             }
+            saveCurrentSuiteSnapshot()
         }
+    }
+
+    private fun restoreSuiteSnapshot(suite: DiscoverySuite?) {
+        if (suite == null) return
+        val snapshot = DiscoverySuitePageSnapshotStore.get(
+            suiteId = suite.id,
+            signature = suite.cacheSignature()
+        ) ?: return
+        composeSuiteWidgetBooks.clear()
+        composeSuiteWidgetBooks.putAll(snapshot.widgetBooks)
+        composeSuiteRankedWidgetBooks.clear()
+        composeSuiteRankedWidgetBooks.putAll(snapshot.rankedWidgetBooks)
+        suiteWidgetSignatures.clear()
+        suiteWidgetSignatures.putAll(snapshot.widgetSignatures)
+        prefetchSuiteCovers(snapshot.widgetBooks.values.flatten())
+    }
+
+    private fun saveCurrentSuiteSnapshot() {
+        val suite = selectedSuite() ?: return
+        if (composeSuiteWidgetBooks.isEmpty() && composeSuiteRankedWidgetBooks.isEmpty()) return
+        val snapshotWidgets = suite.widgets.take(DISCOVERY_SUITE_SNAPSHOT_WIDGET_LIMIT)
+        DiscoverySuitePageSnapshotStore.put(
+            DiscoverySuitePageSnapshot(
+                suiteId = suite.id,
+                signature = suite.cacheSignature(),
+                widgetBooks = snapshotWidgets.associate { widget ->
+                    widget.id to composeSuiteWidgetBooks[widget.id]
+                        .orEmpty()
+                        .take(widget.snapshotBookLimit())
+                }.filterValues { it.isNotEmpty() },
+                rankedWidgetBooks = snapshotWidgets
+                    .filter { it.type == DiscoverySuiteWidgetType.RankedList.value }
+                    .associate { widget ->
+                        widget.id to composeSuiteRankedWidgetBooks[widget.id]
+                            .orEmpty()
+                            .mapValues { entry -> entry.value.take(RANKED_SUITE_SNAPSHOT_BOOK_LIMIT) }
+                    }
+                    .filterValues { it.isNotEmpty() },
+                widgetSignatures = suiteWidgetSignatures.filterKeys { key ->
+                    snapshotWidgets.any { it.id == key }
+                }
+            )
+        )
     }
 
     private suspend fun loadSuiteWidgetBooks(widget: DiscoverySuiteWidget): List<SearchBook> {
@@ -741,14 +843,19 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         page: Int
     ): List<SearchBook> {
         return suiteTargetLoadSemaphore.withPermit {
-            runCatching {
+            try {
                 WebBook.exploreBookAwait(
                     source,
                     tagUrl,
                     page,
                     WebViewPool.Scope.DISCOVERY
                 )
-            }.getOrDefault(emptyList())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                AppLog.put("濂椾欢鍙戠幇鍔犺浇鍒嗙被澶辫触", e)
+                emptyList()
+            }
         }
     }
 
@@ -783,20 +890,22 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun suiteRandomDeck(widget: DiscoverySuiteWidget): SuiteRandomDeck {
         val signature = widget.deckSignature()
-        val current = suiteRandomDecks[widget.id]
-        if (current != null && current.signature == signature) {
-            return current
-        }
-        val targets = widget.validRandomTargets()
-        return SuiteRandomDeck(
-            signature = signature,
-            targetIndex = if (targets.isEmpty()) {
-                0
-            } else {
-                Random(System.nanoTime()).nextInt(targets.size)
+        return synchronized(suiteRandomDecks) {
+            val current = suiteRandomDecks[widget.id]
+            if (current != null && current.signature == signature) {
+                return@synchronized current
             }
-        ).also {
-            suiteRandomDecks[widget.id] = it
+            val targets = widget.validRandomTargets()
+            SuiteRandomDeck(
+                signature = signature,
+                targetIndex = if (targets.isEmpty()) {
+                    0
+                } else {
+                    Random(System.nanoTime()).nextInt(targets.size)
+                }
+            ).also {
+                suiteRandomDecks[widget.id] = it
+            }
         }
     }
 
@@ -806,6 +915,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         if (widget.type == DiscoverySuiteWidgetType.RankedList.value) {
             viewLifecycleOwner.lifecycleScope.launch {
                 composeSuiteLoadingWidgets[widget.id] = true
+                try {
                 val rankedBooks = try {
                     withContext(IO) { loadSuiteRankedListWidgetBooks(widget) }
                 } catch (e: CancellationException) {
@@ -814,13 +924,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     AppLog.put("套件发现排行榜控件刷新失败", e)
                     emptyMap()
                 }
-                if (!isAdded || !usingSuiteDiscovery) return@launch
+                if (!isCurrentSuiteWidget(widget)) return@launch
                 if (rankedBooks.isNotEmpty()) {
                     composeSuiteRankedWidgetBooks[widget.id] = rankedBooks
                     composeSuiteWidgetBooks[widget.id] = rankedBooks.values.flatten()
+                    suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                     prefetchSuiteCovers(rankedBooks.values.flatten())
+                    saveCurrentSuiteSnapshot()
                 }
-                composeSuiteLoadingWidgets[widget.id] = false
+                } finally {
+                    composeSuiteLoadingWidgets[widget.id] = false
+                }
             }
             return
         }
@@ -830,13 +944,16 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 ?.takeIf { it.signature == signature }
             if (prepared != null) {
                 composeSuiteWidgetBooks[widget.id] = prepared.books
+                suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                 prefetchSuiteCovers(prepared.books)
+                saveCurrentSuiteSnapshot()
                 prepareSuiteNextRandomBatch(widget)
                 return
             }
         }
         viewLifecycleOwner.lifecycleScope.launch {
             composeSuiteLoadingWidgets[widget.id] = true
+            try {
             val books = try {
                 withContext(IO) { loadSuiteWidgetBooks(widget) }
             } catch (e: CancellationException) {
@@ -845,17 +962,21 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 AppLog.put("套件发现控件刷新失败", e)
                 emptyList()
             }
-            if (!isAdded || !usingSuiteDiscovery) return@launch
+            if (!isCurrentSuiteWidget(widget)) return@launch
             if (books.isNotEmpty()) {
                 composeSuiteWidgetBooks[widget.id] = books
+                suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                 prefetchSuiteCovers(books)
+                saveCurrentSuiteSnapshot()
             }
-            composeSuiteLoadingWidgets[widget.id] = false
             if (widget.type == DiscoverySuiteWidgetType.HorizontalBooks.value) {
                 prefetchSuiteCovers(books.drop(HORIZONTAL_SUITE_VISIBLE_COVER_COUNT))
                 loadMoreSuiteHorizontalWidget(widget)
             } else {
                 prepareSuiteNextRandomBatch(widget)
+            }
+            } finally {
+                composeSuiteLoadingWidgets[widget.id] = false
             }
         }
     }
@@ -872,6 +993,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         if (runningJob?.isActive == true) return
         val appContext = requireContext().applicationContext
         suiteRandomPrepareJobs[widget.id] = viewLifecycleOwner.lifecycleScope.launch {
+            try {
             val books = try {
                 withContext(IO) {
                     loadSuiteWidgetBooks(widget).also {
@@ -884,13 +1006,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 AppLog.put("套件发现控件预加载失败", e)
                 emptyList()
             }
-            if (!isAdded || !usingSuiteDiscovery) return@launch
+            if (!isCurrentSuiteWidget(widget)) return@launch
             if (books.isNotEmpty() && widget.deckSignature() == signature) {
                 suitePreparedRandomBatches[widget.id] = SuitePreparedBatch(signature, books)
                 prefetchSuiteCovers(books)
             }
-            suiteRandomPrepareJobs.remove(widget.id)
             prefetchSuiteWidgetDeck(widget)
+            } finally {
+                suiteRandomPrepareJobs.remove(widget.id)
+            }
         }
     }
 
@@ -906,6 +1030,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val page = state.nextPage
         state.loading = true
         viewLifecycleOwner.lifecycleScope.launch {
+            try {
             val books = try {
                 withContext(IO) { loadSuiteHorizontalWidgetPage(widget, page) }
             } catch (e: CancellationException) {
@@ -914,7 +1039,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 AppLog.put("套件发现横排控件加载下一页失败", e)
                 emptyList()
             }
-            if (!isAdded || !usingSuiteDiscovery) {
+            if (!isCurrentSuiteWidget(widget)) {
                 state.loading = false
                 return@launch
             }
@@ -929,13 +1054,18 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 .take(HORIZONTAL_SUITE_MAX_BOOKS)
             if (merged.size > current.size) {
                 composeSuiteWidgetBooks[widget.id] = merged
+                suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                 prefetchSuiteCovers(books)
                 latestState.nextPage = page + 1
                 latestState.exhausted = merged.size >= HORIZONTAL_SUITE_MAX_BOOKS
+                saveCurrentSuiteSnapshot()
             } else {
                 latestState.exhausted = true
             }
             latestState.loading = false
+            } finally {
+                state.loading = false
+            }
         }
     }
 
@@ -950,6 +1080,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val page = state.nextPage
         state.loading = true
         viewLifecycleOwner.lifecycleScope.launch {
+            try {
             val books = try {
                 withContext(IO) { loadSuiteRankedWidgetPage(target, page) }
             } catch (e: CancellationException) {
@@ -958,7 +1089,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 AppLog.put("套件发现排行榜控件加载下一页失败", e)
                 emptyList()
             }
-            if (!isAdded || !usingSuiteDiscovery) {
+            if (!isCurrentSuiteWidget(widget)) {
                 state.loading = false
                 return@launch
             }
@@ -977,13 +1108,18 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 }
                 composeSuiteRankedWidgetBooks[widget.id] = mergedMap
                 composeSuiteWidgetBooks[widget.id] = mergedMap.values.flatten()
+                suiteWidgetSignatures[widget.id] = widget.cacheSignature()
                 prefetchSuiteCovers(books)
                 latestState.nextPage = page + 1
                 latestState.exhausted = books.isEmpty()
+                saveCurrentSuiteSnapshot()
             } else {
                 latestState.exhausted = true
             }
             latestState.loading = false
+            } finally {
+                state.loading = false
+            }
         }
     }
 
@@ -1100,11 +1236,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val path = display.path?.takeIf { it.isNotBlank() } ?: return
         val cleanName = display.name?.replace(AppPattern.bdRegex, "")?.trim()
         val cleanAuthor = display.author?.replace(AppPattern.bdRegex, "")?.trim()
-        val useThumb = !AppConfig.loadCoverHighQuality
         val thumbKey = "${display.sourceOrigin}|$path|$cleanName|$cleanAuthor"
-        val thumbFile = if (useThumb) CoverThumbnailCache.existing(context, thumbKey) else null
+        val thumbFile = CoverThumbnailCache.existing(context, thumbKey)
         var options = RequestOptions()
-            .format(DecodeFormat.PREFER_ARGB_8888)
+            .format(DecodeFormat.PREFER_RGB_565)
             .disallowHardwareConfig()
             .set(OkHttpModelLoader.loadOnlyWifiOption, AppConfig.loadCoverOnlyWifi)
         display.sourceOrigin?.let { origin ->
@@ -1115,17 +1250,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         } else {
             ImageLoader.load(context, path)
         }
-        val width = if (useThumb) SUITE_COVER_THUMB_WIDTH else Target.SIZE_ORIGINAL
-        val height = if (useThumb) SUITE_COVER_THUMB_HEIGHT else Target.SIZE_ORIGINAL
         val target = request
             .apply(options)
             .priority(Priority.HIGH)
-            .override(width, height)
+            .override(SUITE_COVER_THUMB_WIDTH, SUITE_COVER_THUMB_HEIGHT)
             .centerCrop()
-            .submit(width, height)
+            .submit(SUITE_COVER_THUMB_WIDTH, SUITE_COVER_THUMB_HEIGHT)
         try {
             val drawable = target.get(SUITE_SINGLE_COVER_PRELOAD_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            if (useThumb && thumbFile == null) {
+            if (thumbFile == null) {
                 CoverThumbnailCache.saveBlocking(context, thumbKey, drawable)
             }
         } catch (_: Throwable) {
@@ -1141,6 +1274,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun selectDiscoverySuite(suite: DiscoverySuite) {
         if (suite.id.isBlank() || suite.id == composeSelectedSuiteId.value) return
+        saveCurrentSuiteSnapshot()
         DiscoverySuiteStore.setSelectedSuiteId(suite.id)
         refreshSuiteConfig()
     }
@@ -1914,7 +2048,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 item.kind.title,
                 item.kind.url,
                 item.kind.action
-            ).any { it.toString().contains(query, ignoreCase = true) }
+            ).any { it.contains(query, ignoreCase = true) }
         }
     }
 
@@ -1992,6 +2126,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             selectDiscoverTag(index, item, selectTab = true)
         } else {
             discoverCurrentUrl = url
+            AppConfig.rememberModernDiscoveryTagUrl(source.bookSourceUrl, url)
             binding.topBar.tagsBar.setSelectedIndex(-1, smooth = false)
             loadDiscoverBooks(reset = true)
         }
@@ -2403,7 +2538,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverLoadJob = null
         discoverLoading = false
         binding.pbDiscoverLoading.gone()
-        discoverCurrentUrl = null
+        discoverCurrentUrl = AppConfig.modernDiscoveryTagUrl(source.bookSourceUrl)
         discoverBooks.clear()
         syncDiscoverComposeState()
         discoverBookAdapter?.clearItems()
@@ -2412,6 +2547,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverMajorGroups.clear()
         discoverSelectItems.clear()
         selectedDiscoverMajorGroup = null
+        discoverDefaultFiltersAppliedKey = null
         renderDiscoverTags(emptyList(), -1)
         renderDiscoverSelects(emptyList())
         updateDiscoverTagFilterButtonState()
@@ -2482,7 +2618,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             clearDiscoverBooksToEmpty(getString(R.string.explore_empty))
             return
         }
-        applyDiscoverTagFilterAndSelect(preferredUrl = discoverCurrentUrl)
+        applyDiscoverTagFilterAndSelect(
+            preferredUrl = discoverCurrentUrl,
+            restoreGroupForPreferredUrl = true
+        )
     }
 
     private suspend fun buildDiscoverTagItems(
@@ -2740,7 +2879,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
-    private fun applyDiscoverTagFilterAndSelect(preferredUrl: String?) {
+    private fun applyDiscoverTagFilterAndSelect(
+        preferredUrl: String?,
+        restoreGroupForPreferredUrl: Boolean = false
+    ) {
         val hasGroupedItems = discoverAllTagItems.any { !it.group.isNullOrBlank() }
         val groupList = discoverAllTagItems
             .mapNotNull { it.group?.takeIf { name -> name.isNotBlank() } }
@@ -2761,6 +2903,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 return
             }
         } else {
+            if (restoreGroupForPreferredUrl && !preferredUrl.isNullOrBlank()) {
+                discoverAllTagItems.firstOrNull {
+                    it.role == DiscoverTagItem.Role.UrlTag && it.kind.url == preferredUrl
+                }?.group?.takeIf { it.isNotBlank() }?.let { group ->
+                    selectedDiscoverMajorGroup = group
+                }
+            }
             if (selectedDiscoverMajorGroup !in discoverMajorGroups) {
                 selectedDiscoverMajorGroup = discoverMajorGroups.first()
             }
@@ -2800,6 +2949,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val targetIndex = targetIndexByUrl
             ?: tagItems.indexOfFirst { !it.isButton && !it.kind.url.isNullOrBlank() }
         renderDiscoverTags(tagItems, targetIndex)
+        applyDiscoverDefaultFilterExpansionOnce()
         if (targetIndex >= 0) {
             selectDiscoverTag(targetIndex, tagItems[targetIndex], selectTab = true)
         } else {
@@ -2887,6 +3037,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         )
     }
 
+    private fun applyDiscoverDefaultFilterExpansionOnce() {
+        if (!usingModernDiscovery || !binding.topBar.isRegularStyle()) return
+        val config = TopBarConfig.currentConfig(requireContext(), AppConfig.isNightTheme)
+        if (!config.expandFiltersByDefault) return
+        if (discoverSelectItems.isEmpty() && discoverTagItems.isEmpty()) return
+        val key = "${TopBarConfig.currentSignature(AppConfig.isNightTheme)}|${selectedDiscoverSourcePart?.bookSourceUrl.orEmpty()}"
+        if (discoverDefaultFiltersAppliedKey == key) return
+        discoverDefaultFiltersAppliedKey = key
+        binding.topBar.setFiltersExpanded(true)
+    }
+
     private fun currentDiscoverSelectValue(item: DiscoverTagItem): String {
         val source = selectedDiscoverSource ?: return item.kind.default ?: ""
         val key = item.kind.title
@@ -2941,9 +3102,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             selectDiscoverTabByCode(index, smooth = true)
         }
         if (discoverCurrentUrl == url && discoverBooks.isNotEmpty()) {
+            AppConfig.rememberModernDiscoveryTagUrl(selectedDiscoverSource?.bookSourceUrl, url)
             return
         }
         discoverCurrentUrl = url
+        AppConfig.rememberModernDiscoveryTagUrl(selectedDiscoverSource?.bookSourceUrl, url)
         loadDiscoverBooks(reset = true)
     }
 
@@ -3257,9 +3420,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             syncDiscoverComposeState()
         }
         if (usingSuiteDiscovery) {
+            saveCurrentSuiteSnapshot()
             suiteLoadJob?.cancel()
             suiteLoadJob = null
-            composeSuiteLoadingWidgets.clear()
+            clearSuiteRuntimeState()
             binding.swipeRefreshLayout.isRefreshing = false
         }
         WebViewPool.scheduleDestroyScope(WebViewPool.Scope.DISCOVERY)
@@ -3499,12 +3663,77 @@ private data class SuiteRankedPagingState(
     var exhausted: Boolean = false
 )
 
+private data class DiscoverySuitePageSnapshot(
+    val suiteId: String,
+    val signature: String,
+    val widgetBooks: Map<String, List<SearchBook>>,
+    val rankedWidgetBooks: Map<String, Map<String, List<SearchBook>>>,
+    val widgetSignatures: Map<String, String>
+)
+
+private object DiscoverySuitePageSnapshotStore {
+    private const val MAX_SNAPSHOTS = 4
+    private val snapshots = object : LinkedHashMap<String, DiscoverySuitePageSnapshot>(
+        MAX_SNAPSHOTS,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, DiscoverySuitePageSnapshot>
+        ): Boolean {
+            return size > MAX_SNAPSHOTS
+        }
+    }
+
+    @Synchronized
+    fun get(suiteId: String, signature: String): DiscoverySuitePageSnapshot? {
+        return snapshots[suiteId]?.takeIf { it.signature == signature }
+    }
+
+    @Synchronized
+    fun put(snapshot: DiscoverySuitePageSnapshot) {
+        if (snapshot.suiteId.isBlank()) return
+        snapshots[snapshot.suiteId] = snapshot
+    }
+}
+
+private const val DISCOVERY_SUITE_SNAPSHOT_RANDOM_LIMIT = 36
+private const val DISCOVERY_SUITE_SNAPSHOT_HORIZONTAL_LIMIT = 72
+private const val DISCOVERY_SUITE_SNAPSHOT_WATERFALL_LIMIT = 24
+private const val DISCOVERY_SUITE_SNAPSHOT_RANKED_TOTAL_LIMIT = 72
+private const val RANKED_SUITE_SNAPSHOT_BOOK_LIMIT = 24
+private const val DISCOVERY_SUITE_SNAPSHOT_WIDGET_LIMIT = 20
+
 private fun String.limitDiscoverText(max: Int): String {
     return if (length <= max) this else "${take(max.coerceAtLeast(2) - 1)}..."
 }
 
 private fun DiscoverySuiteWidget.validRandomTargets(): List<DiscoverySuiteWidgetTarget> {
     return targets.filter { it.sourceUrl.isNotBlank() && it.tagUrl.isNotBlank() }
+}
+
+private fun DiscoverySuite.cacheSignature(): String {
+    return widgets.joinToString(separator = "\u001D") { widget ->
+        "${widget.order}\u001C${widget.cacheSignature()}"
+    }
+}
+
+private fun DiscoverySuiteWidget.cacheSignature(): String {
+    return listOf(
+        id,
+        type,
+        displayLimit.toString(),
+        validRandomTargets().joinToString(separator = "\u001C") { it.deckKey() }
+    ).joinToString(separator = "\u001D")
+}
+
+private fun DiscoverySuiteWidget.snapshotBookLimit(): Int {
+    return when (type) {
+        DiscoverySuiteWidgetType.HorizontalBooks.value -> DISCOVERY_SUITE_SNAPSHOT_HORIZONTAL_LIMIT
+        DiscoverySuiteWidgetType.WaterfallBooks.value -> DISCOVERY_SUITE_SNAPSHOT_WATERFALL_LIMIT
+        DiscoverySuiteWidgetType.RankedList.value -> DISCOVERY_SUITE_SNAPSHOT_RANKED_TOTAL_LIMIT
+        else -> DISCOVERY_SUITE_SNAPSHOT_RANDOM_LIMIT
+    }
 }
 
 private fun DiscoverySuiteWidget.deckSignature(): String {

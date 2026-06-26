@@ -41,6 +41,7 @@ import io.legado.app.utils.mapAsync
 import io.legado.app.utils.mapAsyncIndexed
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.readBytes
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeFile
@@ -77,6 +78,8 @@ import kotlin.math.min
 class ExportBookService : BaseService() {
 
     companion object {
+        private const val MAX_EXTERNAL_TEMPLATE_TEXT_BYTES = 2L * 1024 * 1024
+        private const val MAX_EXTERNAL_TEMPLATE_RESOURCE_BYTES = 32L * 1024 * 1024
         val exportProgress = ConcurrentHashMap<String, Int>()
         val exportMsg = ConcurrentHashMap<String, String>()
     }
@@ -388,6 +391,21 @@ class ExportBookService : BaseService() {
         return contentModel
     }
 
+    private fun FileDoc.readExternalTemplateText(): String {
+        return String(readExternalAssetBytes(MAX_EXTERNAL_TEMPLATE_TEXT_BYTES))
+    }
+
+    private fun FileDoc.readExternalResourceBytes(): ByteArray {
+        return readExternalAssetBytes(MAX_EXTERNAL_TEMPLATE_RESOURCE_BYTES)
+    }
+
+    private fun FileDoc.readExternalAssetBytes(maxBytes: Long): ByteArray {
+        if (size > maxBytes) {
+            throw NoStackTraceException("EPUB外部模板资源过大: $name")
+        }
+        return uri.readBytes(appCtx, maxBytes)
+    }
+
     private fun setAssetsExternal(doc: FileDoc, book: Book, epubBook: EpubBook): String {
         var contentModel = ""
         doc.list()!!.forEach { folder ->
@@ -402,7 +420,7 @@ class ExportBookService : BaseService() {
                         //正文模板
                         file.name.equals("chapter.html", true)
                                 || file.name.equals("chapter.xhtml", true) -> {
-                            contentModel = file.readText()
+                            contentModel = file.readExternalTemplateText()
                         }
                         //封面等其他模板
                         file.name.endsWith("html", true) -> {
@@ -414,7 +432,7 @@ class ExportBookService : BaseService() {
                                     book.getDisplayIntro(),
                                     book.kind,
                                     book.wordCount,
-                                    file.readText(),
+                                    file.readExternalTemplateText(),
                                     "${folder.name}/${file.name}"
                                 )
                             )
@@ -423,7 +441,7 @@ class ExportBookService : BaseService() {
                         else -> {
                             epubBook.resources.add(
                                 Resource(
-                                    file.readBytes(),
+                                    file.readExternalResourceBytes(),
                                     "${folder.name}/${file.name}"
                                 )
                             )
@@ -438,7 +456,7 @@ class ExportBookService : BaseService() {
                     }
                     epubBook.resources.add(
                         Resource(
-                            it.readBytes(),
+                            it.readExternalResourceBytes(),
                             "${folder.name}/${it.name}"
                         )
                     )
