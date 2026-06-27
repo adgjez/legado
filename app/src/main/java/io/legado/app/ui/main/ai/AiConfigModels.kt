@@ -187,13 +187,58 @@ data class AiImageProviderConfig(
     val script: String = "",
     val timeoutMillisecond: Long = 120_000L,
     val order: Int = 0,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val supportsReferenceImage: Boolean = false
 ) {
     fun displayName(): String = name.ifBlank { type }
 
     fun validTimeout(): Long {
         val normalized = timeoutMillisecond.takeIf { it > 0L } ?: 300_000L
         return normalized.coerceIn(60_000L, 600_000L)
+    }
+
+    companion object {
+        const val TYPE_OPENAI = "openai"
+        const val TYPE_JS = "js"
+    }
+}
+
+@Keep
+data class AiVideoProviderConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val template: String = "",
+    val type: String = TYPE_OPENAI,
+    val baseUrl: String = "",
+    val apiKey: String = "",
+    val headers: String = "",
+    val model: String = "",
+    val defaultParamsJson: String = "",
+    val stylePrompt: String = "",
+    val negativePrompt: String = "",
+    val script: String = "",
+    val submitEndpoint: String = "/videos/generations",
+    val statusEndpoint: String = "/videos/generations/{id}",
+    val pollIntervalMillisecond: Long = 5_000L,
+    val timeoutMillisecond: Long = 600_000L,
+    val supportsTailFrame: Boolean = false,
+    val supportsCameraControl: Boolean = false,
+    val supportsLivePreview: Boolean = false,
+    val supportsReferenceImage: Boolean = false,
+    val costExpression: String = "",
+    val costPerSecond: Double = 0.0,
+    val jsLib: String = "",
+    val loginUrl: String = "",
+    val loginUi: String = "",
+    val enabledCookieJar: Boolean = false,
+    val order: Int = 0,
+    val enabled: Boolean = true
+) {
+    fun displayName(): String = name.ifBlank { type }
+
+    fun validTimeout(): Long {
+        val normalized = timeoutMillisecond.takeIf { it > 0L } ?: 600_000L
+        return normalized.coerceIn(120_000L, 1_800_000L)
     }
 
     companion object {

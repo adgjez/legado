@@ -15,6 +15,16 @@ import io.legado.app.data.dao.AiReadAloudRoleCacheDao
 import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiImageGroupDao
 import io.legado.app.data.dao.AiReadAloudUsageRecordDao
+import io.legado.app.data.dao.AiPurifiedTextCacheDao
+import io.legado.app.data.dao.AiGeneratedAudioDao
+import io.legado.app.data.dao.AiAudioGroupDao
+import io.legado.app.data.dao.AiGenFailureLogDao
+import io.legado.app.data.dao.AiGenTaskDao
+import io.legado.app.data.dao.AiGenVoucherDao
+import io.legado.app.data.dao.AiGeneratedVideoDao
+import io.legado.app.data.dao.AiVideoGroupDao
+import io.legado.app.data.dao.AiStoryPlaylistDao
+import io.legado.app.data.dao.AiStorySceneDao
 import io.legado.app.data.dao.BookAiChapterSummaryDao
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookCharacterDao
@@ -53,6 +63,16 @@ import io.legado.app.data.entities.AiMemoryFragment
 import io.legado.app.data.entities.AiMemoryFragmentFts
 import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.data.entities.AiMemoryItemFts
+import io.legado.app.data.entities.AiGenFailureLog
+import io.legado.app.data.entities.AiGenTask
+import io.legado.app.data.entities.AiGenVoucher
+import io.legado.app.data.entities.AiGeneratedAudio
+import io.legado.app.data.entities.AiAudioGroup
+import io.legado.app.data.entities.AiPurifiedTextCache
+import io.legado.app.data.entities.AiGeneratedVideo
+import io.legado.app.data.entities.AiVideoGroup
+import io.legado.app.data.entities.AiStoryPlaylist
+import io.legado.app.data.entities.AiStoryScene
 import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
@@ -106,7 +126,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 108,
+    version = 121,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -123,7 +143,16 @@ val appDb by lazy {
         ReadAloudSpeakerGroup::class, ReadAloudSpeakerGroupItem::class,
         AiReadAloudUsageRecord::class,
         AiAgentSession::class, AiAgentJob::class, AiAgentTrace::class,
-        AiMemoryItem::class, AiMemoryFragment::class, AiMemoryItemFts::class, AiMemoryFragmentFts::class],
+        AiMemoryItem::class, AiMemoryFragment::class, AiMemoryItemFts::class, AiMemoryFragmentFts::class,
+        AiPurifiedTextCache::class,
+        AiGeneratedVideo::class,
+        AiVideoGroup::class,
+        AiStoryPlaylist::class, AiStoryScene::class,
+        AiGenTask::class,
+        AiGeneratedAudio::class,
+        AiAudioGroup::class,
+        AiGenFailureLog::class,
+        AiGenVoucher::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -213,6 +242,16 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val aiReadAloudUsageRecordDao: AiReadAloudUsageRecordDao
     abstract val aiAgentDao: AiAgentDao
     abstract val aiMemoryDao: AiMemoryDao
+    abstract val aiPurifiedTextCacheDao: AiPurifiedTextCacheDao
+    abstract val aiGeneratedVideoDao: AiGeneratedVideoDao
+    abstract val aiVideoGroupDao: AiVideoGroupDao
+    abstract val aiStoryPlaylistDao: AiStoryPlaylistDao
+    abstract val aiStorySceneDao: AiStorySceneDao
+    abstract val aiGenTaskDao: AiGenTaskDao
+    abstract val aiGeneratedAudioDao: AiGeneratedAudioDao
+    abstract val aiAudioGroupDao: AiAudioGroupDao
+    abstract val aiGenFailureLogDao: AiGenFailureLogDao
+    abstract val aiGenVoucherDao: AiGenVoucherDao
 
     companion object {
 
