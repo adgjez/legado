@@ -467,12 +467,6 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                 color = style.colors.accent,
                 trackColor = style.colors.accent.copy(alpha = 0.12f),
             )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                progressText.ifBlank { "生成中..." },
-                color = style.colors.secondaryText,
-                fontSize = 12.sp
-            )
             Spacer(Modifier.height(8.dp))
         }
 
@@ -747,12 +741,6 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                     .clip(RoundedCornerShape(2.dp)),
                 color = style.colors.accent,
                 trackColor = style.colors.accent.copy(alpha = 0.12f),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                progressText.ifBlank { "生成中..." },
-                color = style.colors.secondaryText,
-                fontSize = 12.sp
             )
             Spacer(Modifier.height(8.dp))
         }
