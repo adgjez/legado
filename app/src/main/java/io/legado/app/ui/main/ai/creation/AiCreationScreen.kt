@@ -262,6 +262,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
     var generating by remember { mutableStateOf(false) }
     var resultUrl by remember { mutableStateOf<String?>(null) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var progressText by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -456,6 +457,25 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
         }
         Spacer(Modifier.height(16.dp))
 
+        // 进度条
+        if (generating) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = style.colors.accent,
+                trackColor = style.colors.accent.copy(alpha = 0.12f),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                progressText.ifBlank { "生成中..." },
+                color = style.colors.secondaryText,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+
         // 结果
         errorMsg?.let { msg ->
             Surface(
@@ -510,6 +530,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var generating by remember { mutableStateOf(false) }
     var progressText by remember { mutableStateOf("") }
+    var videoProgress by remember { mutableFloatStateOf(0f) }
     var resultUrl by remember { mutableStateOf<String?>(null) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -643,14 +664,19 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 errorMsg = null
                 resultUrl = null
                 progressText = "创建视频任务..."
+                videoProgress = 0f
                 scope.launch {
                     try {
+                        val onProgress: (AiCreationService.GenerationProgress) -> Unit = { p ->
+                            progressText = "${p.statusText} ${p.percent}% (${p.elapsedSeconds}秒)"
+                            videoProgress = p.percent / 100f
+                        }
                         val result = withContext(Dispatchers.IO) {
-                            progressText = "视频生成中，请耐心等待..."
                             if (mode == VideoMode.TEXT_TO_VIDEO) {
                                 AiCreationService.textToVideo(
                                     prompt,
-                                    numFrames = selectedPreset.numFrames
+                                    numFrames = selectedPreset.numFrames,
+                                    onProgress = onProgress
                                 )
                             } else {
                                 val uri = imageUri
@@ -665,12 +691,14 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                                 AiCreationService.imageToVideo(
                                     prompt,
                                     dataUri,
-                                    numFrames = selectedPreset.numFrames
+                                    numFrames = selectedPreset.numFrames,
+                                    onProgress = onProgress
                                 )
                             }
                         }
                         resultUrl = result.videoUrl
                         progressText = ""
+                        videoProgress = 1f
                         AiCreationHistory.addVideo(
                             AiCreationHistory.VideoRecord(
                                 url = result.videoUrl,
@@ -710,10 +738,24 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
         }
         Spacer(Modifier.height(8.dp))
 
-        if (progressText.isNotBlank()) {
-            Text(progressText, color = style.colors.secondaryText, fontSize = 13.sp)
+        if (generating) {
+            LinearProgressIndicator(
+                progress = { videoProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = style.colors.accent,
+                trackColor = style.colors.accent.copy(alpha = 0.12f),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                progressText.ifBlank { "生成中..." },
+                color = style.colors.secondaryText,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(8.dp))
         }
-        Spacer(Modifier.height(8.dp))
 
         errorMsg?.let { msg ->
             Surface(

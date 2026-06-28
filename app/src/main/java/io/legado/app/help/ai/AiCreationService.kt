@@ -7,11 +7,13 @@ import io.legado.app.help.http.postJson
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 /**
  * 内置 Agnes AI 图片/视频生成 API 服务
- * 自动共享 AI 聊天中已配置的 Agnes AI 提供商 API Key
  *
  * 文档参考: Agnes Image 2.1 Flash / Agnes Video V2.0
  *   - 图片: POST /v1/images/generations
@@ -25,8 +27,15 @@ object AiCreationService {
     private const val DEFAULT_SIZE = "1024x768"
     private const val DEFAULT_VIDEO_WIDTH = 1152
     private const val DEFAULT_VIDEO_HEIGHT = 768
-    private const val POLL_INTERVAL_MS = 8000L    // 轮询间隔 8 秒
-    private const val MAX_POLL_ATTEMPTS = 225      // 最多轮询 30 分钟
+    private const val POLL_INTERVAL_MS = 8000L
+    private const val MAX_POLL_ATTEMPTS = 225    // 30 分钟
+
+    /** 进度回调: (progress 0-100, 状态描述, 已耗时秒数) */
+    data class GenerationProgress(
+        val percent: Int,
+        val statusText: String,
+        val elapsedSeconds: Long
+    )
 
     private val client = okHttpClient.newBuilder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -45,7 +54,6 @@ object AiCreationService {
 
     fun hasApiKey(): Boolean = apiKey.isNotBlank()
 
-    /** 优先从 AI 聊天配置的 Agnes AI 提供商中获取 Key，回退到手动输入 */
     fun loadApiKey() {
         val providerKey = AppConfig.aiProviderList
             .firstOrNull { it.baseUrl.contains("agnes-ai", ignoreCase = true) }
@@ -82,23 +90,33 @@ object AiCreationService {
             put("size", size)
             put("n", 1)
             if (imageUrl != null) {
-                // 图生图: extra_body.image 为数组类型
                 put("extra_body", JSONObject().apply {
                     put("image", JSONArray().apply { put(imageUrl) })
                     put("response_format", "url")
                 })
             }
         }
-        val response = client.newCallResponse {
-            url("$BASE_URL/v1/images/generations")
-            addHeader("Authorization", "Bearer $apiKey")
-            addHeader("Content-Type", "application/json")
-            postJson(body.toString())
+        val response = try {
+            client.newCallResponse {
+                url("$BASE_URL/v1/images/generations")
+                addHeader("Authorization", "Bearer $apiKey")
+                addHeader("Content-Type", "application/json")
+                postJson(body.toString())
+            }
+        } catch (e: SocketTimeoutException) {
+            throw AiCreationException("图片生成超时: 网络连接超时，请重试", e)
+        } catch (e: UnknownHostException) {
+            throw AiCreationException("图片生成失败: 无法解析主机 apihub.agnes-ai.com，请检查网络", e)
+        } catch (e: IOException) {
+            throw AiCreationException("图片生成失败: 网络异常 (${e.javaClass.simpleName}: ${e.message})", e)
         }
         response.use { resp ->
             val payload = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw AiCreationException("图片生成失败: ${resp.code} ${extractError(payload)}", payload)
+                throw AiCreationException(
+                    "图片生成失败: HTTP ${resp.code} ${resp.message} ${extractError(payload)}",
+                    payload
+                )
             }
             val root = JSONObject(payload)
             val data = root.optJSONArray("data")?.optJSONObject(0)
@@ -114,22 +132,31 @@ object AiCreationService {
 
     /**
      * @param numFrames 视频总帧数 (24fps: 3秒=81帧, 5秒=121帧, 10秒=241帧, 18秒=441帧)
+     * @param onProgress 进度回调，每次轮询后调用
      */
-    suspend fun textToVideo(prompt: String, numFrames: Int = 121): VideoResult =
-        createAndPollVideo(prompt, numFrames, mode = "ti2vid")
+    suspend fun textToVideo(
+        prompt: String,
+        numFrames: Int = 121,
+        onProgress: ((GenerationProgress) -> Unit)? = null
+    ): VideoResult = createAndPollVideo(prompt, numFrames, mode = "ti2vid", onProgress = onProgress)
 
-    suspend fun imageToVideo(prompt: String, imageUrl: String, numFrames: Int = 121): VideoResult =
-        createAndPollVideo(prompt, numFrames, imageUrl = imageUrl, mode = "ti2vid")
+    suspend fun imageToVideo(
+        prompt: String,
+        imageUrl: String,
+        numFrames: Int = 121,
+        onProgress: ((GenerationProgress) -> Unit)? = null
+    ): VideoResult = createAndPollVideo(prompt, numFrames, imageUrl = imageUrl, mode = "ti2vid", onProgress = onProgress)
 
     private suspend fun createAndPollVideo(
         prompt: String,
         numFrames: Int,
         imageUrl: String? = null,
-        mode: String = "ti2vid"
+        mode: String = "ti2vid",
+        onProgress: ((GenerationProgress) -> Unit)? = null
     ): VideoResult {
         requireApiKey()
         val taskId = createVideoTask(prompt, numFrames, imageUrl, mode)
-        return pollVideoResult(taskId)
+        return pollVideoResult(taskId, onProgress)
     }
 
     private suspend fun createVideoTask(
@@ -149,16 +176,27 @@ object AiCreationService {
                 put("image", imageUrl)
             }
         }
-        val response = client.newCallResponse {
-            url("$BASE_URL/v1/videos")
-            addHeader("Authorization", "Bearer $apiKey")
-            addHeader("Content-Type", "application/json")
-            postJson(body.toString())
+        val response = try {
+            client.newCallResponse {
+                url("$BASE_URL/v1/videos")
+                addHeader("Authorization", "Bearer $apiKey")
+                addHeader("Content-Type", "application/json")
+                postJson(body.toString())
+            }
+        } catch (e: SocketTimeoutException) {
+            throw AiCreationException("视频任务创建超时: 网络连接超时，请重试", e)
+        } catch (e: UnknownHostException) {
+            throw AiCreationException("视频任务创建失败: 无法解析主机 apihub.agnes-ai.com，请检查网络", e)
+        } catch (e: IOException) {
+            throw AiCreationException("视频任务创建失败: 网络异常 (${e.javaClass.simpleName}: ${e.message})", e)
         }
         response.use { resp ->
             val payload = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw AiCreationException("视频任务创建失败: ${resp.code} ${extractError(payload)}", payload)
+                throw AiCreationException(
+                    "视频任务创建失败: HTTP ${resp.code} ${resp.message} ${extractError(payload)}",
+                    payload
+                )
             }
             val root = JSONObject(payload)
             return root.optString("id").takeIf { it.isNotBlank() }
@@ -166,35 +204,85 @@ object AiCreationService {
         }
     }
 
-    private suspend fun pollVideoResult(taskId: String): VideoResult {
-        repeat(MAX_POLL_ATTEMPTS) {
+    private suspend fun pollVideoResult(
+        taskId: String,
+        onProgress: ((GenerationProgress) -> Unit)? = null
+    ): VideoResult {
+        val startTime = System.currentTimeMillis()
+        var lastStatus = "unknown"
+        repeat(MAX_POLL_ATTEMPTS) { attempt ->
             delay(POLL_INTERVAL_MS)
-            val response = client.newCallResponse {
-                url("$BASE_URL/v1/videos/$taskId")
-                addHeader("Authorization", "Bearer $apiKey")
+            val elapsed = (System.currentTimeMillis() - startTime) / 1000
+            val response = try {
+                client.newCallResponse {
+                    url("$BASE_URL/v1/videos/$taskId")
+                    addHeader("Authorization", "Bearer $apiKey")
+                }
+            } catch (e: SocketTimeoutException) {
+                if (attempt > 3) {
+                    throw AiCreationException(
+                        "视频查询超时: 连续网络超时（已轮询 ${attempt + 1} 次 / ${elapsed}秒），" +
+                        "上次状态: $lastStatus，任务ID: $taskId", e
+                    )
+                }
+                return@repeat
+            } catch (e: UnknownHostException) {
+                throw AiCreationException("视频查询失败: 无法解析主机，已等待 ${elapsed}秒，任务ID: $taskId", e)
+            } catch (e: IOException) {
+                if (attempt > 3) {
+                    throw AiCreationException(
+                        "视频查询失败: 网络异常 (${e.javaClass.simpleName}: ${e.message})，" +
+                        "已轮询 ${attempt + 1} 次 / ${elapsed}秒，任务ID: $taskId", e
+                    )
+                }
+                return@repeat
             }
             response.use { resp ->
                 val payload = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    throw AiCreationException("视频查询失败: ${resp.code} ${extractError(payload)}", payload)
+                    throw AiCreationException(
+                        "视频查询失败: HTTP ${resp.code} ${resp.message} ${extractError(payload)}，" +
+                        "已轮询 ${attempt + 1} 次 / ${elapsed}秒，任务ID: $taskId", payload
+                    )
                 }
                 val root = JSONObject(payload)
-                when (root.optString("status")) {
+                lastStatus = root.optString("status", lastStatus)
+                // 优先用 API 返回的 progress，否则用时间估算
+                val apiProgress = root.optInt("progress", -1)
+                val percent = if (apiProgress in 0..100) {
+                    apiProgress
+                } else {
+                    (attempt * 100 / MAX_POLL_ATTEMPTS).coerceIn(0, 99)
+                }
+                val statusText = when (lastStatus) {
+                    "queued" -> "排队中"
+                    "in_progress" -> "生成中"
+                    else -> lastStatus
+                }
+                onProgress?.invoke(GenerationProgress(percent, statusText, elapsed))
+
+                when (lastStatus) {
                     "succeeded" -> {
                         val data = root.optJSONArray("data")
                         val url = data?.optJSONObject(0)?.optString("url")
                         if (!url.isNullOrBlank()) return VideoResult(videoUrl = url)
-                        throw AiCreationException("视频生成完成但未获取到URL", payload)
+                        throw AiCreationException("视频生成完成但未获取到URL，任务ID: $taskId", payload)
                     }
                     "failed", "cancelled" -> {
                         val err = root.optJSONObject("error")
-                        throw AiCreationException("视频生成失败: ${err?.optString("message") ?: "未知错误"}", payload)
+                        throw AiCreationException(
+                            "视频生成失败: ${err?.optString("message") ?: "未知错误"}，" +
+                            "状态: $lastStatus，任务ID: $taskId", payload
+                        )
                     }
-                    // queued / in_progress: 继续轮询
                 }
             }
         }
-        throw AiCreationException("视频生成超时（超过30分钟），请稍后重试", "")
+        val totalElapsed = (System.currentTimeMillis() - startTime) / 1000
+        throw AiCreationException(
+            "视频生成超时（已等待 ${totalElapsed}秒 / ${MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS / 1000}秒），" +
+            "最后状态: $lastStatus，任务ID: $taskId，请稍后重试", ""
+        )
     }
 
     private fun requireApiKey() {
@@ -207,6 +295,7 @@ object AiCreationService {
             root.optJSONObject("error")?.let {
                 it.optString("message").takeIf { m -> m.isNotBlank() }
                     ?: it.optString("code")
+                    ?: it.optString("type")
             } ?: payload.take(200)
         } catch (_: Exception) {
             payload.take(200)
@@ -215,4 +304,10 @@ object AiCreationService {
 }
 
 class AiCreationException(message: String, debugInfo: String = "") :
-    Exception("$message${if (debugInfo.isNotBlank()) "\n$debugInfo" else ""}")
+    Exception("$message${if (debugInfo.isNotBlank()) "\n$debugInfo" else ""}") {
+
+    constructor(message: String, cause: Throwable) : this(
+        "$message (${cause.javaClass.simpleName})",
+        ""
+    )
+}
