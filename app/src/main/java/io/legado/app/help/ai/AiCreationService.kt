@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 内置 Agnes AI 图片/视频生成 API 服务
+ * 自动共享 AI 聊天中已配置的 Agnes AI 提供商 API Key
  */
 object AiCreationService {
 
@@ -17,8 +18,8 @@ object AiCreationService {
     private const val IMAGE_MODEL = "agnes-image-2.1-flash"
     private const val VIDEO_MODEL = "agnes-video-v2.0"
     private const val DEFAULT_SIZE = "1024x768"
-    private const val POLL_INTERVAL_MS = 3000L
-    private const val MAX_POLL_ATTEMPTS = 60
+    private const val POLL_INTERVAL_MS = 5000L    // 视频轮询间隔 5 秒
+    private const val MAX_POLL_ATTEMPTS = 120      // 最多轮询 10 分钟
 
     private val client = okHttpClient.newBuilder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -37,7 +38,24 @@ object AiCreationService {
 
     fun hasApiKey(): Boolean = apiKey.isNotBlank()
 
+    /**
+     * 加载 API Key：优先从 AI 聊天已配置的 Agnes AI 提供商中获取，
+     * 若无则使用用户手动输入的 Key
+     */
     fun loadApiKey() {
+        // 1. 先尝试从聊天提供商列表中找到 Agnes AI 的 Key
+        val providerKey = AppConfig.aiProviderList
+            .firstOrNull { it.baseUrl.contains("agnes-ai", ignoreCase = true) }
+            ?.apiKey
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        if (providerKey != null) {
+            apiKey = providerKey
+            // 同步到独立存储，方便下次快速加载
+            AppConfig.aiAgnesApiKey = providerKey
+            return
+        }
+        // 2. 回退到手动输入的 Key
         apiKey = AppConfig.aiAgnesApiKey
     }
 
@@ -47,39 +65,28 @@ object AiCreationService {
 
     suspend fun textToImage(
         prompt: String,
-        size: String = DEFAULT_SIZE,
-        base64: Boolean = false
-    ): ImageResult = requestImage(prompt = prompt, size = size, base64 = base64)
+        size: String = DEFAULT_SIZE
+    ): ImageResult = requestImage(prompt = prompt, size = size)
 
     suspend fun imageToImage(
         prompt: String,
         imageUrl: String,
-        size: String = DEFAULT_SIZE,
-        base64: Boolean = false
-    ): ImageResult = requestImage(prompt = prompt, imageUrl = imageUrl, size = size, base64 = base64)
+        size: String = DEFAULT_SIZE
+    ): ImageResult = requestImage(prompt = prompt, imageUrl = imageUrl, size = size)
 
     private suspend fun requestImage(
         prompt: String,
         imageUrl: String? = null,
-        size: String,
-        base64: Boolean
+        size: String
     ): ImageResult {
         requireApiKey()
         val body = JSONObject().apply {
             put("model", IMAGE_MODEL)
             put("prompt", prompt)
             put("size", size)
+            put("n", 1)
             if (imageUrl != null) {
-                put("extra_body", JSONObject().apply {
-                    put("image", org.json.JSONArray().put(imageUrl))
-                    put("response_format", if (base64) "b64_json" else "url")
-                })
-            } else if (base64) {
-                put("return_base64", true)
-            } else {
-                put("extra_body", JSONObject().apply {
-                    put("response_format", "url")
-                })
+                put("image", imageUrl)
             }
         }
         val response = client.newCallResponse {
@@ -90,7 +97,10 @@ object AiCreationService {
         }
         response.use { resp ->
             val payload = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) throw AiCreationException("图片生成失败: ${resp.code}", payload)
+            if (!resp.isSuccessful) {
+                val errMsg = extractError(payload)
+                throw AiCreationException("图片生成失败: ${resp.code} $errMsg", payload)
+            }
             val root = JSONObject(payload)
             val data = root.optJSONArray("data")?.optJSONObject(0)
             return ImageResult(
@@ -102,54 +112,38 @@ object AiCreationService {
 
     // ── 视频生成 ──
 
-    data class VideoTask(val taskId: String, val videoId: String)
-    data class VideoResult(val videoUrl: String, val size: String, val seconds: String)
+    data class VideoResult(val videoUrl: String)
 
     suspend fun textToVideo(
         prompt: String,
-        width: Int = 1152,
-        height: Int = 768,
-        numFrames: Int = 121,
-        frameRate: Int = 24
-    ): VideoResult = createAndPollVideo(prompt, width, height, numFrames, frameRate)
+        duration: Int = 5
+    ): VideoResult = createAndPollVideo(prompt, duration)
 
     suspend fun imageToVideo(
         prompt: String,
         imageUrl: String,
-        width: Int = 1152,
-        height: Int = 768,
-        numFrames: Int = 121,
-        frameRate: Int = 24
-    ): VideoResult = createAndPollVideo(prompt, width, height, numFrames, frameRate, imageUrl)
+        duration: Int = 5
+    ): VideoResult = createAndPollVideo(prompt, duration, imageUrl)
 
     private suspend fun createAndPollVideo(
         prompt: String,
-        width: Int,
-        height: Int,
-        numFrames: Int,
-        frameRate: Int,
+        duration: Int,
         imageUrl: String? = null
     ): VideoResult {
         requireApiKey()
-        val task = createVideoTask(prompt, imageUrl, width, height, numFrames, frameRate)
-        return pollVideoResult(task.videoId)
+        val taskId = createVideoTask(prompt, imageUrl, duration)
+        return pollVideoResult(taskId)
     }
 
     private suspend fun createVideoTask(
         prompt: String,
         imageUrl: String?,
-        width: Int,
-        height: Int,
-        numFrames: Int,
-        frameRate: Int
-    ): VideoTask {
+        duration: Int
+    ): String {
         val body = JSONObject().apply {
             put("model", VIDEO_MODEL)
             put("prompt", prompt)
-            put("width", width)
-            put("height", height)
-            put("num_frames", numFrames)
-            put("frame_rate", frameRate)
+            put("duration", duration)
             if (imageUrl != null) put("image", imageUrl)
         }
         val response = client.newCallResponse {
@@ -160,50 +154,68 @@ object AiCreationService {
         }
         response.use { resp ->
             val payload = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) throw AiCreationException("视频任务创建失败: ${resp.code}", payload)
+            if (!resp.isSuccessful) {
+                val errMsg = extractError(payload)
+                throw AiCreationException("视频任务创建失败: ${resp.code} $errMsg", payload)
+            }
             val root = JSONObject(payload)
-            return VideoTask(
-                taskId = root.optString("task_id"),
-                videoId = root.optString("video_id")
-            )
+            return root.optString("id").takeIf { it.isNotBlank() }
+                ?: throw AiCreationException("视频任务创建失败: 未获取到任务ID", payload)
         }
     }
 
-    private suspend fun pollVideoResult(videoId: String): VideoResult {
+    private suspend fun pollVideoResult(taskId: String): VideoResult {
         repeat(MAX_POLL_ATTEMPTS) {
             delay(POLL_INTERVAL_MS)
             val response = client.newCallResponse {
-                url("$BASE_URL/agnesapi?video_id=$videoId")
+                url("$BASE_URL/v1/videos/$taskId")
                 addHeader("Authorization", "Bearer $apiKey")
             }
             response.use { resp ->
                 val payload = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) throw AiCreationException("视频查询失败: ${resp.code}", payload)
+                if (!resp.isSuccessful) {
+                    val errMsg = extractError(payload)
+                    throw AiCreationException("视频查询失败: ${resp.code} $errMsg", payload)
+                }
                 val root = JSONObject(payload)
                 when (root.optString("status")) {
-                    "completed" -> {
-                        val url = root.optString("remixed_from_video_id")
-                        if (url.isNotBlank()) {
-                            return VideoResult(
-                                videoUrl = url,
-                                size = root.optString("size", ""),
-                                seconds = root.optString("seconds", "")
-                            )
+                    "succeeded" -> {
+                        val data = root.optJSONArray("data")
+                        val url = data?.optJSONObject(0)?.optString("url")
+                        if (!url.isNullOrBlank()) {
+                            return VideoResult(videoUrl = url)
                         }
+                        throw AiCreationException("视频生成完成但未获取到URL", payload)
                     }
-                    "failed" -> throw AiCreationException(
-                        "视频生成失败",
-                        root.optJSONObject("error")?.toString() ?: payload
-                    )
+                    "failed", "cancelled" -> {
+                        val error = root.optJSONObject("error")
+                        throw AiCreationException(
+                            "视频生成失败: ${error?.optString("message") ?: "未知错误"}",
+                            payload
+                        )
+                    }
                     else -> { /* queued / in_progress */ }
                 }
             }
         }
-        throw AiCreationException("视频生成超时，请稍后重试", "")
+        throw AiCreationException("视频生成超时（超过10分钟），请稍后重试", "")
     }
 
     private fun requireApiKey() {
         require(apiKey.isNotBlank()) { "请先设置 Agnes AI API Key" }
+    }
+
+    /** 从 API 错误响应中提取可读的错误信息 */
+    private fun extractError(payload: String): String {
+        return try {
+            val root = JSONObject(payload)
+            root.optJSONObject("error")?.let {
+                it.optString("message").takeIf { m -> m.isNotBlank() }
+                    ?: it.optString("code")
+            } ?: ""
+        } catch (_: Exception) {
+            ""
+        }
     }
 }
 

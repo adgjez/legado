@@ -2,6 +2,7 @@ package io.legado.app.ui.main.ai.creation
 
 import android.content.Intent
 import android.net.Uri
+import android.util.Base64
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,7 +50,7 @@ private enum class ImageMode { TEXT_TO_IMAGE, IMAGE_TO_IMAGE }
 private enum class VideoMode { TEXT_TO_VIDEO, IMAGE_TO_VIDEO }
 
 private data class ImageSize(val label: String, val value: String)
-private data class VideoPreset(val label: String, val seconds: String, val numFrames: Int, val frameRate: Int)
+private data class VideoPreset(val label: String, val duration: Int)
 
 // ── 预设 ──
 
@@ -61,10 +62,10 @@ private val imageSizes = listOf(
 )
 
 private val videoPresets = listOf(
-    VideoPreset("3秒", "3", 81, 24),
-    VideoPreset("5秒", "5", 121, 24),
-    VideoPreset("10秒", "10", 241, 24),
-    VideoPreset("18秒", "18", 441, 24),
+    VideoPreset("3秒", 3),
+    VideoPreset("5秒", 5),
+    VideoPreset("10秒", 10),
+    VideoPreset("18秒", 18),
 )
 
 // ── 主入口 ──
@@ -402,9 +403,16 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                             if (mode == ImageMode.TEXT_TO_IMAGE) {
                                 AiCreationService.textToImage(prompt, selectedSize.value)
                             } else {
-                                val uri = imageUri?.toString()
+                                val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
-                                AiCreationService.imageToImage(prompt, uri, selectedSize.value)
+                                val dataUri = context.contentResolver.run {
+                                    val inputStream = openInputStream(uri) ?: throw AiCreationException("无法读取图片文件")
+                                    val bytes = inputStream.use { it.readBytes() }
+                                    val mimeType = getType(uri) ?: "image/png"
+                                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                                    "data:$mimeType;base64,$b64"
+                                }
+                                AiCreationService.imageToImage(prompt, dataUri, selectedSize.value)
                             }
                         }
                         resultUrl = result.url
@@ -642,17 +650,22 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                             if (mode == VideoMode.TEXT_TO_VIDEO) {
                                 AiCreationService.textToVideo(
                                     prompt,
-                                    numFrames = selectedPreset.numFrames,
-                                    frameRate = selectedPreset.frameRate
+                                    duration = selectedPreset.duration
                                 )
                             } else {
-                                val uri = imageUri?.toString()
+                                val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
+                                val dataUri = context.contentResolver.run {
+                                    val inputStream = openInputStream(uri) ?: throw AiCreationException("无法读取图片文件")
+                                    val bytes = inputStream.use { it.readBytes() }
+                                    val mimeType = getType(uri) ?: "image/png"
+                                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                                    "data:$mimeType;base64,$b64"
+                                }
                                 AiCreationService.imageToVideo(
                                     prompt,
-                                    uri,
-                                    numFrames = selectedPreset.numFrames,
-                                    frameRate = selectedPreset.frameRate
+                                    dataUri,
+                                    duration = selectedPreset.duration
                                 )
                             }
                         }
