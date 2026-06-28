@@ -114,8 +114,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onOpenHistory = ::openHistoryFromMenu,
                     onSelectModel = ::showModelSelectorDialog,
                     onOpenImageGallery = ::openImageGallery,
-                    onOpenVideoGallery = ::openVideoGallery,
-                    onOpenUnifiedGallery = ::openUnifiedGallery,
+                    onOpenCreationPlatform = ::openCreationPlatform,
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
                     onOpenWorldBooks = { showCompanionWorldBookDialog() },
                     onToggleAutoSpeak = ::toggleAutoSpeak,
@@ -128,7 +127,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onSelectCompanionSession = ::loadCompanionSessionFromDrawer,
                     onNewCompanionChat = ::startNewChatFromDrawer,
                     onDeleteSession = ::confirmDeleteHistorySession,
-                    onCompanionLongPress = ::showCompanionActions
+                    onCompanionLongPress = ::showCompanionActions,
+                    onFilePicked = ::handleFilePicked
                 )
             )
             if (characterPickerVisible) {
@@ -204,12 +204,28 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         startActivity(android.content.Intent(this, AiImageGalleryActivity::class.java))
     }
 
-    private fun openVideoGallery() {
-        startActivity(android.content.Intent(this, AiVideoGalleryActivity::class.java))
+    private fun openCreationPlatform() {
+        startActivity(android.content.Intent(this, io.legado.app.ui.main.ai.creation.AiCreationActivity::class.java))
     }
 
-    private fun openUnifiedGallery() {
-        startActivity(android.content.Intent(this, AiUnifiedGalleryActivity::class.java))
+    private fun handleFilePicked(uri: android.net.Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val inputStream = contentResolver.openInputStream(uri)
+                val bytes = inputStream?.readBytes() ?: return@launch
+                inputStream.close()
+                val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                val mimeType = contentResolver.getType(uri) ?: "image/png"
+                val dataUri = "data:$mimeType;base64,$base64"
+                withContext(Dispatchers.Main) {
+                    dispatchSend(dataUri)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    toastOnUi("文件读取失败: ${e.message}")
+                }
+            }
+        }
     }
 
     private fun selectCompanion(companionId: String) {

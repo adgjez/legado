@@ -316,17 +316,7 @@
             android:name=".ui.main.ai.AiImageGalleryActivity"
             android:launchMode="standard" />
         <activity
-            android:name=".ui.main.ai.AiVideoGalleryActivity"
-            android:launchMode="standard" />
-        <activity
-            android:name=".ui.main.ai.AiUnifiedGalleryActivity"
-            android:launchMode="standard" />
-        <activity
-            android:name=".ui.main.ai.AiVideoProviderEditActivity"
-            android:launchMode="standard"
-            android:windowSoftInputMode="adjustResize|stateHidden" />
-        <activity
-            android:name=".ui.main.ai.AiAudioProviderEditActivity"
+            android:name=".ui.main.ai.creation.AiCreationActivity"
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity

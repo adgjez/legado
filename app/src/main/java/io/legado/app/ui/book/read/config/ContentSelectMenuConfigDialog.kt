@@ -296,10 +296,7 @@ class ContentSelectMenuConfigDialog : ComposeDialogFragment() {
             ActionItem(ContentSelectConfig.ACTION_ALOUD, R.string.read_aloud),
             ActionItem(ContentSelectConfig.ACTION_DICT, R.string.dict),
             ActionItem(ContentSelectConfig.ACTION_ASK_AI, R.string.ask_ai),
-            ActionItem(ContentSelectConfig.ACTION_GENERATE_IMAGE, R.string.ai_image_generate),
-            ActionItem(ContentSelectConfig.ACTION_AI_PURIFY, R.string.ai_purify),
-            ActionItem(ContentSelectConfig.ACTION_GENERATE_VIDEO, R.string.ai_video_generate),
-            ActionItem(ContentSelectConfig.ACTION_GENERATE_SCENE, R.string.ai_story_generate)
+            ActionItem(ContentSelectConfig.ACTION_GENERATE_IMAGE, R.string.ai_image_generate)
         )
         private val knownActionIds = actionItems.map { it.id }.toSet()
 

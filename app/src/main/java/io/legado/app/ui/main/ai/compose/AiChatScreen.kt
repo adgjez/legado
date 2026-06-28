@@ -1,6 +1,8 @@
 ﻿package io.legado.app.ui.main.ai.compose
 
 import android.widget.ImageView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -119,8 +121,7 @@ data class AiChatScreenActions(
     val onOpenHistory: () -> Unit,
     val onSelectModel: () -> Unit,
     val onOpenImageGallery: (() -> Unit)? = null,
-    val onOpenVideoGallery: (() -> Unit)? = null,
-    val onOpenUnifiedGallery: (() -> Unit)? = null,
+    val onOpenCreationPlatform: (() -> Unit)? = null,
     val onOpenWindowAbilities: (() -> Unit)? = null,
     val onOpenWorldBooks: (() -> Unit)? = null,
     val onToggleAutoSpeak: (() -> Unit)? = null,
@@ -131,7 +132,8 @@ data class AiChatScreenActions(
     val onSelectCompanionSession: ((String, String) -> Unit)? = null,
     val onNewCompanionChat: ((String) -> Unit)? = null,
     val onDeleteSession: ((AiChatSession) -> Unit)? = null,
-    val onCompanionLongPress: ((AiChatCompanionConfig) -> Unit)? = null
+    val onCompanionLongPress: ((AiChatCompanionConfig) -> Unit)? = null,
+    val onFilePicked: ((android.net.Uri) -> Unit)? = null
 )
 
 @Stable
@@ -697,11 +699,8 @@ private fun AiChatTopBar(
                         actions.onOpenImageGallery?.let { openGallery ->
                             add(AiTopMenuAction(stringResource(R.string.ai_image_gallery), openGallery))
                         }
-                        actions.onOpenVideoGallery?.let { openVideoGallery ->
-                            add(AiTopMenuAction("AI 视频库", openVideoGallery))
-                        }
-                        actions.onOpenUnifiedGallery?.let { openUnifiedGallery ->
-                            add(AiTopMenuAction("AI 统一素材库", openUnifiedGallery))
+                        actions.onOpenCreationPlatform?.let { openCreation ->
+                            add(AiTopMenuAction("AI 创造平台", openCreation))
                         }
                     },
                     onDismiss = { menuExpanded = false }
@@ -1655,6 +1654,11 @@ private fun AiComposer(
             text = ""
         }
     }
+    val imagePicker = actions.onFilePicked?.let { onPicked ->
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri -> uri?.let(onPicked) }
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
@@ -1666,6 +1670,21 @@ private fun AiComposer(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)
         ) {
+            // 文件上传按钮
+            if (imagePicker != null) {
+                IconButton(
+                    onClick = { imagePicker.launch("image/*") },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add),
+                        contentDescription = "上传文件",
+                        tint = style.colors.secondaryText,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             Box(
                 modifier = Modifier
                     .weight(1f)

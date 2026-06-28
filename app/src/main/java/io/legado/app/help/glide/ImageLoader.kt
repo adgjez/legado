@@ -9,7 +9,6 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
-import io.legado.app.help.ai.AiAudioGalleryManager
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
@@ -27,9 +26,6 @@ object ImageLoader {
      * 自动判断path类型
      */
     fun load(context: Context, path: String?): RequestBuilder<Drawable> {
-        AiAudioGalleryManager.resolveAudioFile(path)?.let {
-            return Glide.with(context).load(it)
-        }
         AiImageGalleryManager.resolveImageFile(path)?.let {
             return Glide.with(context).load(it)
         }
@@ -49,9 +45,6 @@ object ImageLoader {
 
     fun load(fragment: Fragment, lifecycle: Lifecycle, path: String?): RequestBuilder<Drawable> {
         val requestManager = Glide.with(fragment).lifecycle(lifecycle)
-        AiAudioGalleryManager.resolveAudioFile(path)?.let {
-            return requestManager.load(it)
-        }
         AiImageGalleryManager.resolveImageFile(path)?.let {
             return requestManager.load(it)
         }
@@ -72,9 +65,6 @@ object ImageLoader {
 
     fun loadBitmap(context: Context, path: String?): RequestBuilder<Bitmap> {
         val requestManager = Glide.with(context).`as`(Bitmap::class.java)
-        AiAudioGalleryManager.resolveAudioFile(path)?.let {
-            return requestManager.load(it)
-        }
         AiImageGalleryManager.resolveImageFile(path)?.let {
             return requestManager.load(it)
         }
@@ -94,9 +84,6 @@ object ImageLoader {
 
     fun loadBitmap(fragment: Fragment, lifecycle: Lifecycle, path: String?): RequestBuilder<Bitmap> {
         val requestManager = Glide.with(fragment).lifecycle(lifecycle).`as`(Bitmap::class.java)
-        AiAudioGalleryManager.resolveAudioFile(path)?.let {
-            return requestManager.load(it)
-        }
         AiImageGalleryManager.resolveImageFile(path)?.let {
             return requestManager.load(it)
         }
@@ -115,9 +102,6 @@ object ImageLoader {
     }
 
     fun loadFile(context: Context, path: String?): RequestBuilder<File> {
-        AiAudioGalleryManager.resolveAudioFile(path)?.let {
-            return Glide.with(context).asFile().load(it)
-        }
         AiImageGalleryManager.resolveImageFile(path)?.let {
             return Glide.with(context).asFile().load(it)
         }

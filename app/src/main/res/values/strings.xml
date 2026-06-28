@@ -694,14 +694,6 @@
     <string name="ai_image_new_group">新建分组</string>
     <string name="ai_image_favorite_to">收藏到</string>
     <string name="ai_image_cancel_favorite">取消收藏</string>
-    <string name="ai_video_gallery">AI 视频库</string>
-    <string name="ai_purify">AI净化</string>
-    <string name="ai_video_generate">生视频</string>
-    <string name="ai_unified_gallery">AI 创作库</string>
-    <string name="ai_video_provider_edit">视频服务商设置</string>
-    <string name="ai_audio_provider_edit">音频服务商设置</string>
-    <string name="ai_story_generate">把本章做成视频</string>
-    <string name="ai_book_creation">本作AI二创集</string>
     <string name="ai_image_rename">重命名</string>
     <string name="ai_image_delete_confirm">删除这张图片？</string>
     <string name="ai_image_prompt_hint">输入图片提示词</string>

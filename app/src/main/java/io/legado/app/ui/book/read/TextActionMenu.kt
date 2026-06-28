@@ -75,9 +75,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         R.id.menu_dict -> ContentSelectConfig.ACTION_DICT
         R.id.menu_ask_ai -> ContentSelectConfig.ACTION_ASK_AI
         R.id.menu_generate_image -> ContentSelectConfig.ACTION_GENERATE_IMAGE
-        R.id.menu_ai_purify -> ContentSelectConfig.ACTION_AI_PURIFY
-        R.id.menu_generate_video -> ContentSelectConfig.ACTION_GENERATE_VIDEO
-        R.id.menu_generate_scene -> ContentSelectConfig.ACTION_GENERATE_SCENE
         else -> null
     }
 

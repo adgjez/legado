@@ -6,7 +6,6 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import io.legado.app.R
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
@@ -14,8 +13,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.RssSource
 import io.legado.app.help.AppCacheManager
-import io.legado.app.help.ai.AiCodecCompat
-import io.legado.app.help.ai.AiVideoGalleryManager
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.permission.Permissions
@@ -193,18 +190,6 @@ object SourceHelp {
     }
 
     fun openVideoPlayer(source: BaseSource?, url: String, title: String, isFloat: Boolean) {
-        var videoUrl = url
-        if (videoUrl.startsWith(AiVideoGalleryManager.VIDEO_URI_PREFIX, ignoreCase = true)) {
-            val resolvedPath = AiVideoGalleryManager.resolveVideoFile(videoUrl)?.absolutePath
-            if (!resolvedPath.isNullOrBlank()) {
-                AiCodecCompat.detectCodec(resolvedPath)?.let { codecInfo ->
-                    if (!AiCodecCompat.isCodecSupported(codecInfo.mimeType)) {
-                        AppLog.put("Video codec ${codecInfo.codecName} may not be supported")
-                    }
-                }
-                videoUrl = resolvedPath
-            }
-        }
         if (isFloat) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(appCtx)) {
                 PermissionsCompat.Builder()
@@ -220,7 +205,7 @@ object SourceHelp {
                 return
             }
             val intent = Intent(appCtx, VideoPlayService::class.java).apply {
-                putExtra("videoUrl", videoUrl)
+                putExtra("videoUrl", url)
                 putExtra("videoTitle", title)
                 putExtra("sourceKey", source?.getKey())
                 putExtra("sourceType", source?.getSourceType())
@@ -228,7 +213,7 @@ object SourceHelp {
             ContextCompat.startForegroundService(appCtx, intent)
         } else {
             appCtx.startActivity<VideoPlayerActivity> {
-                putExtra("videoUrl", videoUrl)
+                putExtra("videoUrl", url)
                 putExtra("videoTitle", title)
                 putExtra("sourceKey", source?.getKey())
                 putExtra("sourceType", source?.getSourceType())

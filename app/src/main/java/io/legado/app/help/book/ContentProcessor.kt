@@ -9,8 +9,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.RegexTimeoutException
-import io.legado.app.help.ai.AiSanitizeService
-import io.legado.app.help.ai.AiVideoGalleryManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.utils.ChineseUtils
@@ -101,21 +99,6 @@ class ContentProcessor private constructor(
         reSegment: Boolean = true
     ): BookContent {
         var mContent = content
-        // When AI sanitize is enabled, prefer a previously accepted sanitized
-        // version of this chapter from the cache. ContentProcessor is the single
-        // place chapter text flows through during loading, so applying the cache
-        // here makes the "Accept" action in the sanitize diff dialog take effect.
-        if (AppConfig.isAiSanitizeEnabled && content != "null") {
-            runCatching {
-                val bookKey = AiVideoGalleryManager.buildBookKey(book.name, book.author)
-                val cached = appDb.aiPurifiedTextCacheDao.get(
-                    bookKey, chapter.index, AppConfig.aiSanitizeIntensity
-                )
-                if (cached != null) {
-                    mContent = cached.sanitizedText
-                }
-            }
-        }
         var sameTitleRemoved = false
         var effectiveReplaceRules: ArrayList<ReplaceRule>? = null
         val replaceBook by lazy { book.toReplaceBook() }

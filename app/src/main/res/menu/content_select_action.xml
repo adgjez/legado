@@ -35,20 +35,6 @@
         android:title="@string/ai_image_generate" />
 
     <item
-        android:id="@+id/menu_ai_purify"
-        android:title="@string/ai_purify" />
-
-    <item
-        android:id="@+id/menu_generate_video"
-        android:title="@string/ai_video_generate" />
-
-    <item
-        android:id="@+id/menu_generate_scene"
-        android:icon="@drawable/ic_video"
-        android:title="@string/ai_story_generate"
-        app:showAsAction="never" />
-
-    <item
         android:id="@+id/menu_search_content"
         android:title="@string/search_content"
         app:showAsAction="never" />

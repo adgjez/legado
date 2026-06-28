@@ -18,9 +18,6 @@ object ContentSelectConfig {
     const val ACTION_DICT = "dict"
     const val ACTION_ASK_AI = "ask_ai"
     const val ACTION_GENERATE_IMAGE = "generate_image"
-    const val ACTION_AI_PURIFY = "ai_purify"
-    const val ACTION_GENERATE_VIDEO = "generate_video"
-    const val ACTION_GENERATE_SCENE = "generate_scene"
 
     private val oldDefaultActions = setOf(
         ACTION_REPLACE,
@@ -40,10 +37,7 @@ object ContentSelectConfig {
         ACTION_ALOUD,
         ACTION_DICT,
         ACTION_ASK_AI,
-        ACTION_GENERATE_IMAGE,
-        ACTION_AI_PURIFY,
-        ACTION_GENERATE_VIDEO,
-        ACTION_GENERATE_SCENE
+        ACTION_GENERATE_IMAGE
     )
 
     val defaultOpenValues = listOf("", ACTION_WEB_SEARCH, ACTION_DICT, ACTION_ASK_AI)
@@ -130,8 +124,7 @@ object ContentSelectConfig {
             ?.filterNot { it in removedActionIds }
             ?.toSet()
             ?: return defaultActions
-        val newActions = defaultActions - oldDefaultActions
-        return (saved + newActions).filter { it in defaultActions }.toSet()
+        return if (saved == oldDefaultActions) defaultActions else saved
     }
 
     fun searchEngines(context: Context): List<SearchEngine> {

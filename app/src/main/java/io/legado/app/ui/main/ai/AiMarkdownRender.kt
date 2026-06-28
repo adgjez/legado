@@ -224,24 +224,6 @@ object AiMarkdownRender {
                 return decoded
             }
         }
-        // ai-video:// and ai-audio:// URIs — resolve to thumbnail/local path for display
-        if (lower.startsWith("ai-video://") || lower.startsWith("ai-audio://")) {
-            val uri = runCatching { Uri.parse(raw) }.getOrNull()
-            val id = uri?.path?.takeIf { it.isNotBlank() }
-                ?: uri?.schemeSpecificPart?.removePrefix("//")?.takeIf { it.isNotBlank() }
-                ?: return raw
-            val decoded = Uri.decode(id)
-            return runCatching {
-                if (lower.startsWith("ai-video://")) {
-                    io.legado.app.help.ai.AiVideoGalleryManager.resolveThumbnailPath(decoded)
-                } else {
-                    io.legado.app.help.ai.AiAudioGalleryManager.resolveThumbnailPath(decoded)
-                }
-            }.getOrNull()?.let { path ->
-                val file = File(path)
-                if (file.isAbsolute) Uri.fromFile(file).toString() else path
-            } ?: raw
-        }
         val file = File(raw)
         return if (file.isAbsolute) Uri.fromFile(file).toString() else raw
     }

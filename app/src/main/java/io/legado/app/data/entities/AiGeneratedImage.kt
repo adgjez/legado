@@ -13,8 +13,7 @@ import androidx.room.PrimaryKey
         Index("bookKey"),
         Index("chapterKey"),
         Index("characterId"),
-        Index("sourceType"),
-        Index(name = "idx_image_book_chapter", value = ["bookKey", "chapterIndex"])
+        Index("sourceType")
     ]
 )
 data class AiGeneratedImage(
@@ -39,11 +38,6 @@ data class AiGeneratedImage(
     val sourceText: String = "",
     val favorite: Boolean = false,
     val groupId: String? = null,
-    val genTaskId: String? = null,
-    val generationMode: String? = null,
-    val inputImageId: String? = null,
-    val negativePrompt: String? = null,
-    val referenceImageId: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

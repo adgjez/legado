@@ -30,8 +30,6 @@ import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AiImageProviderConfig
-import io.legado.app.ui.main.ai.AiVideoProviderConfig
-import io.legado.app.ui.main.ai.AiAudioProviderConfig
 import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
@@ -477,15 +475,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     val aiCurrentProvider: AiProviderConfig?
-        get() {
-            val providers = aiProviderList
-            val currentId = aiCurrentProviderId
-            if (currentId.isNullOrBlank()) {
-                return providers.firstOrNull()?.also { aiCurrentProviderId = it.id }
-            }
-            return providers.firstOrNull { it.id == currentId }
-                ?: providers.firstOrNull()?.also { aiCurrentProviderId = it.id }
-        }
+        get() = aiProviderList.firstOrNull { it.id == aiCurrentProviderId }
 
     var aiModelConfigList: List<AiModelConfig>
         get() {
@@ -522,15 +512,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     val aiCurrentModelConfig: AiModelConfig?
-        get() {
-            val models = aiModelConfigList
-            val currentId = aiCurrentModelId
-            if (currentId.isNullOrBlank()) {
-                return models.firstOrNull()?.also { aiCurrentModelId = it.id }
-            }
-            return models.firstOrNull { it.id == currentId }
-                ?: models.firstOrNull()?.also { aiCurrentModelId = it.id }
-        }
+        get() = aiModelConfigList.firstOrNull { it.id == aiCurrentModelId }
 
     var aiAskModelId: String?
         get() = sceneAiModelId(PreferKey.aiAskModelId)
@@ -889,138 +871,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             }
         }
 
-    var aiSanitizeCustomPrompt: String?
-        get() = appCtx.getPrefString(PreferKey.aiSanitizeCustomPrompt)
-        set(value) {
-            val prompt = value?.trim()
-            if (prompt.isNullOrBlank()) {
-                appCtx.removePref(PreferKey.aiSanitizeCustomPrompt)
-            } else {
-                appCtx.putPrefString(PreferKey.aiSanitizeCustomPrompt, prompt)
-            }
-        }
-
-    var isAiSanitizeEnabled: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.aiSanitizeEnabled, false)
-        set(value) = appCtx.putPrefBoolean(PreferKey.aiSanitizeEnabled, value)
-
-    var aiSanitizeTrigger: Int
-        get() = appCtx.getPrefInt(PreferKey.aiSanitizeTrigger, 0) // 0=MANUAL_ONLY, 1=AUTO_CHAPTER
-        set(value) = appCtx.putPrefInt(PreferKey.aiSanitizeTrigger, value)
-
-    var aiSanitizeIntensity: Int
-        get() = appCtx.getPrefInt(PreferKey.aiSanitizeIntensity, 3).coerceIn(1, 10)
-        set(value) = appCtx.putPrefInt(PreferKey.aiSanitizeIntensity, value.coerceIn(1, 10))
-
-    var aiVideoProviderList: List<AiVideoProviderConfig>
-        get() {
-            ensureBuiltinAiProviders()
-            return GSON.fromJsonArray<AiVideoProviderConfig>(
-                appCtx.getPrefString(PreferKey.aiVideoProviderList)
-            ).getOrDefault(emptyList())
-        }
-        set(value) {
-            if (value.isEmpty()) appCtx.removePref(PreferKey.aiVideoProviderList)
-            else appCtx.putPrefString(PreferKey.aiVideoProviderList, GSON.toJson(value))
-            syncAiVideoState(value)
-        }
-
-    val aiEnabledVideoProviders: List<AiVideoProviderConfig>
-        get() = aiVideoProviderList.filter { it.enabled }
-
-    var aiCurrentVideoProviderId: String?
-        get() = appCtx.getPrefString(PreferKey.aiCurrentVideoProviderId)
-        set(value) {
-            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentVideoProviderId)
-            else appCtx.putPrefString(PreferKey.aiCurrentVideoProviderId, value)
-        }
-
-    val aiCurrentVideoProvider: AiVideoProviderConfig?
-        get() {
-            val providers = aiEnabledVideoProviders
-            val currentId = aiCurrentVideoProviderId
-            if (currentId.isNullOrBlank()) {
-                return providers.firstOrNull()?.also { aiCurrentVideoProviderId = it.id }
-            }
-            return providers.firstOrNull { it.id == currentId }
-                ?: providers.firstOrNull()?.also { aiCurrentVideoProviderId = it.id }
-        }
-
-    fun findEnabledVideoProvider(id: String?): AiVideoProviderConfig? {
-        val cleanId = id?.trim().orEmpty()
-        if (cleanId.isBlank()) return null
-        return aiEnabledVideoProviders.firstOrNull { it.id == cleanId }
-    }
-
-    private fun syncAiVideoState(
-        providers: List<AiVideoProviderConfig>,
-        preferredId: String? = null
-    ) {
-        val enabled = providers.filter { it.enabled }
-        val currentId = appCtx.getPrefString(PreferKey.aiCurrentVideoProviderId)
-        val nextId = enabled.firstOrNull { it.id == preferredId }?.id
-            ?: enabled.firstOrNull { it.id == currentId }?.id
-            ?: enabled.firstOrNull()?.id
-        if (nextId.isNullOrBlank()) {
-            appCtx.removePref(PreferKey.aiCurrentVideoProviderId)
-        } else if (nextId != currentId) {
-            appCtx.putPrefString(PreferKey.aiCurrentVideoProviderId, nextId)
-        }
-    }
-
-    var aiAudioProviderList: List<AiAudioProviderConfig>
-        get() = GSON.fromJsonArray<AiAudioProviderConfig>(
-            appCtx.getPrefString(PreferKey.aiAudioProviderList)
-        ).getOrDefault(emptyList())
-        set(value) {
-            if (value.isEmpty()) appCtx.removePref(PreferKey.aiAudioProviderList)
-            else appCtx.putPrefString(PreferKey.aiAudioProviderList, GSON.toJson(value))
-            syncAiAudioState(value)
-        }
-
-    val aiEnabledAudioProviders: List<AiAudioProviderConfig>
-        get() = aiAudioProviderList.filter { it.enabled }
-
-    var aiCurrentAudioProviderId: String?
-        get() = appCtx.getPrefString(PreferKey.aiCurrentAudioProviderId)
-        set(value) {
-            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentAudioProviderId)
-            else appCtx.putPrefString(PreferKey.aiCurrentAudioProviderId, value)
-        }
-
-    val aiCurrentAudioProvider: AiAudioProviderConfig?
-        get() {
-            val providers = aiEnabledAudioProviders
-            val currentId = aiCurrentAudioProviderId
-            if (currentId.isNullOrBlank()) {
-                return providers.firstOrNull()?.also { aiCurrentAudioProviderId = it.id }
-            }
-            return providers.firstOrNull { it.id == currentId }
-                ?: providers.firstOrNull()?.also { aiCurrentAudioProviderId = it.id }
-        }
-
-    fun findEnabledAudioProvider(id: String?): AiAudioProviderConfig? {
-        val cleanId = id?.trim().orEmpty()
-        if (cleanId.isBlank()) return null
-        return aiEnabledAudioProviders.firstOrNull { it.id == cleanId }
-    }
-
-    private fun syncAiAudioState(
-        providers: List<AiAudioProviderConfig>,
-        preferredId: String? = null
-    ) {
-        val enabled = providers.filter { it.enabled }
-        val currentId = appCtx.getPrefString(PreferKey.aiCurrentAudioProviderId)
-        val nextId = enabled.firstOrNull { it.id == preferredId }?.id
-            ?: enabled.firstOrNull { it.id == currentId }?.id
-            ?: enabled.firstOrNull()?.id
-        if (nextId.isNullOrBlank()) {
-            appCtx.removePref(PreferKey.aiCurrentAudioProviderId)
-        } else if (nextId != currentId) {
-            appCtx.putPrefString(PreferKey.aiCurrentAudioProviderId, nextId)
-        }
-    }
-
     var aiSkillList: List<AiSkillConfig>
         get() = readAiSkills()
         set(value) {
@@ -1058,13 +908,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = aiPersonaList.firstOrNull { it.id == aiCurrentPersonaId }
 
     var aiImageProviderList: List<AiImageProviderConfig>
-        get() {
-            ensureBuiltinAiProviders()
-            return normalizeAiImageProviders(
-                GSON.fromJsonArray<AiImageProviderConfig>(appCtx.getPrefString(PreferKey.aiImageProviderList))
-                    .getOrDefault(emptyList())
-            )
-        }
+        get() = normalizeAiImageProviders(
+            GSON.fromJsonArray<AiImageProviderConfig>(appCtx.getPrefString(PreferKey.aiImageProviderList))
+                .getOrDefault(emptyList())
+        )
         set(value) {
             val providers = normalizeAiImageProviders(value)
             if (providers.isEmpty()) appCtx.removePref(PreferKey.aiImageProviderList)
@@ -1405,6 +1252,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             else appCtx.putPrefString(PreferKey.aiTavilyApiKey, key)
         }
 
+    var aiAgnesApiKey: String
+        get() = appCtx.getPrefString(PreferKey.aiAgnesApiKey).orEmpty()
+        set(value) {
+            val key = value.trim()
+            if (key.isBlank()) appCtx.removePref(PreferKey.aiAgnesApiKey)
+            else appCtx.putPrefString(PreferKey.aiAgnesApiKey, key)
+        }
+
     var aiTavilyBaseUrl: String
         get() = appCtx.getPrefString(PreferKey.aiTavilyBaseUrl, "https://api.tavily.com/search")
             ?: "https://api.tavily.com/search"
@@ -1430,7 +1285,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun readAiProviders(): List<AiProviderConfig> {
         migrateLegacyAiConfigIfNeeded()
-        ensureBuiltinAiProviders()
         return normalizeAiProviders(
             GSON.fromJsonArray<AiProviderConfig>(appCtx.getPrefString(PreferKey.aiProviderList))
                 .getOrDefault(emptyList())
@@ -2069,71 +1923,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.aiAssistantEnabled, false)
         } else {
             appCtx.putPrefString(PreferKey.aiCurrentModelId, currentModel.id)
-        }
-    }
-
-    fun ensureBuiltinAiProviders() {
-        if (appCtx.getPrefBoolean(PreferKey.aiBuiltinProvidersInitialized, false)) return
-        appCtx.putPrefBoolean(PreferKey.aiBuiltinProvidersInitialized, true)
-
-        val agnesBaseUrl = "https://apihub.agnes-ai.com/v1"
-
-        // --- 文本供应商 ---
-        val chatProviderId = "builtin_agnes_chat"
-        val existing = aiProviderList
-        if (existing.none { it.id == chatProviderId || it.baseUrl == agnesBaseUrl }) {
-            val provider = AiProviderConfig(
-                id = chatProviderId,
-                name = "Agnes AI",
-                baseUrl = agnesBaseUrl
-            )
-            aiProviderList = existing + provider
-            aiModelConfigList = aiModelConfigList + AiModelConfig(
-                providerId = chatProviderId,
-                modelId = "agnes-2.0-flash"
-            )
-        }
-        // 确保内置供应商被设为当前选中
-        if (aiCurrentProviderId.isNullOrBlank() || aiCurrentProviderId == chatProviderId) {
-            aiCurrentProviderId = chatProviderId
-        }
-        if (aiCurrentModelId.isNullOrBlank()) {
-            val models = aiModelConfigList
-            val model = models.firstOrNull { it.modelId == "agnes-2.0-flash" }
-                ?: models.firstOrNull()
-            if (model != null) aiCurrentModelId = model.id
-        }
-
-        // --- 图片供应商 ---
-        val imageProviderId = "builtin_agnes_image"
-        val imageProviders = aiImageProviderList
-        if (imageProviders.none { it.id == imageProviderId || it.baseUrl == agnesBaseUrl }) {
-            aiImageProviderList = imageProviders + AiImageProviderConfig(
-                id = imageProviderId,
-                name = "Agnes AI 图片",
-                baseUrl = agnesBaseUrl,
-                model = "agnes-image-2.0-flash",
-                defaultParamsJson = "{\n  \"size\": \"1024x1024\"\n}"
-            )
-        }
-        if (aiCurrentImageProviderId.isNullOrBlank() || aiCurrentImageProviderId == imageProviderId) {
-            aiCurrentImageProviderId = imageProviderId
-        }
-
-        // --- 视频供应商 ---
-        val videoProviderId = "builtin_agnes_video"
-        val videoProviders = aiVideoProviderList
-        if (videoProviders.none { it.id == videoProviderId || it.baseUrl == agnesBaseUrl }) {
-            aiVideoProviderList = videoProviders + AiVideoProviderConfig(
-                id = videoProviderId,
-                name = "Agnes AI 视频",
-                template = "agnes_video_2.0",
-                baseUrl = agnesBaseUrl,
-                model = "agnes-video-v2.0"
-            )
-        }
-        if (aiCurrentVideoProviderId.isNullOrBlank() || aiCurrentVideoProviderId == videoProviderId) {
-            aiCurrentVideoProviderId = videoProviderId
         }
     }
 

@@ -17,16 +17,11 @@ import io.legado.app.help.source.getShareScope
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
-import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 import java.util.concurrent.TimeUnit
 
 object AiImageService {
@@ -54,164 +49,6 @@ object AiImageService {
         val target = resolveProvider(provider)
         val image = generateRaw(effectivePrompt(prompt, target), target)
         return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model, metadata)
-    }
-
-    suspend fun generateBatch(
-        prompt: String,
-        n: Int,
-        provider: AiImageProviderConfig? = null,
-        metadata: AiImageGalleryManager.ImageMetadata? = null
-    ): List<AiGeneratedImage> {
-        val targetProvider = provider ?: currentProviderOrNull() ?: return emptyList()
-        val results = mutableListOf<AiGeneratedImage>()
-        repeat(n.coerceIn(1, 10)) {
-            runCatching {
-                generateAndStore(prompt, targetProvider, metadata ?: AiImageGalleryManager.ImageMetadata())
-            }.onSuccess { results.add(it) }
-                .onFailure { AppLog.put("Batch image generation failed", it) }
-        }
-        return results
-    }
-
-    suspend fun generateFromImage(
-        prompt: String,
-        inputImageId: String,
-        maskBase64: String? = null,
-        provider: AiImageProviderConfig? = null,
-        metadata: AiImageGalleryManager.ImageMetadata? = null
-    ): AiGeneratedImage {
-        val targetProvider = provider ?: currentProviderOrNull()
-            ?: error("请选择可用生图模型")
-        val inputImage = AiImageGalleryManager.getImage(inputImageId)
-            ?: error("Input image not found: $inputImageId")
-
-        return when (targetProvider.type) {
-            AiImageProviderConfig.TYPE_OPENAI -> {
-                generateFromImageOpenAi(prompt, inputImage, maskBase64, targetProvider, metadata)
-            }
-            AiImageProviderConfig.TYPE_JS -> {
-                generateFromImageJs(prompt, inputImage, maskBase64, targetProvider, metadata)
-            }
-            else -> error("Unsupported provider type: ${targetProvider.type}")
-        }
-    }
-
-    private suspend fun generateFromImageOpenAi(
-        prompt: String,
-        inputImage: AiGeneratedImage,
-        maskBase64: String?,
-        provider: AiImageProviderConfig,
-        metadata: AiImageGalleryManager.ImageMetadata?
-    ): AiGeneratedImage {
-        val baseUrl = normalizeBaseUrl(provider.baseUrl)
-        require(baseUrl.isNotBlank()) { "Base URL is empty" }
-        val requestUrl = "${baseUrl.trimEnd('/')}/images/edits"
-        val startedAt = System.currentTimeMillis()
-        var status = ""
-        try {
-            val multipartBody = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("prompt", prompt)
-                .addFormDataPart("model", provider.model.ifBlank { "gpt-image-1" })
-                .apply {
-                    val imageFile = File(inputImage.localPath)
-                    if (imageFile.exists()) {
-                        addFormDataPart("image", "image.png",
-                            imageFile.asRequestBody("image/png".toMediaType()))
-                    }
-                    maskBase64?.let {
-                        val maskBytes = Base64.decode(it, Base64.DEFAULT)
-                        addFormDataPart("mask", "mask.png",
-                            maskBytes.toRequestBody("image/png".toMediaType()))
-                    }
-                }
-                .build()
-
-            val response = provider.httpClient().newCallResponse {
-                url(requestUrl)
-                post(multipartBody)
-                addHeader("Accept", "application/json")
-                provider.apiKey.takeIf { it.isNotBlank() }?.let {
-                    addHeader("Authorization", "Bearer $it")
-                }
-                addHeaders(AiChatService.parseCustomHeaders(provider.headers))
-            }
-            response.use {
-                status = "${it.code} ${it.message}"
-                val text = it.body.string()
-                if (!it.isSuccessful) error(text.ifBlank { status })
-                val root = JSONObject(text)
-                val imageSource = imageFromOpenAiResponse(root)
-                    ?: error("No image url or base64 field in response: ${jsonShape(root)}")
-                logRequest(provider, requestUrl, status, startedAt, true, provider.model)
-                return AiImageGalleryManager.saveGeneratedImage(
-                    imageSource, prompt, provider, provider.model,
-                    metadata ?: AiImageGalleryManager.ImageMetadata()
-                )
-            }
-        } catch (e: Throwable) {
-            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, provider.model, e)
-            throw e
-        }
-    }
-
-    private suspend fun generateFromImageJs(
-        prompt: String,
-        inputImage: AiGeneratedImage,
-        maskBase64: String?,
-        provider: AiImageProviderConfig,
-        metadata: AiImageGalleryManager.ImageMetadata?
-    ): AiGeneratedImage {
-        AiSandboxBridge.setAllowedBaseUrl(provider.baseUrl)
-        val script = provider.script.trim()
-        if (script.isBlank()) error("JS script is empty")
-        val source = AiImageJsSource(provider)
-        val coroutineContext = currentCoroutineContext()
-        val quotedPrompt = JSONObject.quote(prompt)
-        val quotedImagePath = JSONObject.quote(inputImage.localPath)
-        val quotedMask = maskBase64?.let { JSONObject.quote(it) } ?: "null"
-        val result = withTimeout(provider.validTimeout()) {
-            val bindings = buildScriptBindings { bindings ->
-                bindings["java"] = source
-                bindings["source"] = source
-                bindings["cache"] = CacheManager
-                bindings["cookie"] = CookieStore
-                bindings["baseUrl"] = source.getKey()
-                bindings["prompt"] = prompt
-                bindings["result"] = prompt
-                bindings["key"] = prompt
-                bindings["provider"] = provider
-            }
-            val sharedScope = source.getShareScope(coroutineContext)
-            val scope = if (sharedScope == null) {
-                RhinoScriptEngine.getRuntimeScope(bindings)
-            } else {
-                bindings.apply { prototype = sharedScope }
-            }
-            RhinoScriptEngine.eval(
-                buildString {
-                    append(script).append('\n')
-                    append(
-                        """
-                        ;(function(){
-                            if (typeof edit === 'function') return edit($quotedPrompt, $quotedImagePath, $quotedMask, provider);
-                            if (typeof generate === 'function') return generate($quotedPrompt, provider);
-                            if (typeof run === 'function') return run($quotedPrompt, provider);
-                            if (typeof result !== 'undefined') return result;
-                            return null;
-                        })();
-                        """.trimIndent()
-                    )
-                },
-                scope,
-                coroutineContext
-            )
-        }
-        val imageSource = normalizeImageResult(result)
-        return AiImageGalleryManager.saveGeneratedImage(
-            imageSource, prompt, provider, provider.model.ifBlank { "JS" },
-            metadata ?: AiImageGalleryManager.ImageMetadata()
-        )
     }
 
     fun currentProviderOrNull(): AiImageProviderConfig? {
@@ -366,7 +203,6 @@ object AiImageService {
     }
 
     private suspend fun generateByJs(prompt: String, provider: AiImageProviderConfig): ImageGenerationResult {
-        AiSandboxBridge.setAllowedBaseUrl(provider.baseUrl)
         val script = provider.script.trim()
         if (script.isBlank()) error("JS script is empty")
         val source = AiImageJsSource(provider)

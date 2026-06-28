@@ -52,7 +52,6 @@ import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.AiPurifiedTextCache
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookParagraphRule
@@ -65,9 +64,6 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.TTS
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiReadAloudRoleState
-import io.legado.app.help.ai.AiSanitizeService
-import io.legado.app.help.ai.AiStoryPipeline
-import io.legado.app.help.ai.AiVideoGalleryManager
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
@@ -203,7 +199,6 @@ import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.throttle
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.visible
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.CancellationException
@@ -434,6 +429,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.cursorRight.setColorFilter(accentColor)
         binding.cursorLeft.setOnTouchListener(this)
         binding.cursorRight.setOnTouchListener(this)
+        binding.readAiPanel.attach(this)
+        binding.readAiSummaryPanel.attach(this)
         binding.readAloudPlayerPanel.attach(this, this)
         ReadAloudAppCapsuleHost.attachReadBook(this, binding.root) {
             openReadAloudPanelFromExternalRequest()
@@ -1400,18 +1397,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 generateImageBySelection()
                 return true
             }
-            R.id.menu_ai_purify -> {
-                aiPurifyBySelection()
-                return true
-            }
-            R.id.menu_generate_video -> {
-                generateVideoBySelection()
-                return true
-            }
-            R.id.menu_generate_scene -> {
-                generateSceneBySelection()
-                return true
-            }
         }
         return false
     }
@@ -1448,196 +1433,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 paragraphText = paragraph.text
             )
         )
-    }
-
-    private fun generateVideoBySelection() {
-        if (epubCoreActive) {
-            toastOnUi("EPUB 模式暂不支持视频生成")
-            return
-        }
-        if (AppConfig.aiCurrentVideoProvider == null) {
-            toastOnUi(R.string.ai_missing_config)
-            return
-        }
-        val paragraph = currentSelectedParagraphForImage()
-        if (paragraph == null) {
-            toastOnUi(R.string.ai_image_no_selection)
-            return
-        }
-        val prompt = selectedText.trim().ifBlank { paragraph.text.trim() }
-        if (prompt.isBlank()) {
-            toastOnUi(R.string.ai_image_no_selection)
-            return
-        }
-        showDialogFragment(
-            ReadSelectionVideoDialog(
-                prompt = prompt,
-                paragraphIndex = paragraph.contentIndex,
-                paragraphText = paragraph.text
-            )
-        )
-    }
-
-    private fun generateSceneBySelection() {
-        if (AppConfig.aiCurrentImageProvider == null) {
-            toastOnUi("请先配置生图服务商")
-            return
-        }
-        if (AppConfig.aiCurrentVideoProvider == null) {
-            toastOnUi("请先配置视频服务商")
-            return
-        }
-        if (epubCoreActive) {
-            toastOnUi("EPUB 模式暂不支持分镜视频生成")
-            return
-        }
-        val textChapter = ReadBook.curTextChapter ?: return
-        val book = ReadBook.book ?: return
-        val chapterText = selectedText.trim().ifBlank {
-            textChapter.getParagraphs(pageSplit = false).joinToString("\n") { it.text }
-        }
-        if (chapterText.isBlank()) {
-            toastOnUi("未选中文本")
-            return
-        }
-        val bookKey = AiVideoGalleryManager.buildBookKey(book.name, book.author)
-        toastOnUi("正在生成分镜视频...")
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    AiStoryPipeline.execute(
-                        chapterText = chapterText,
-                        bookKey = bookKey,
-                        bookName = book.name,
-                        bookAuthor = book.author,
-                        chapterTitle = textChapter.title
-                    ) { progress ->
-                        // 进度回调，保持轻量，避免在 IO 线程操作 UI
-                    }
-                }
-                toastOnUi("分镜视频生成完成")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                toastOnUi(e.localizedMessage ?: "分镜视频生成失败")
-            }
-        }
-    }
-
-    private fun aiPurifyBySelection() {
-        if (!AppConfig.isAiSanitizeEnabled) {
-            toastOnUi("AI 净化未启用，请在设置中开启")
-            return
-        }
-        val textChapter = ReadBook.curTextChapter ?: return
-        val book = ReadBook.book ?: return
-        val chapterIndex = ReadBook.curTextChapter?.chapter?.index ?: -1
-        val text = selectedText.trim().ifBlank {
-            textChapter.getParagraphs(pageSplit = false).joinToString("\n") { it.text }
-        }
-        if (text.isBlank()) {
-            toastOnUi("未选中文本")
-            return
-        }
-        val intensity = AppConfig.aiSanitizeIntensity
-        val bookKey = AiVideoGalleryManager.buildBookKey(book.name, book.author)
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                AiSanitizeService.sanitize(text, intensity, bookKey, chapterIndex, null)
-            }
-            // Show diff dialog via Compose
-            showAiSanitizeDiff(text, result, intensity, bookKey, chapterIndex)
-        }
-    }
-
-    private fun showAiSanitizeDiff(
-        originalText: String,
-        result: io.legado.app.help.ai.SanitizeResult,
-        intensity: Int,
-        bookKey: String,
-        chapterIndex: Int
-    ) {
-        var dialog: android.app.Dialog? = null
-        val composeView = androidx.compose.ui.platform.ComposeView(this).apply {
-            setViewCompositionStrategy(
-                androidx.compose.ui.platform.ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-            )
-            setContent {
-                val currentIntensity = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(intensity) }
-                val currentResult = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(result) }
-                val original = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(originalText) }
-
-                io.legado.app.ui.main.ai.AiSanitizeDiffDialog(
-                    originalText = original.value,
-                    sanitizedResult = currentResult.value,
-                    intensity = currentIntensity.value,
-                    onIntensityChange = { newIntensity ->
-                        currentIntensity.value = newIntensity
-                        lifecycleScope.launch {
-                            val newResult = withContext(Dispatchers.IO) {
-                                AiSanitizeService.sanitize(original.value, newIntensity, bookKey, chapterIndex, null)
-                            }
-                            currentResult.value = newResult
-                        }
-                    },
-                    onAccept = {
-                        val sanitizedText = currentResult.value.sanitizedText
-                        val acceptIntensity = currentIntensity.value
-                        val acceptOriginal = original.value
-                        // Persist the accepted sanitized text into the cache so that
-                        // ContentProcessor picks it up on the next content load, then
-                        // force-reload the current chapter to display it.
-                        lifecycleScope.launch {
-                            withContext(Dispatchers.IO) {
-                                AppConfig.aiSanitizeIntensity = acceptIntensity
-                                val cache = AiPurifiedTextCache(
-                                    bookKey = bookKey,
-                                    chapterIndex = chapterIndex,
-                                    intensity = acceptIntensity,
-                                    contentHash = AiSanitizeService.computeHash(acceptOriginal),
-                                    sanitizedText = sanitizedText,
-                                    originalLength = acceptOriginal.length,
-                                    sanitizedLength = sanitizedText.length,
-                                    providerId = ""
-                                )
-                                appDb.aiPurifiedTextCacheDao.insert(cache)
-                            }
-                            ReadBook.loadContent(
-                                chapterIndex,
-                                upContent = true,
-                                resetPageOffset = false,
-                                forceReload = true
-                            )
-                            toastOnUi("已应用净化文本")
-                        }
-                        dialog?.dismiss()
-                    },
-                    onRetry = {
-                        lifecycleScope.launch {
-                            val newResult = withContext(Dispatchers.IO) {
-                                AiSanitizeService.sanitize(original.value, currentIntensity.value, bookKey, chapterIndex, null)
-                            }
-                            currentResult.value = newResult
-                        }
-                    },
-                    onDismiss = {
-                        dialog?.dismiss()
-                    }
-                )
-            }
-        }
-        // Show as a dialog overlay
-        val container = android.widget.FrameLayout(this).apply {
-            addView(composeView)
-        }
-        dialog = android.app.Dialog(this).apply {
-            setContentView(container)
-            setCancelable(true)
-            setOnCancelListener {
-                dialog?.dismiss()
-            }
-        }
-        dialog?.show()
     }
 
     private fun currentSelectedParagraphForImage(): SelectedParagraphForImage? {

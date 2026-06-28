@@ -67,7 +67,6 @@ import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.ai.AiImageGalleryManager
-import io.legado.app.help.ai.AiVideoGalleryManager
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
@@ -133,9 +132,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
-import io.legado.app.ui.main.ai.AiBookCreationStrip
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
-import io.legado.app.ui.main.ai.AiVideoGalleryActivity
 import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -327,8 +324,6 @@ class BookInfoActivity :
     private lateinit var llAiImagesPreview: LinearLayout
     private lateinit var tvAiImagesEmpty: TextView
     private val aiImagesPanel by lazy { createAiImagesPanel() }
-    private val aiCreationBookKey = mutableStateOf("")
-    private val aiCreationStrip by lazy { createAiCreationStrip() }
 
     private var pooledWebView: PooledWebView? = null
 
@@ -433,42 +428,13 @@ class BookInfoActivity :
             tvAiImagesEmpty = TextView(context).apply {
                 visibility = View.GONE
             }
-            addView(
-                aiCreationStrip,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            )
             setOnClickListener { openBookAiImageGallery() }
-        }
-    }
-
-    private fun createAiCreationStrip(): ComposeView {
-        return ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent {
-                AiBookCreationStrip(bookKey = aiCreationBookKey.value) { uri ->
-                    openAiCreationItem(uri)
-                }
-            }
-        }
-    }
-
-    private fun openAiCreationItem(uri: String) {
-        val safeBook = book ?: return
-        val bookKey = AiImageGalleryManager.buildBookKey(safeBook.name, safeBook.author)
-        if (uri.startsWith(AiVideoGalleryManager.VIDEO_URI_PREFIX, ignoreCase = true)) {
-            startActivity(Intent(this, AiVideoGalleryActivity::class.java).apply {
-                putExtra(AiVideoGalleryActivity.EXTRA_BOOK_KEY, bookKey)
-                putExtra(AiVideoGalleryActivity.EXTRA_TITLE, getString(R.string.ai_book_creation))
-            })
-        } else {
-            openBookAiImageGallery()
         }
     }
 
     private fun updateBookAiImagesPanel(targetBook: Book? = book) {
         if (!::tvAiImagesSummary.isInitialized) return
         val safeBook = targetBook ?: return
-        aiCreationBookKey.value = AiImageGalleryManager.buildBookKey(safeBook.name, safeBook.author)
         lifecycleScope.launch {
             val images = withContext(IO) {
                 val key = AiImageGalleryManager.buildBookKey(safeBook.name, safeBook.author)
@@ -826,7 +792,6 @@ class BookInfoActivity :
     }
 
     private fun updateComposeAiImages(targetBook: Book) {
-        aiCreationBookKey.value = AiImageGalleryManager.buildBookKey(targetBook.name, targetBook.author)
         lifecycleScope.launch {
             val images = withContext(IO) {
                 val key = AiImageGalleryManager.buildBookKey(targetBook.name, targetBook.author)

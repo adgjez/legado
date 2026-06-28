@@ -40,7 +40,6 @@ import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.ai.AiGenPoller
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
@@ -124,9 +123,6 @@ class App : Application() {
             }
             //调整排序序号
             SourceHelp.adjustSortNumber()
-            //启动AI生成任务轮询
-            AiGenPoller.startForegroundPolling()
-            AiGenPoller.startBackgroundPolling()
             //同步阅读记录
             if (AppConfig.syncBookProgress) {
                 AppCloudStorage.downloadAllBookProgress()
