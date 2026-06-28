@@ -1,6 +1,7 @@
 package io.legado.app.help.ai
 
 import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefString
 import splitties.init.appCtx
