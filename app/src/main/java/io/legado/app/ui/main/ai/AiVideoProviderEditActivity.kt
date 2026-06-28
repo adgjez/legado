@@ -327,7 +327,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                                     .clickable { showAdvanced = !showAdvanced },
                                 shape = RoundedCornerShape(style.actionRadius),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = palette.fieldSurface.copy(alpha = 0.5f)
+                                    containerColor = palette.surfaceVariant.copy(alpha = 0.5f)
                                 )
                             ) {
                                 Row(
@@ -466,7 +466,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(style.actionRadius),
-            colors = CardDefaults.cardColors(containerColor = palette.fieldSurface.copy(alpha = 0.5f))
+            colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant.copy(alpha = 0.5f))
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text(
@@ -493,7 +493,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
         modifier: Modifier = Modifier
     ) {
         val style = rememberAppDialogStyle()
-        val borderColor = if (selected) palette.accent else palette.stroke
+        val borderColor = if (selected) palette.accent else palette.surfaceVariant
         val bgColor = if (selected) palette.accent.copy(alpha = 0.08f) else Color.Transparent
 
         Surface(

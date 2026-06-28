@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 9
+    private const val TOOL_SETTINGS_VERSION = 12
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -48,6 +48,22 @@ object AiToolRegistry {
     )
     private val version9AddedDefaultTools = setOf(
         "batch_manage_speech_voice_groups"
+    )
+    private val version10AddedDefaultTools = setOf(
+        "generate_video",
+        "generate_video_from_image",
+        "extract_video_frame",
+        "continue_video_from_frame",
+        "sanitize_text",
+        "generate_scene"
+    )
+    private val version11AddedDefaultTools = emptySet<String>()
+    private val version12AddedDefaultTools = setOf(
+        "generate_images",
+        "edit_image",
+        "inpaint_image",
+        "generate_music",
+        "generate_sound_effect"
     )
 
     val characterCompanionToolNames = setOf(
@@ -104,7 +120,6 @@ object AiToolRegistry {
         "query_read_records",
         "list_book_sources",
         "search_book_source",
-        "search_web_tavily",
         "create_book_source",
         "get_book_source",
         "update_book_source",
@@ -145,7 +160,18 @@ object AiToolRegistry {
         "export_world_book_json",
         "get_app_settings",
         "set_app_setting",
-        "set_app_settings_batch"
+        "set_app_settings_batch",
+        "generate_video",
+        "generate_video_from_image",
+        "extract_video_frame",
+        "continue_video_from_frame",
+        "sanitize_text",
+        "generate_scene",
+        "generate_images",
+        "edit_image",
+        "inpaint_image",
+        "generate_music",
+        "generate_sound_effect"
     )
 
     private val nativeToolLabels = mapOf(
@@ -187,6 +213,7 @@ object AiToolRegistry {
         "list_speech_voice_groups" to "读取发言人分组",
         "upsert_speech_voice_group" to "新增或更新发言人分组",
         "delete_speech_voice_group" to "删除发言人分组",
+        "batch_manage_speech_voice_groups" to "批量管理发言人分组",
         "list_read_aloud_bgm_catalog" to "读取朗读配乐曲库",
         "assign_read_aloud_bgm_ranges" to "分配朗读配乐范围",
         "list_world_books" to "读取世界书",
@@ -201,7 +228,18 @@ object AiToolRegistry {
         "export_world_book_json" to "导出世界书 JSON",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
-        "set_app_settings_batch" to "批量修改设置"
+        "set_app_settings_batch" to "批量修改设置",
+        "generate_video" to "生成视频",
+        "generate_video_from_image" to "图生视频",
+        "extract_video_frame" to "提取视频帧",
+        "continue_video_from_frame" to "视频接力续写",
+        "sanitize_text" to "AI 文本净化",
+        "generate_scene" to "分镜视频",
+        "generate_images" to "批量生图",
+        "edit_image" to "图片编辑",
+        "inpaint_image" to "局部重绘",
+        "generate_music" to "生成音乐",
+        "generate_sound_effect" to "生成音效"
     )
 
     private val nativeToolGroups = mapOf(
@@ -243,6 +281,7 @@ object AiToolRegistry {
         "list_speech_voice_groups" to "角色配音",
         "upsert_speech_voice_group" to "角色配音",
         "delete_speech_voice_group" to "角色配音",
+        "batch_manage_speech_voice_groups" to "角色配音",
         "list_read_aloud_bgm_catalog" to "智能配乐",
         "assign_read_aloud_bgm_ranges" to "智能配乐",
         "list_world_books" to "世界书",
@@ -257,7 +296,18 @@ object AiToolRegistry {
         "export_world_book_json" to "世界书",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
-        "set_app_settings_batch" to "设置"
+        "set_app_settings_batch" to "设置",
+        "generate_video" to "AI 生视频",
+        "generate_video_from_image" to "AI 生视频",
+        "extract_video_frame" to "AI 生视频",
+        "continue_video_from_frame" to "AI 生视频",
+        "sanitize_text" to "AI 文本净化",
+        "generate_scene" to "跨模态创作",
+        "generate_images" to "AI 生图",
+        "edit_image" to "AI 生图",
+        "inpaint_image" to "AI 生图",
+        "generate_music" to "AI 生音频",
+        "generate_sound_effect" to "AI 生音频"
     )
 
     fun groupLabelOfTool(name: String): String {
@@ -290,9 +340,14 @@ object AiToolRegistry {
         tools += AiReadingNetworkTool.resolvedTools()
         tools += AiSettingsTool.resolvedTools()
         tools += AiImageTool.resolvedTools()
+        tools += AiVideoTool.resolvedTools()
+        tools += AiSanitizeTool.resolvedTools()
         tools += AiBookCharacterTool.resolvedTools()
         tools += AiReadAloudBgmTool.resolvedTools()
         tools += AiWorldBookTool.resolvedTools()
+        tools += AiStoryTool.resolvedTools()
+        tools += AiImageToolEnhanced.resolvedTools()
+        tools += AiAudioTool.resolvedTools()
         return tools.distinctBy { it.name }
     }
 
@@ -328,6 +383,9 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 7) addAll(version7AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 8) addAll(version8AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 9) addAll(version9AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 10) addAll(version10AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 11) addAll(version11AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 12) addAll(version12AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }

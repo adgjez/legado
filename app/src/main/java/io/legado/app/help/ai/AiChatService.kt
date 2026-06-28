@@ -79,6 +79,22 @@ object AiChatService {
         return chatStream(messages, onPartial = {})
     }
 
+    suspend fun chatSimple(
+        systemPrompt: String,
+        userContent: String,
+        providerId: String? = null
+    ): String {
+        val combinedContent = if (systemPrompt.isNotBlank()) {
+            "$systemPrompt\n\n---\n\n$userContent"
+        } else {
+            userContent
+        }
+        val messages = listOf(
+            AiChatMessage(role = AiChatMessage.Role.USER, content = combinedContent)
+        )
+        return chat(messages)
+    }
+
     suspend fun requestSingleToolCall(
         messages: List<AiChatMessage>,
         tool: AiResolvedTool,

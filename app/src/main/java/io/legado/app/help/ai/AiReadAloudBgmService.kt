@@ -1,6 +1,7 @@
 package io.legado.app.help.ai
 
 import io.legado.app.data.appDb
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReadAloudBgmAssignmentCache
@@ -267,6 +268,52 @@ object AiReadAloudBgmService {
                 cacheKey = key.cacheKey
             )
         }
+    }
+
+    /**
+     * 使用 AiAudioService 生成定制 BGM。
+     * 当曲库中没有匹配的 BGM 时，可调用此方法根据章节氛围生成定制背景音乐。
+     *
+     * @param book 当前书籍
+     * @param textChapter 当前章节
+     * @param moodHint 氛围提示（如"紧张"、"温馨"、"悲伤"），由 AI 分析章节内容得出
+     * @param durationSeconds 期望时长（秒）
+     * @return 生成的音频 ID，失败返回 null
+     */
+    suspend fun generateCustomBgm(
+        book: Book?,
+        textChapter: TextChapter?,
+        moodHint: String,
+        durationSeconds: Int = 30
+    ): String? = withContext(IO) {
+        val provider = AiAudioService.currentProviderOrNull()
+            ?: return@withContext null
+        val currentBook = book ?: return@withContext null
+        val currentChapter = textChapter ?: return@withContext null
+        val prompt = buildString {
+            append("为小说章节生成背景音乐。")
+            append("书名：${currentBook.name}。")
+            append("章节：${currentChapter.chapter.title}。")
+            append("氛围：$moodHint。")
+            append("时长约${durationSeconds}秒。")
+            append("要求：纯器乐，无人声，循环友好，音量适中。")
+        }
+        val metadata = AiAudioGalleryManager.AudioMetadata(
+            bookName = currentBook.name,
+            bookAuthor = currentBook.author,
+            chapterIndex = currentChapter.chapter.index,
+            chapterTitle = currentChapter.chapter.title,
+            sourceType = AiAudioGalleryManager.SOURCE_TYPE_CHAT,
+            audioType = "bgm"
+        )
+        runCatching {
+            AiAudioService.generateAndStore(prompt, provider, metadata)
+        }.onSuccess { audio ->
+            return@withContext audio?.id
+        }.onFailure { throwable ->
+            AppLog.put("生成定制BGM失败: ${throwable.message}")
+        }
+        return@withContext null
     }
 
     fun catalogJson(): JSONObject {

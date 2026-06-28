@@ -53,7 +53,9 @@ data class BookCharacter(
     @ColumnInfo(defaultValue = "0")
     var createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0")
-    var updatedAt: Long = System.currentTimeMillis()
+    var updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "")
+    var referenceImageId: String = ""
 ) : Parcelable {
 
     fun displayName(): String = name.ifBlank { "未命名角色" }
