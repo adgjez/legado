@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -29,9 +30,9 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+
+
+Button
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -345,8 +346,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                                         color = palette.primaryText
                                     )
                                     Text(
-                                        text = if (showAdvanced) "▲" else "▼",
-                                        fontSize = 14.sp,
+                                        if (showAdvanced) "▲" else "▼",
                                         color = palette.secondaryText
                                     )
                                 }
@@ -575,7 +575,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                     .fillMaxWidth()
                     .menuAnchor(),
                 label = { Text("预设", fontFamily = style.bodyFontFamily) },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                trailingIcon = { Text(if (expanded) "▲" else "▼") },
                 shape = RoundedCornerShape(style.actionRadius),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = style.primaryText,
