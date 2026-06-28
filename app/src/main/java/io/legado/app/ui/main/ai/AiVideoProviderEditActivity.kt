@@ -525,8 +525,8 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
+    @OptIn(ExperimentalMaterial3Api::class)
     private fun ModelPresetSelector(
         currentModel: String,
         onSelect: (VideoModelPreset) -> Unit,
@@ -625,6 +625,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
     }
 
     @Composable
+    @OptIn(ExperimentalMaterial3Api::class)
     private fun OutlinedDropdownField(
         value: String,
         onValueChange: (String) -> Unit,
@@ -656,7 +657,12 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                 shape = RoundedCornerShape(style.actionRadius),
                 trailingIcon = if (suggestions.isNotEmpty()) {
                     {
-                        IconButton(onClick = { expanded = !expanded }) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clickable { expanded = !expanded },
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text(
                                 if (expanded) "▲" else "▼",
                                 contentDescription = null
