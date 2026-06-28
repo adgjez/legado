@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,10 +56,12 @@ private data class VideoPreset(val label: String, val numFrames: Int)
 // ── 预设 ──
 
 private val imageSizes = listOf(
-    ImageSize("1:1 方图", "1024x1024"),
-    ImageSize("4:3 横图", "1024x768"),
-    ImageSize("3:4 竖图", "768x1024"),
-    ImageSize("16:9 宽屏", "1152x768"),
+    ImageSize("1:1", "1024x1024"),
+    ImageSize("4:3", "1024x768"),
+    ImageSize("3:4", "768x1024"),
+    ImageSize("16:9", "1152x768"),
+    ImageSize("9:16", "768x1360"),
+    ImageSize("自定义", ""),
 )
 
 private val videoPresets = listOf(
@@ -258,6 +261,9 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
     var mode by remember { mutableStateOf(ImageMode.TEXT_TO_IMAGE) }
     var prompt by remember { mutableStateOf("") }
     var selectedSize by remember { mutableStateOf(imageSizes[0]) }
+    var customWidth by remember { mutableStateOf("1024") }
+    var customHeight by remember { mutableStateOf("768") }
+    val currentSizeValue: String get() = selectedSize.value.takeIf { it.isNotBlank() } ?: "${customWidth}x${customHeight}"
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var generating by remember { mutableStateOf(false) }
     var resultUrl by remember { mutableStateOf<String?>(null) }
@@ -390,6 +396,34 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                 }
             }
         }
+        if (selectedSize.value.isEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("宽", color = style.colors.secondaryText, fontSize = 13.sp)
+                BasicTextField(
+                    value = customWidth,
+                    onValueChange = { v -> customWidth = v.filter { it.isDigit() } },
+                    singleLine = true,
+                    textStyle = TextStyle(color = style.colors.primaryText, fontSize = 13.sp, textAlign = TextAlign.Center),
+                    modifier = Modifier
+                        .width(72.dp)
+                        .background(style.colors.cardSurface, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+                Text("×", color = style.colors.secondaryText, fontSize = 13.sp)
+                Text("高", color = style.colors.secondaryText, fontSize = 13.sp)
+                BasicTextField(
+                    value = customHeight,
+                    onValueChange = { v -> customHeight = v.filter { it.isDigit() } },
+                    singleLine = true,
+                    textStyle = TextStyle(color = style.colors.primaryText, fontSize = 13.sp, textAlign = TextAlign.Center),
+                    modifier = Modifier
+                        .width(72.dp)
+                        .background(style.colors.cardSurface, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(20.dp))
 
         // 生成按钮
@@ -402,7 +436,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                     try {
                         val result = withContext(Dispatchers.IO) {
                             if (mode == ImageMode.TEXT_TO_IMAGE) {
-                                AiCreationService.textToImage(prompt, selectedSize.value)
+                                AiCreationService.textToImage(prompt, currentSizeValue)
                             } else {
                                 val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
@@ -413,7 +447,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                                     val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                                     "data:$mimeType;base64,$b64"
                                 }
-                                AiCreationService.imageToImage(prompt, dataUri, selectedSize.value)
+                                AiCreationService.imageToImage(prompt, dataUri, currentSizeValue)
                             }
                         }
                         resultUrl = result.url
@@ -492,26 +526,85 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
             }
         }
         resultUrl?.let { url ->
+            var showFull by remember { mutableStateOf(false) }
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
                 color = style.colors.cardSurface,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(url)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(
-                            selectedSize.value.let { s ->
-                                val parts = s.split("x").map { it.toFloatOrNull() ?: 1f }
-                                parts[0] / parts[1]
+                Column {
+                    // 图片 - 自适应
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(url)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showFull = true }
+                    )
+                    // 操作栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { showFull = true }) {
+                            Text("查看大图", fontSize = 12.sp, color = style.colors.accent)
+                        }
+                        TextButton(onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                data = Uri.parse(url)
                             }
-                        )
-                )
+                            context.startActivity(intent)
+                        }) {
+                            Text("下载", fontSize = 12.sp, color = style.colors.accent)
+                        }
+                    }
+                }
+            }
+            // 大图弹窗
+            if (showFull) {
+                Dialog(onDismissRequest = { showFull = false }) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Black,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("查看大图", color = Color.White, fontSize = 14.sp)
+                                TextButton(onClick = { showFull = false }) {
+                                    Text("关闭", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                                }
+                            }
+                            AsyncImage(
+                                model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW).apply { data = Uri.parse(url) }
+                                    context.startActivity(intent)
+                                }) {
+                                    Text("下载图片", color = style.colors.accent, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         // 历史记录
@@ -810,6 +903,20 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                         shape = RoundedCornerShape(style.metrics.chipRadius)
                     ) {
                         Text("用系统播放器打开", fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    // 下载按钮
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                data = Uri.parse(url)
+                            })
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = style.colors.accent),
+                        shape = RoundedCornerShape(style.metrics.chipRadius)
+                    ) {
+                        Text("下载视频", fontSize = 13.sp)
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(url, color = style.colors.secondaryText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
