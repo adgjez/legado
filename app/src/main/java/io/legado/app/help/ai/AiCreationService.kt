@@ -25,14 +25,14 @@ object AiCreationService {
     private const val DEFAULT_SIZE = "1024x768"
     private const val DEFAULT_VIDEO_WIDTH = 1152
     private const val DEFAULT_VIDEO_HEIGHT = 768
-    private const val POLL_INTERVAL_MS = 5000L
-    private const val MAX_POLL_ATTEMPTS = 120
+    private const val POLL_INTERVAL_MS = 8000L    // 轮询间隔 8 秒
+    private const val MAX_POLL_ATTEMPTS = 225      // 最多轮询 30 分钟
 
     private val client = okHttpClient.newBuilder()
         .connectTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(120, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .callTimeout(180, TimeUnit.SECONDS)
+        .writeTimeout(300, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
+        .callTimeout(600, TimeUnit.SECONDS)
         .build()
 
     private var apiKey: String = ""
@@ -194,7 +194,7 @@ object AiCreationService {
                 }
             }
         }
-        throw AiCreationException("视频生成超时（超过10分钟），请稍后重试", "")
+        throw AiCreationException("视频生成超时（超过30分钟），请稍后重试", "")
     }
 
     private fun requireApiKey() {
