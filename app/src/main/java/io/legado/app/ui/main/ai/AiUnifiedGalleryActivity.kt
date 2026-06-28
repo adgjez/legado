@@ -27,9 +27,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -350,10 +347,10 @@ class AiUnifiedGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = Color.White,
+                        Text(
+                            text = "▶",
+                            color = Color.White,
+                            fontSize = 16.sp,
                             modifier = Modifier.size(22.dp)
                         )
                     }

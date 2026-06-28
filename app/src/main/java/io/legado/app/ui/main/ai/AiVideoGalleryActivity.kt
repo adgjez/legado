@@ -21,9 +21,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -302,10 +299,10 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
                                 .background(Color.Black.copy(alpha = 0.3f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Selected",
-                                tint = Color.White
+                            Text(
+                                text = "✓",
+                                color = Color.White,
+                                fontSize = 20.sp
                             )
                         }
                     }

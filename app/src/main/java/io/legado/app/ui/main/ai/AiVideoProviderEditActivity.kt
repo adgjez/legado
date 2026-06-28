@@ -22,11 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -154,10 +149,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                             },
                             navigationIcon = {
                                 IconButton(onClick = { finish() }) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "返回"
-                                    )
+                                    Text("←", fontSize = 20.sp)
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
@@ -352,11 +344,10 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                                         fontWeight = FontWeight.SemiBold,
                                         color = palette.primaryText
                                     )
-                                    Icon(
-                                        imageVector = if (showAdvanced) Icons.Filled.ExpandLess
-                                            else Icons.Filled.ExpandMore,
-                                        contentDescription = null,
-                                        tint = palette.secondaryText
+                                    Text(
+                                        text = if (showAdvanced) "▲" else "▼",
+                                        fontSize = 14.sp,
+                                        color = palette.secondaryText
                                     )
                                 }
                             }
@@ -627,7 +618,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                             expanded = false
                         },
                         leadingIcon = if (preset.model == currentModel) {
-                            { Icon(Icons.Filled.Check, null, tint = palette.accent) }
+                            { Text("✓", color = palette.accent, fontSize = 16.sp) }
                         } else null
                     )
                 }
@@ -668,8 +659,8 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiVideoGalleryBinding>(
                 trailingIcon = if (suggestions.isNotEmpty()) {
                     {
                         IconButton(onClick = { expanded = !expanded }) {
-                            Icon(
-                                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            Text(
+                                if (expanded) "▲" else "▼",
                                 contentDescription = null
                             )
                         }

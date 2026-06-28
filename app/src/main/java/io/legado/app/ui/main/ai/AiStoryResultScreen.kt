@@ -21,12 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -238,10 +233,10 @@ private fun ResultTopBar(onClose: () -> Unit) {
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = null,
-                    tint = style.primaryText,
+                Text(
+                    text = "✕",
+                    color = style.primaryText,
+                    fontSize = 18.sp,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -476,10 +471,10 @@ private fun VisualPromptSection(
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.weight(1f))
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = palette.secondaryText,
+            Text(
+                text = "▼",
+                color = palette.secondaryText,
+                fontSize = 14.sp,
                 modifier = Modifier
                     .size(20.dp)
                     .graphicsLayer { rotationZ = if (expanded) 180f else 0f }
@@ -566,10 +561,10 @@ private fun VideoThumbnail(path: String, palette: LegadoMiuixPalette) {
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "播放",
-                            tint = Color.White,
+                        Text(
+                            text = "▶",
+                            color = Color.White,
+                            fontSize = 20.sp,
                             modifier = Modifier.size(28.dp)
                         )
                     }
