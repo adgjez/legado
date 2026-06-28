@@ -50,7 +50,7 @@ private enum class ImageMode { TEXT_TO_IMAGE, IMAGE_TO_IMAGE }
 private enum class VideoMode { TEXT_TO_VIDEO, IMAGE_TO_VIDEO }
 
 private data class ImageSize(val label: String, val value: String)
-private data class VideoPreset(val label: String, val duration: Int)
+private data class VideoPreset(val label: String, val numFrames: Int)
 
 // ── 预设 ──
 
@@ -62,10 +62,10 @@ private val imageSizes = listOf(
 )
 
 private val videoPresets = listOf(
-    VideoPreset("3秒", 3),
-    VideoPreset("5秒", 5),
-    VideoPreset("10秒", 10),
-    VideoPreset("18秒", 18),
+    VideoPreset("3秒", 81),
+    VideoPreset("5秒", 121),
+    VideoPreset("10秒", 241),
+    VideoPreset("18秒", 441),
 )
 
 // ── 主入口 ──
@@ -650,7 +650,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                             if (mode == VideoMode.TEXT_TO_VIDEO) {
                                 AiCreationService.textToVideo(
                                     prompt,
-                                    duration = selectedPreset.duration
+                                    numFrames = selectedPreset.numFrames
                                 )
                             } else {
                                 val uri = imageUri
@@ -665,7 +665,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                                 AiCreationService.imageToVideo(
                                     prompt,
                                     dataUri,
-                                    duration = selectedPreset.duration
+                                    numFrames = selectedPreset.numFrames
                                 )
                             }
                         }
