@@ -5,6 +5,7 @@ import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
 import kotlinx.coroutines.delay
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -13,6 +14,8 @@ import java.util.concurrent.TimeUnit
  * 自动共享 AI 聊天中已配置的 Agnes AI 提供商 API Key
  *
  * 文档参考: Agnes Image 2.1 Flash / Agnes Video V2.0
+ *   - 图片: POST /v1/images/generations
+ *   - 视频: POST /v1/videos → GET /v1/videos/{task_id}
  */
 object AiCreationService {
 
@@ -79,9 +82,10 @@ object AiCreationService {
             put("size", size)
             put("n", 1)
             if (imageUrl != null) {
-                // 图生图: image 放在 extra_body 中（Agnes API 规范）
+                // 图生图: extra_body.image 为数组类型
                 put("extra_body", JSONObject().apply {
-                    put("image", imageUrl)
+                    put("image", JSONArray().apply { put(imageUrl) })
+                    put("response_format", "url")
                 })
             }
         }
@@ -112,29 +116,32 @@ object AiCreationService {
      * @param numFrames 视频总帧数 (24fps: 3秒=81帧, 5秒=121帧, 10秒=241帧, 18秒=441帧)
      */
     suspend fun textToVideo(prompt: String, numFrames: Int = 121): VideoResult =
-        createAndPollVideo(prompt, numFrames)
+        createAndPollVideo(prompt, numFrames, mode = "ti2vid")
 
     suspend fun imageToVideo(prompt: String, imageUrl: String, numFrames: Int = 121): VideoResult =
-        createAndPollVideo(prompt, numFrames, imageUrl)
+        createAndPollVideo(prompt, numFrames, imageUrl = imageUrl, mode = "ti2vid")
 
     private suspend fun createAndPollVideo(
         prompt: String,
         numFrames: Int,
-        imageUrl: String? = null
+        imageUrl: String? = null,
+        mode: String = "ti2vid"
     ): VideoResult {
         requireApiKey()
-        val taskId = createVideoTask(prompt, numFrames, imageUrl)
+        val taskId = createVideoTask(prompt, numFrames, imageUrl, mode)
         return pollVideoResult(taskId)
     }
 
     private suspend fun createVideoTask(
         prompt: String,
         numFrames: Int,
-        imageUrl: String?
+        imageUrl: String?,
+        mode: String
     ): String {
         val body = JSONObject().apply {
             put("model", VIDEO_MODEL)
             put("prompt", prompt)
+            put("mode", mode)
             put("num_frames", numFrames)
             put("width", DEFAULT_VIDEO_WIDTH)
             put("height", DEFAULT_VIDEO_HEIGHT)
