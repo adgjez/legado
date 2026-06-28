@@ -1654,11 +1654,12 @@ private fun AiComposer(
             text = ""
         }
     }
-    val imagePicker = actions.onFilePicked?.let { onPicked ->
+    val onFilePicked = actions.onFilePicked
+    val imagePicker = if (onFilePicked != null) {
         rememberLauncherForActivityResult(
             ActivityResultContracts.GetContent()
-        ) { uri -> uri?.let(onPicked) }
-    }
+        ) { uri -> uri?.let { onFilePicked(it) } }
+    } else null
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
