@@ -46,12 +46,11 @@ jobs:
         run: |
           {
             echo
-            echo "RELEASE_KEY_ALIAS=${{ secrets.CI_DEBUG_KEY_ALIAS }}"
+            echo "RELEASE_KEY_ALIAS=legado-ci-debug"
             echo "RELEASE_KEY_PASSWORD=${{ secrets.CI_DEBUG_KEY_PASSWORD }}"
             echo "RELEASE_STORE_PASSWORD=${{ secrets.CI_DEBUG_STORE_PASSWORD }}"
-            echo "RELEASE_STORE_FILE=./key.jks"
+            echo "RELEASE_STORE_FILE=./ci-debug.keystore"
           } >> gradle.properties
-          echo "${{ secrets.CI_DEBUG_KEY_STORE_B64 }}" | base64 --decode > "$GITHUB_WORKSPACE/app/key.jks"
 
       - name: Prepare release version
         id: version
@@ -84,6 +83,14 @@ jobs:
           APK_PATH=$(find app/build/outputs/apk/app/release -type f -name '*.apk' | head -n 1)
           test -n "$APK_PATH"
           cp "$APK_PATH" "release-apks/legado-arm64-v8a_app_${{ steps.version.outputs.name }}_${{ steps.version.outputs.code }}.apk"
+
+      - name: Verify APK signing certificate
+        run: |
+          APK_PATH=$(find release-apks -type f -name '*.apk' | head -n 1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK_PATH" | tee apk-cert.txt
+          grep -qi 'd6:44:1f:18:d3:41:3a:81:c0:e8:2e:51:f5:50:c5:58:c5:d7:92:13:e9:21:b0:2d:ec:30:bd:34:73:d4:f2:b6' apk-cert.txt
 
       - name: Save incremental build cache
         if: always()
