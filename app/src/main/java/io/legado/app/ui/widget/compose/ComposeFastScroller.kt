@@ -149,7 +149,7 @@ private fun ComposeFastScroller(
         if (isScrollInProgress || dragging) {
             hotzoneAlive = true
         } else {
-            delay(3000)
+            delay(650)
             hotzoneAlive = false
         }
     }
@@ -198,14 +198,14 @@ private fun ComposeFastScroller(
         label = "composeFastScrollerThumbOffset"
     )
     val hotzoneWidth by animateDpAsState(
-        targetValue = if (dragging) 40.dp else 32.dp,
+        targetValue = if (dragging) 36.dp else 18.dp,
         animationSpec = tween(
             durationMillis = 120,
             easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
         ),
         label = "composeFastScrollerHotzoneWidth"
     )
-    val hotzoneVisible = dragging || isScrollInProgress || hotzoneAlive
+    val hotzoneVisible = dragging || hotzoneAlive
 
     LaunchedEffect(scrollTargets, maxFirstIndex) {
         scrollTargets

@@ -13,14 +13,24 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
@@ -32,6 +42,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.MainBottomNavConfig
 import io.legado.app.help.config.MainLayoutPresetConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.lib.cloud.CloudStorageType
@@ -48,6 +59,8 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementListRow
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import io.legado.app.ui.widget.compose.AppPackageManageItemCard
 import io.legado.app.ui.widget.compose.AppPackageManageScreen
 import io.legado.app.ui.widget.compose.AppPackageManageSettingCard
@@ -65,6 +78,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -83,6 +98,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var floatingSearchToggleVisibleState by mutableStateOf(
         MainLayoutPresetConfig.defaultBottomLayoutMode() == "floating"
     )
+    private var bottomNavItemsState by mutableStateOf(MainBottomNavConfig.items())
     private var editingEntry: NavigationBarIconConfig.Entry? = null
     private var editingDialog: LinearLayout? = null
     private var pendingConfig: NavigationBarIconConfig.Config? = null
@@ -211,6 +227,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     override fun onResume() {
         super.onResume()
+        bottomNavItemsState = MainBottomNavConfig.items()
         invalidateOptionsMenu()
     }
 
@@ -242,6 +259,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     summaryText = summaryTextState,
                     floatingSearchHidden = floatingSearchHiddenState,
                     searchToggleVisible = floatingSearchToggleVisibleState,
+                    bottomNavSummary = bottomNavSummary(bottomNavItemsState),
                     onSwitchDayNight = { night ->
                         if (night != isNightMode) {
                             isNightMode = night
@@ -249,6 +267,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                         }
                     },
                     onAdd = ::showAddDialog,
+                    onManageBottomNavItems = ::showBottomNavItemsDialog,
                     onToggleFloatingSearch = ::toggleFloatingSearch,
                     onApply = ::applyPackage,
                     onEdit = { entry -> showEditDialog(entry) },
@@ -323,6 +342,44 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     allowExtensions = arrayOf("zip")
                 }
             }
+        }
+    }
+
+    private fun showBottomNavItemsDialog() {
+        alert(R.string.bottom_bar_items_manage) {
+            customView {
+                ComposeView(this@NavigationBarManageActivity).apply {
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                    setContent {
+                        BottomNavItemsManageContent(
+                            initialItems = bottomNavItemsState,
+                            onItemsChange = ::saveBottomNavItems
+                        )
+                    }
+                }
+            }
+            okButton()
+        }
+    }
+
+    private fun saveBottomNavItems(items: List<MainBottomNavConfig.ItemState>) {
+        val normalized = items.map { item ->
+            val spec = MainBottomNavConfig.spec(item.key)
+            if (spec?.lockedVisible == true) {
+                item.copy(visible = true)
+            } else {
+                item
+            }
+        }
+        MainBottomNavConfig.save(normalized)
+        bottomNavItemsState = MainBottomNavConfig.items()
+        postEvent(EventBus.NOTIFY_MAIN, true)
+    }
+
+    private fun bottomNavSummary(items: List<MainBottomNavConfig.ItemState>): String {
+        val visible = items.filter { it.visible || MainBottomNavConfig.spec(it.key)?.lockedVisible == true }
+        return visible.joinToString(" / ") { item ->
+            MainBottomNavConfig.spec(item.key)?.let { getString(it.titleRes) } ?: item.key
         }
     }
 
@@ -1180,8 +1237,10 @@ private fun NavigationBarPackageManageScreen(
     summaryText: String,
     floatingSearchHidden: Boolean,
     searchToggleVisible: Boolean,
+    bottomNavSummary: String,
     onSwitchDayNight: (Boolean) -> Unit,
     onAdd: () -> Unit,
+    onManageBottomNavItems: () -> Unit,
     onToggleFloatingSearch: () -> Unit,
     onApply: (NavigationBarIconConfig.Entry) -> Unit,
     onEdit: (NavigationBarIconConfig.Entry) -> Unit,
@@ -1198,6 +1257,15 @@ private fun NavigationBarPackageManageScreen(
         onSwitchDayNight = onSwitchDayNight,
         onAdd = onAdd,
         headerContent = { palette ->
+            item(key = "main_bottom_bar_items") {
+                AppPackageManageSettingCard(
+                    title = stringResource(R.string.bottom_bar_items_manage),
+                    info = bottomNavSummary,
+                    valueText = stringResource(R.string.edit),
+                    palette = palette,
+                    onClick = onManageBottomNavItems
+                )
+            }
             if (searchToggleVisible) {
                 item(key = "floating_bottom_bar_search") {
                     AppPackageManageSettingCard(
@@ -1228,6 +1296,71 @@ private fun NavigationBarPackageManageScreen(
                 onApply = { onApply(entry) },
                 onEdit = { onEdit(entry) }
             )
+        }
+    }
+}
+
+@Composable
+private fun BottomNavItemsManageContent(
+    initialItems: List<MainBottomNavConfig.ItemState>,
+    onItemsChange: (List<MainBottomNavConfig.ItemState>) -> Unit
+) {
+    val palette = rememberAppManagementPalette()
+    val listState = rememberLazyListState()
+    var orderedItems by remember { mutableStateOf(initialItems) }
+    LaunchedEffect(initialItems) {
+        orderedItems = initialItems
+    }
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        orderedItems = orderedItems.toMutableList().apply {
+            add(to.index, removeAt(from.index))
+        }
+    }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .heightIn(max = 460.dp)
+            .padding(bottom = 4.dp)
+    ) {
+        items(
+            items = orderedItems,
+            key = { it.key }
+        ) { item ->
+            val spec = MainBottomNavConfig.spec(item.key) ?: return@items
+            val locked = spec.lockedVisible
+            ReorderableItem(reorderState, key = item.key) {
+                AppManagementListRow(
+                    title = stringResource(spec.titleRes),
+                    subtitle = if (locked) {
+                        stringResource(R.string.bottom_bar_item_locked)
+                    } else if (item.visible) {
+                        stringResource(R.string.enabled)
+                    } else {
+                        stringResource(R.string.bottom_bar_item_hidden)
+                    },
+                    palette = palette,
+                    switchChecked = if (locked) null else item.visible,
+                    onSwitchChange = if (locked) null else { checked ->
+                        val next = orderedItems.map { current ->
+                            if (current.key == item.key) current.copy(visible = checked) else current
+                        }
+                        orderedItems = next
+                        onItemsChange(next)
+                    },
+                    leadingContent = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_drag_handle),
+                            contentDescription = stringResource(R.string.sort),
+                            tint = palette.settings.secondaryText,
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .draggableHandle(
+                                    onDragStopped = { onItemsChange(orderedItems) }
+                                )
+                        )
+                    }
+                )
+            }
         }
     }
 }

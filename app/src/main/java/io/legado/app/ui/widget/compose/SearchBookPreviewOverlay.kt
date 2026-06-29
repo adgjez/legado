@@ -149,21 +149,28 @@ fun SearchBookPreviewOverlay(
                     .height(with(density) { height.toDp() })
                     .shadow((14 * p).dp, RoundedCornerShape(with(density) { radius.toDp() }), clip = false)
                     .clip(RoundedCornerShape(with(density) { radius.toDp() }))
-                    .appSettingPanelBackground(
-                        normalColor = ContextCompat.getColor(context, R.color.background_card),
-                        panelImage = null,
-                        borderColor = UiCorner.panelBorderColor(context),
-                        radiusPx = radius
-                    )
                     .clickable { },
                 contentAlignment = Alignment.Center
             ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            alpha = if (closing) contentAlpha else 1f
+                        }
+                        .appSettingPanelBackground(
+                            normalColor = ContextCompat.getColor(context, R.color.background_card),
+                            panelImage = null,
+                            borderColor = UiCorner.panelBorderColor(context),
+                            radiusPx = radius
+                        )
+                )
                 SearchBookPreviewContent(
                     book = state.book,
                     renderConfig = renderConfig,
                     fragment = fragment,
                     lifecycle = lifecycle,
-                    contentAlpha = contentAlpha,
+                    detailsAlpha = contentAlpha,
                     onClose = { dismiss() },
                     onOpen = {
                         if (!closing) {
@@ -172,6 +179,23 @@ fun SearchBookPreviewOverlay(
                         }
                     }
                 )
+                if (closing) {
+                    AndroidView(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = (1f - contentAlpha).coerceIn(0f, 1f) },
+                        factory = { viewContext ->
+                            CoverImageView(viewContext).apply {
+                                scaleType = ImageView.ScaleType.CENTER_CROP
+                            }
+                        },
+                        update = { view ->
+                            view.scaleType = ImageView.ScaleType.CENTER_CROP
+                            view.loadPreviewThumb(state.book, fragment, lifecycle)
+                        },
+                        onRelease = { it.releaseComposeImage() }
+                    )
+                }
             }
         }
     }
@@ -183,7 +207,7 @@ private fun SearchBookPreviewContent(
     renderConfig: BookshelfListRenderConfig,
     fragment: Fragment?,
     lifecycle: Lifecycle?,
-    contentAlpha: Float,
+    detailsAlpha: Float,
     onClose: () -> Unit,
     onOpen: () -> Unit
 ) {
@@ -192,7 +216,6 @@ private fun SearchBookPreviewContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = contentAlpha }
             .padding(18.dp)
     ) {
         Row(
@@ -222,7 +245,9 @@ private fun SearchBookPreviewContent(
                 )
             }
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .graphicsLayer { alpha = detailsAlpha },
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
@@ -259,7 +284,8 @@ private fun SearchBookPreviewContent(
             text = intro,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 84.dp),
+                .heightIn(max = 84.dp)
+                .graphicsLayer { alpha = detailsAlpha },
             maxLines = 4,
             overflow = TextOverflow.Ellipsis,
             fontSize = 14.sp,
@@ -272,20 +298,24 @@ private fun SearchBookPreviewContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SearchBookPreviewAction(
-                text = context.getString(R.string.close),
-                renderConfig = renderConfig,
-                emphatic = false,
-                modifier = Modifier.weight(1f),
-                onClick = onClose
-            )
-            SearchBookPreviewAction(
-                text = context.getString(R.string.read_record_open_book_info),
-                renderConfig = renderConfig,
-                emphatic = true,
-                modifier = Modifier.weight(1f),
-                onClick = onOpen
-            )
+            Box(modifier = Modifier.graphicsLayer { alpha = detailsAlpha }.weight(1f)) {
+                SearchBookPreviewAction(
+                    text = context.getString(R.string.close),
+                    renderConfig = renderConfig,
+                    emphatic = false,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onClose
+                )
+            }
+            Box(modifier = Modifier.graphicsLayer { alpha = detailsAlpha }.weight(1f)) {
+                SearchBookPreviewAction(
+                    text = context.getString(R.string.read_record_open_book_info),
+                    renderConfig = renderConfig,
+                    emphatic = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onOpen
+                )
+            }
         }
     }
 }

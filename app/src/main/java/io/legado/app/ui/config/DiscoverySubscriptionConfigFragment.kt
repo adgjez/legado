@@ -10,7 +10,6 @@ import io.legado.app.ui.config.compose.SettingChoiceOption
 import io.legado.app.ui.config.compose.SettingChoiceSpec
 import io.legado.app.ui.config.compose.SettingPageSpec
 import io.legado.app.ui.config.compose.SettingSectionSpec
-import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.utils.postEvent
 
@@ -27,15 +26,6 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
                 SettingSectionSpec(
                     title = getString(R.string.discovery_settings_title),
                     items = listOf(
-                        SettingSwitchSpec(
-                            key = PreferKey.showDiscovery,
-                            title = getString(R.string.show_discovery),
-                            checked = booleanSetting(PreferKey.showDiscovery, true),
-                            onCheckedChange = {
-                                updateBooleanSetting(PreferKey.showDiscovery, it)
-                            },
-                            searchKeys = listOf(KEY_SEARCH_JUMP_SHOW_DISCOVERY)
-                        ),
                         SettingChoiceSpec(
                             key = KEY_DISCOVERY_MODE,
                             title = getString(R.string.modern_discovery_page),
@@ -70,13 +60,6 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
                 SettingSectionSpec(
                     title = getString(R.string.subscription_settings_title),
                     items = listOf(
-                        SettingSwitchSpec(
-                            key = PreferKey.showRss,
-                            title = getString(R.string.show_rss),
-                            checked = booleanSetting(PreferKey.showRss, false),
-                            onCheckedChange = { updateBooleanSetting(PreferKey.showRss, it) },
-                            searchKeys = listOf(KEY_SEARCH_JUMP_SHOW_RSS)
-                        ),
                         SettingChoiceSpec(
                             key = KEY_RSS_MODE,
                             title = getString(R.string.modern_rss_page),
@@ -118,8 +101,6 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
 
     override fun normalizeTargetKey(rawKey: String): String {
         return when (rawKey) {
-            KEY_SEARCH_JUMP_SHOW_DISCOVERY -> PreferKey.showDiscovery
-            KEY_SEARCH_JUMP_SHOW_RSS -> PreferKey.showRss
             PreferKey.discoveryPageMode,
             PreferKey.modernDiscoveryPage,
             KEY_SEARCH_JUMP_DISCOVERY_MODE -> KEY_DISCOVERY_MODE
@@ -132,9 +113,6 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
 
     override fun onSettingPreferenceChanged(key: String) {
         when (key) {
-            PreferKey.showDiscovery,
-            PreferKey.showRss -> postEvent(EventBus.NOTIFY_MAIN, true)
-
             PreferKey.discoveryPageMode,
             PreferKey.modernDiscoveryPage,
             PreferKey.modernRssPage,
@@ -203,8 +181,6 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
         private const val PAGE_MODE_LEGACY = "legacy"
         private const val KEY_DISCOVERY_MODE = "modernDiscoveryMode"
         private const val KEY_RSS_MODE = "modernRssMode"
-        private const val KEY_SEARCH_JUMP_SHOW_DISCOVERY = "search_jump_showDiscovery"
-        private const val KEY_SEARCH_JUMP_SHOW_RSS = "search_jump_showRss"
         private const val KEY_SEARCH_JUMP_MODERN_RSS_PAGE = "search_jump_modernRssPage"
         private const val KEY_SEARCH_JUMP_DISCOVERY_MODE = "search_jump_modernDiscoveryMode"
         private const val KEY_SEARCH_JUMP_RSS_MODE = "search_jump_modernRssMode"

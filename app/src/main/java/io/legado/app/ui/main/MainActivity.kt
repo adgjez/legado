@@ -13,6 +13,7 @@ import android.graphics.drawable.InsetDrawable
 import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
+import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
@@ -62,6 +63,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.MainBottomNavConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
@@ -173,7 +175,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         ViewConfiguration.get(this).scaledTouchSlop
     }
     private val fragmentMap = hashMapOf<Int, Fragment>()
-    private var bottomMenuCount = 4
+    private var bottomMenuCount = MainBottomNavConfig.visibleItems().size
     private val EXIT_INTERVAL = 2000L
     private val realPositions = arrayOf(idBookshelf, idExplore, idRss, idReadRecord, idMy)
     private val adapter by lazy {
@@ -282,11 +284,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 closeSideNavigation()
                 return@addCallback
             }
-            if (pagePosition != 0) {
-                binding.viewPagerMain.currentItem = 0
+            if (pagePosition != bookshelfPosition()) {
+                binding.viewPagerMain.currentItem = bookshelfPosition()
                 return@addCallback
             }
-            (fragmentMap[getFragmentId(0)] as? BookshelfFragment2)?.let {
+            (fragmentMap[getFragmentId(bookshelfPosition())] as? BookshelfFragment2)?.let {
                 if (it.back()) {
                     return@addCallback
                 }
@@ -367,26 +369,36 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun handleNavigationItemSelected(item: MenuItem, closeSidebar: Boolean): Boolean = binding.run {
         when (item.itemId) {
             R.id.menu_bookshelf ->
-                viewPagerMain.setCurrentItem(0, false)
+                selectFragmentId(idBookshelf, false)
 
             R.id.menu_discovery ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(resolveDiscoveryNavTarget()), true)
+                selectFragmentId(resolveDiscoveryNavTarget(), true)
 
             R.id.menu_rss ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idRss), false)
+                selectFragmentId(idRss, false)
 
             R.id.menu_read_record ->
-                realPositions.indexOf(idReadRecord).takeIf { it >= 0 }?.let {
-                    viewPagerMain.setCurrentItem(it, false)
-                }
+                selectFragmentId(idReadRecord, false)
 
             R.id.menu_my_config ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idMy), false)
+                selectFragmentId(idMy, false)
         }
         if (closeSidebar && isSidebarMode()) {
             closeSideNavigation()
         }
         return false
+    }
+
+    private fun selectFragmentId(fragmentId: Int, smoothScroll: Boolean) {
+        realPositions.take(bottomMenuCount).indexOf(fragmentId)
+            .takeIf { it >= 0 }
+            ?.let { binding.viewPagerMain.setCurrentItem(it, smoothScroll) }
+    }
+
+    private fun bookshelfPosition(): Int {
+        return realPositions.take(bottomMenuCount).indexOf(idBookshelf)
+            .takeIf { it >= 0 }
+            ?: 0
     }
 
     override fun onNavigationItemReselected(item: MenuItem) {
@@ -395,7 +407,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 if (System.currentTimeMillis() - bookshelfReselected > 300) {
                     bookshelfReselected = System.currentTimeMillis()
                 } else {
-                    (fragmentMap[getFragmentId(0)] as? BaseBookshelfFragment)?.gotoTop()
+                    (fragmentMap[getFragmentId(bookshelfPosition())] as? BaseBookshelfFragment)?.gotoTop()
                 }
             }
 
@@ -499,7 +511,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun openBookshelfPage() = binding.run {
-        val position = realPositions.indexOf(idBookshelf).takeIf { it >= 0 } ?: 0
+        val position = bookshelfPosition()
         pagePosition = position
         viewPagerMain.setCurrentItem(position, false)
         bottomNavigationView.menu.findItem(R.id.menu_bookshelf)?.isChecked = true
@@ -1007,7 +1019,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun updateSideNavigationItems() = binding.run {
         val selectedItemId = getBottomNavigationItemId(pagePosition)
-        val mergedDiscovery = AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS
+        val mergedDiscovery = isDiscoveryRssMerged()
         sideNavigationButtonMap().forEach { (itemId, button) ->
             val menuItem = bottomNavigationView.menu.findItem(itemId)
             val visible = menuItem?.isVisible == true && !(mergedDiscovery && itemId == R.id.menu_rss)
@@ -1094,9 +1106,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (index >= 0) {
             AppConfig.saveTabPosition = index
         }
-        binding.viewPagerMain.setCurrentItem(0, false)
+        val position = bookshelfPosition()
+        binding.viewPagerMain.setCurrentItem(position, false)
         binding.root.post {
-            when (val fragment = fragmentMap[getFragmentId(0)]) {
+            when (val fragment = fragmentMap[getFragmentId(position)]) {
                 is BookshelfFragment1 -> fragment.switchToGroupId(group.groupId)
                 is BookshelfFragment2 -> fragment.switchToGroupId(group.groupId)
             }
@@ -1399,7 +1412,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     oval = true
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
-                if (!standardMode) searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
+                if (!standardMode) searchButton.setBackgroundColor(Color.TRANSPARENT)
                 syncSearchButtonTint()
                 bottomNavigationIndicatorOverlay.background =
                     createSolidBottomIndicatorDrawable(indicatorPillRadius)
@@ -1591,7 +1604,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSolidBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
         val baseColor = bottomBackground
-        val alpha = bottomBarOpacityLevel(AppConfig.liquidGlassLevel)
+        val alpha = standardBottomBarOpacityLevel(AppConfig.liquidGlassLevel)
         return GradientDrawable().apply {
             shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
             if (!oval) {
@@ -1970,7 +1983,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         return when (realPositions[position]) {
             idBookshelf -> R.id.menu_bookshelf
             idExplore -> R.id.menu_discovery
-            idRss -> if (AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS) {
+            idRss -> if (isDiscoveryRssMerged()) {
                 R.id.menu_discovery
             } else {
                 R.id.menu_rss
@@ -1981,9 +1994,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun resolveDiscoveryNavTarget(): Int {
-        val showDiscovery = AppConfig.showDiscovery
-        val showRss = AppConfig.showRSS
-        if (!(AppConfig.mergeDiscoveryRss && showDiscovery && showRss)) {
+        val showDiscovery = MainBottomNavConfig.isVisible(MainBottomNavConfig.KEY_DISCOVERY)
+        val showRss = MainBottomNavConfig.isVisible(MainBottomNavConfig.KEY_RSS)
+        if (!isDiscoveryRssMerged()) {
             return when {
                 showDiscovery -> idExplore
                 showRss -> idRss
@@ -1994,11 +2007,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun toggleMergedDiscoveryNavTarget() {
-        if (!(AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS)) return
+        if (!isDiscoveryRssMerged()) return
         AppConfig.mergedDiscoveryRssTarget =
             if (resolveDiscoveryNavTarget() == idRss) "explore" else "rss"
         upBottomMenu()
-        val targetPosition = realPositions.indexOf(resolveDiscoveryNavTarget())
+        val targetPosition = realPositions.take(bottomMenuCount).indexOf(resolveDiscoveryNavTarget())
         if (targetPosition >= 0) {
             binding.viewPagerMain.setCurrentItem(targetPosition, true)
         }
@@ -2010,7 +2023,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (mergedDiscoveryLongClickView === itemView) return
         mergedDiscoveryLongClickView?.setOnLongClickListener(null)
         itemView.setOnLongClickListener {
-            if (AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS) {
+            if (isDiscoveryRssMerged()) {
                 toggleMergedDiscoveryNavTarget()
                 true
             } else {
@@ -2018,6 +2031,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
         }
         mergedDiscoveryLongClickView = itemView
+    }
+
+    private fun isDiscoveryRssMerged(): Boolean {
+        return AppConfig.mergeDiscoveryRss &&
+            MainBottomNavConfig.isVisible(MainBottomNavConfig.KEY_DISCOVERY) &&
+            MainBottomNavConfig.isVisible(MainBottomNavConfig.KEY_RSS)
     }
 
     /**
@@ -2177,7 +2196,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
      * 如果重启太快fragment不会重建,这里更新一下书架的排序
      */
     override fun recreate() {
-        (fragmentMap[getFragmentId(0)] as? BaseBookshelfFragment)?.run {
+        (fragmentMap[getFragmentId(bookshelfPosition())] as? BaseBookshelfFragment)?.run {
             upSort()
         }
         super.recreate()
@@ -2186,7 +2205,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun observeLiveBus() {
         viewModel.onUpBooksLiveData.observe(this) {
             if (onUpBooksBadgeView == null) {
-                onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(0)
+                onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(bookshelfPosition())
             }
             onUpBooksBadgeView!!.setBadgeCount(it)
         }
@@ -2229,44 +2248,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun upBottomMenu() {
-        val showDiscovery = AppConfig.showDiscovery
-        val showRss = AppConfig.showRSS && binding.bottomNavigationView.menu.findItem(R.id.menu_rss) != null
-        val showReadRecord = AppConfig.showReadRecord
-        val mergedDiscovery = AppConfig.mergeDiscoveryRss && showDiscovery && showRss
-        binding.bottomNavigationView.menu.let { menu ->
-            menu.findItem(R.id.menu_discovery).isVisible = showDiscovery || (mergedDiscovery && showRss)
-            menu.findItem(R.id.menu_rss)?.isVisible = showRss && !mergedDiscovery
-            menu.findItem(R.id.menu_read_record)?.isVisible = showReadRecord
-            if (mergedDiscovery) {
-                if (resolveDiscoveryNavTarget() == idRss) {
-                    menu.findItem(R.id.menu_discovery).setIcon(R.drawable.ic_bottom_rss_feed)
-                    menu.findItem(R.id.menu_discovery).setTitle(R.string.rss)
-                } else {
-                    menu.findItem(R.id.menu_discovery).setIcon(R.drawable.ic_bottom_explore)
-                    menu.findItem(R.id.menu_discovery).setTitle(R.string.discovery)
-                }
-            } else {
-                menu.findItem(R.id.menu_discovery).setIcon(R.drawable.ic_bottom_explore)
-                menu.findItem(R.id.menu_discovery).setTitle(R.string.discovery)
+        val visibleItems = MainBottomNavConfig.visibleItems()
+        val mergedDiscovery = isDiscoveryRssMerged()
+        rebuildBottomNavigationMenu(binding.bottomNavigationView.menu, visibleItems, mergedDiscovery)
+        visibleItems.forEachIndexed { index, item ->
+            MainBottomNavConfig.spec(item.key)?.let { spec ->
+                realPositions[index] = spec.fragmentId
             }
         }
-        var index = 0
-        realPositions[index] = idBookshelf
-        if (showDiscovery) {
-            index++
-            realPositions[index] = idExplore
-        }
-        if (showRss) {
-            index++
-            realPositions[index] = idRss
-        }
-        if (showReadRecord) {
-            index++
-            realPositions[index] = idReadRecord
-        }
-        index++
-        realPositions[index] = idMy
-        bottomMenuCount = index + 1
+        bottomMenuCount = visibleItems.size
         pagePosition = pagePosition.coerceIn(0, bottomMenuCount - 1)
         adapter.notifyDataSetChanged()
         applyBottomNavigationIcons()
@@ -2278,11 +2268,40 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    private fun rebuildBottomNavigationMenu(
+        menu: Menu,
+        visibleItems: List<MainBottomNavConfig.ItemState>,
+        mergedDiscovery: Boolean
+    ) {
+        menu.clear()
+        val addedKeys = hashSetOf<String>()
+        visibleItems.forEachIndexed { index, item ->
+            val itemKey = if (mergedDiscovery &&
+                (item.key == MainBottomNavConfig.KEY_DISCOVERY || item.key == MainBottomNavConfig.KEY_RSS)
+            ) {
+                MainBottomNavConfig.KEY_DISCOVERY
+            } else {
+                item.key
+            }
+            if (!addedKeys.add(itemKey)) return@forEachIndexed
+            val spec = MainBottomNavConfig.spec(itemKey) ?: return@forEachIndexed
+            menu.add(0, spec.menuId, index, spec.titleRes).setIcon(spec.iconRes)
+        }
+        if (mergedDiscovery) {
+            val item = menu.findItem(R.id.menu_discovery) ?: return
+            if (resolveDiscoveryNavTarget() == idRss) {
+                item.setIcon(R.drawable.ic_bottom_rss_feed)
+                item.setTitle(R.string.rss)
+            } else {
+                item.setIcon(R.drawable.ic_bottom_explore)
+                item.setTitle(R.string.discovery)
+            }
+        }
+    }
+
     private fun applyMergedDiscoveryIcon() {
         binding.run {
-        val showDiscovery = AppConfig.showDiscovery
-        val showRss = AppConfig.showRSS && bottomNavigationView.menu.findItem(R.id.menu_rss) != null
-        if (!(AppConfig.mergeDiscoveryRss && showDiscovery && showRss)) return@run
+        if (!isDiscoveryRssMerged()) return@run
         val key = if (resolveDiscoveryNavTarget() == idRss) "rss" else "discovery"
         NavigationBarIconConfig.currentMenuDrawable(this@MainActivity, key)?.let { icon ->
             bottomNavigationView.menu.findItem(R.id.menu_discovery)?.icon = icon
@@ -2304,14 +2323,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun resolveHomePagePosition(): Int {
         val visiblePositions = realPositions.take(bottomMenuCount)
-        return when (AppConfig.defaultHomePage) {
-            "explore" -> if (AppConfig.showDiscovery || AppConfig.mergeDiscoveryRss) visiblePositions.indexOf(idExplore).takeIf { it >= 0 }
-                ?: visiblePositions.indexOf(resolveDiscoveryNavTarget()) else 0
+        val fallback = bookshelfPosition()
+        val target = when (AppConfig.defaultHomePage) {
+            "explore" -> visiblePositions.indexOf(idExplore).takeIf { it >= 0 }
+                ?: visiblePositions.indexOf(resolveDiscoveryNavTarget()).takeIf { it >= 0 }
             "rss" -> visiblePositions.indexOf(idRss).takeIf { it >= 0 }
-                ?: visiblePositions.indexOf(resolveDiscoveryNavTarget())
-            "my" -> visiblePositions.indexOf(idMy)
-            else -> 0
-        }.takeIf { it >= 0 } ?: 0
+                ?: visiblePositions.indexOf(resolveDiscoveryNavTarget()).takeIf { it >= 0 }
+            "my" -> visiblePositions.indexOf(idMy).takeIf { it >= 0 }
+            else -> fallback
+        }
+        return target ?: fallback
     }
 
     private fun getFragmentId(position: Int): Int {

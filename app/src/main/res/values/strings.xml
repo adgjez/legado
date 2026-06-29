@@ -1923,6 +1923,9 @@ function login() {
     <string name="bottom_bar_layout_floating">Floating bottom bar</string>
     <string name="bottom_bar_layout_sidebar">Sidebar</string>
     <string name="bottom_bar_opacity">Opacity</string>
+    <string name="bottom_bar_items_manage">Bottom bar buttons</string>
+    <string name="bottom_bar_item_locked">Always shown</string>
+    <string name="bottom_bar_item_hidden">Hidden</string>
     <string name="theme_day">Day theme</string>
     <string name="theme_night">Night theme</string>
     <string name="theme_day_short">Day</string>

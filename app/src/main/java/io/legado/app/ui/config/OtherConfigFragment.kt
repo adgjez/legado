@@ -105,11 +105,6 @@ class OtherConfigFragment : ComposeSettingFragment() {
                             summary = getString(R.string.ps_default_read),
                             defaultValue = false
                         ),
-                        switch(
-                            key = PreferKey.showReadRecord,
-                            title = getString(R.string.show_read_record),
-                            defaultValue = true
-                        ),
                         choice(
                             key = PreferKey.defaultHomePage,
                             title = getString(R.string.default_home_page),
@@ -157,7 +152,6 @@ class OtherConfigFragment : ComposeSettingFragment() {
                 setProcessTextEnable(booleanSetting(PreferKey.processText, true))
             }
 
-            PreferKey.showReadRecord -> postEvent(EventBus.NOTIFY_MAIN, true)
             KEY_LANGUAGE -> view?.postDelayed(1000) {
                 appCtx.restart()
             }

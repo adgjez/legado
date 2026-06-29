@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -270,12 +271,17 @@ fun LegadoMiuixSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
+    val switchModifier = modifier.shadow(
+        elevation = if (enabled) 3.dp else 1.dp,
+        shape = RoundedCornerShape(50),
+        clip = false
+    )
     if (canUseRealMiuix()) {
         MiuixSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
-            modifier = modifier,
+            modifier = switchModifier,
             colors = MiuixSwitchDefaults.switchColors(
                 checkedThumbColor = palette.onAccent,
                 uncheckedThumbColor = palette.secondaryText.copy(alpha = 0.72f),
@@ -293,7 +299,7 @@ fun LegadoMiuixSwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
         enabled = enabled,
-        modifier = modifier,
+        modifier = switchModifier,
         colors = SwitchDefaults.colors(
             checkedThumbColor = palette.onAccent,
             uncheckedThumbColor = palette.secondaryText.copy(alpha = 0.72f),

@@ -30,8 +30,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -68,6 +66,7 @@ import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.AppThemedStepperSlider
 import io.legado.app.ui.widget.compose.LegadoMiuixPalette
+import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
@@ -321,16 +320,18 @@ private fun PreferenceWidget(
     when (preference) {
         is SwitchPreferenceCompat -> {
             Spacer(modifier = Modifier.width(12.dp))
-            Switch(
+            LegadoMiuixSwitch(
                 checked = preference.isChecked,
                 enabled = enabled,
                 onCheckedChange = { onSwitchChange(preference, it) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = colors.onAccent,
-                    checkedTrackColor = colors.accent,
-                    uncheckedThumbColor = colors.secondaryText.copy(alpha = 0.72f),
-                    uncheckedTrackColor = Color(colors.row),
-                    uncheckedBorderColor = colors.secondaryText.copy(alpha = 0.28f)
+                palette = LegadoMiuixPalette(
+                    accent = colors.accent,
+                    surface = colors.page,
+                    surfaceVariant = Color(colors.row),
+                    primaryText = colors.primaryText,
+                    secondaryText = colors.secondaryText,
+                    danger = colors.danger,
+                    onAccent = colors.onAccent
                 )
             )
         }

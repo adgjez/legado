@@ -9,12 +9,6 @@
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">
 
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
-            android:key="showDiscovery"
-            android:title="@string/show_discovery"
-            app:iconSpaceReserved="false" />
-
         <io.legado.app.lib.prefs.NameListPreference
             android:defaultValue="modern"
             android:key="modernDiscoveryMode"
@@ -36,12 +30,6 @@
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="false"
-            android:key="showRss"
-            android:title="@string/show_rss"
-            app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.NameListPreference
             android:defaultValue="modern"
