@@ -99,13 +99,12 @@ private val videoAspectRatios = listOf(
 // ── 图片压缩 ──
 
 /** 将本地图片压缩为 JPEG (base64 data URI)，最大边长 1024，质量 80% */
-private fun compressImageToBase64(context: android.content.Context, uri: Uri): String {
+private fun compressImageToBase64(context: android.content.Context, uri: Uri, maxDim: Int = 1024): String {
     // 先读取尺寸
     val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri)?.use {
         BitmapFactory.decodeStream(it, null, boundsOptions)
     }
-    val maxDim = 1024
     val scaleFactor = maxOf(
         (boundsOptions.outWidth + maxDim - 1) / maxDim,
         (boundsOptions.outHeight + maxDim - 1) / maxDim,
@@ -912,7 +911,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                             } else {
                                 val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
-                                val dataUri = compressImageToBase64(context, uri)
+                                val dataUri = compressImageToBase64(context, uri, maxDim = 512)
                                 AiCreationService.imageToVideo(
                                     prompt,
                                     dataUri,
