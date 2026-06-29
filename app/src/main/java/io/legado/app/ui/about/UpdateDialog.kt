@@ -39,6 +39,8 @@ class UpdateDialog() : ComposeDialogFragment() {
             putString("updateBody", updateInfo.updateLog)
             putString("url", updateInfo.downloadUrl)
             putString("name", updateInfo.fileName)
+            putStringArrayList("headerNames", ArrayList(updateInfo.requestHeaders.keys))
+            putStringArrayList("headerValues", ArrayList(updateInfo.requestHeaders.values))
         }
     }
 
@@ -55,6 +57,8 @@ class UpdateDialog() : ComposeDialogFragment() {
                 val updateBody = arguments?.getString("updateBody")
                 val url = arguments?.getString("url")
                 val name = arguments?.getString("name")
+                val headerNames = arguments?.getStringArrayList("headerNames").orEmpty()
+                val headerValues = arguments?.getStringArrayList("headerValues").orEmpty()
 
                 if (updateBody == null) {
                     toastOnUi("没有数据")
@@ -102,7 +106,15 @@ class UpdateDialog() : ComposeDialogFragment() {
                             palette = palette,
                             onClick = {
                                 if (url != null && name != null) {
-                                    Download.start(requireContext(), url, name)
+                                    val headers = headerNames.mapIndexedNotNull { index, headerName ->
+                                        val headerValue = headerValues.getOrNull(index)
+                                        if (headerName.isBlank() || headerValue.isNullOrBlank()) {
+                                            null
+                                        } else {
+                                            headerName to headerValue
+                                        }
+                                    }.toMap()
+                                    Download.start(requireContext(), url, name, headers)
                                     toastOnUi(R.string.download_start)
                                 }
                             },

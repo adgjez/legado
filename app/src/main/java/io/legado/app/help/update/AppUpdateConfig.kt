@@ -4,10 +4,13 @@ import android.content.Context
 import io.legado.app.constant.PreferKey
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.removePref
 import splitties.init.appCtx
 
 object AppUpdateConfig {
@@ -15,6 +18,7 @@ object AppUpdateConfig {
     const val STRATEGY_GITEE_THEN_GITHUB = "gitee_then_github"
     const val STRATEGY_GITEE_ONLY = "gitee_only"
     const val STRATEGY_GITHUB_ONLY = "github_only"
+    const val INTERNAL_BETA_KEY_HEADER = "X-Download-Key"
 
     private const val URL_PLACEHOLDER = "\${url}"
 
@@ -61,6 +65,43 @@ object AppUpdateConfig {
 
     val selectedGithubProxyTemplate: String?
         get() = githubProxyTemplates.getOrNull(githubProxyIndex)
+
+    var internalBetaEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.internalBetaUpdateEnabled, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.internalBetaUpdateEnabled, value)
+
+    var internalBetaUrl: String?
+        get() = appCtx.getPrefString(PreferKey.internalBetaUpdateUrl)
+        set(value) {
+            val normalized = value?.trim().orEmpty()
+            if (normalized.isBlank()) {
+                appCtx.removePref(PreferKey.internalBetaUpdateUrl)
+            } else {
+                appCtx.putPrefString(PreferKey.internalBetaUpdateUrl, normalized)
+            }
+        }
+
+    var internalBetaKey: String?
+        get() = appCtx.getPrefString(PreferKey.internalBetaUpdateKey)
+        set(value) {
+            val normalized = value?.trim().orEmpty()
+            if (normalized.isBlank()) {
+                appCtx.removePref(PreferKey.internalBetaUpdateKey)
+            } else {
+                appCtx.putPrefString(PreferKey.internalBetaUpdateKey, normalized)
+            }
+        }
+
+    val internalBetaConfigured: Boolean
+        get() = internalBetaEnabled &&
+            !internalBetaUrl.isNullOrBlank() &&
+            !internalBetaKey.isNullOrBlank()
+
+    val internalBetaHeaders: Map<String, String>
+        get() = internalBetaKey
+            ?.takeIf { it.isNotBlank() }
+            ?.let { mapOf(INTERNAL_BETA_KEY_HEADER to it) }
+            ?: emptyMap()
 
     fun applyGithubProxy(url: String): String {
         val template = selectedGithubProxyTemplate?.trim().orEmpty()

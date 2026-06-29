@@ -63,7 +63,8 @@ class DownloadService : BaseService() {
         when (intent?.action) {
             IntentAction.start -> startDownload(
                 intent.getStringExtra("url"),
-                intent.getStringExtra("fileName")
+                intent.getStringExtra("fileName"),
+                readHeaders(intent)
             )
 
             IntentAction.play -> {
@@ -83,11 +84,24 @@ class DownloadService : BaseService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
+    private fun readHeaders(intent: Intent): Map<String, String> {
+        val names = intent.getStringArrayExtra("headerNames").orEmpty()
+        val values = intent.getStringArrayExtra("headerValues").orEmpty()
+        return names.mapIndexedNotNull { index, name ->
+            val value = values.getOrNull(index)?.takeIf { it.isNotBlank() }
+            if (name.isBlank() || value == null) {
+                null
+            } else {
+                name to value
+            }
+        }.toMap()
+    }
+
     /**
      * 开始下载
      */
     @Synchronized
-    private fun startDownload(url: String?, fileName: String?) {
+    private fun startDownload(url: String?, fileName: String?, headers: Map<String, String> = emptyMap()) {
         if (url == null || fileName == null) {
             if (downloads.isEmpty()) {
                 stopSelf()
@@ -101,6 +115,11 @@ class DownloadService : BaseService() {
         kotlin.runCatching {
             // 指定下载地址
             val request = DownloadManager.Request(Uri.parse(url))
+            headers.forEach { (name, value) ->
+                if (name.isNotBlank() && value.isNotBlank()) {
+                    request.addRequestHeader(name, value)
+                }
+            }
             // 设置通知
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
             // 设置下载文件保存的路径和文件名

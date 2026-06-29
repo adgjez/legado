@@ -1,0 +1,13 @@
+name = "legado-download-gate"
+main = "src/index.ts"
+compatibility_date = "2026-06-29"
+workers_dev = true
+preview_urls = false
+
+[vars]
+GITHUB_OWNER = "Rimchars"
+GITHUB_REPO = "legado-private-armv8-release"
+# Empty means GitHub's latest release. Set this to a fixed tag to pin downloads.
+RELEASE_TAG = ""
+ASSET_REGEX = "arm64-v8a.*\\.apk$"
+APP_TITLE = "Legado ARM64 Private Release"

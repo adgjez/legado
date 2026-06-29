@@ -3,7 +3,6 @@ package io.legado.app.help.update
 import androidx.annotation.Keep
 import io.legado.app.constant.AppConst
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
@@ -18,13 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
 
     private val checkVariant: AppVariant
-        get() = when (AppConfig.updateToVariant) {
-            "official_version" -> AppVariant.OFFICIAL
-            "beta_release_version" -> AppVariant.BETA_RELEASE
-            "beta_releaseA_version" -> AppVariant.BETA_RELEASEA
-            "beta_releaseS_version" -> AppVariant.OFFICIAL
-            else -> AppConst.appInfo.appVariant.takeIf { it != AppVariant.UNKNOWN } ?: AppVariant.OFFICIAL
-        }
+        get() = AppVariant.OFFICIAL
 
     private suspend fun getLatestRelease(): List<AppReleaseInfo> {
         val lastReleaseUrl = if (checkVariant.isBeta()) {
@@ -45,7 +38,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
         if (!checkVariant.isBeta()) {
             return GSON.fromJsonArray<GithubRelease>(body)
                 .getOrElse {
-                    throw NoStackTraceException("获取新版本出错 " + it.localizedMessage)
+                    throw NoStackTraceException("获取新版本出错" + it.localizedMessage)
                 }
                 .filterNot { it.isPreRelease }
                 .flatMap { it.gitReleaseToAppReleaseInfo() }
@@ -53,7 +46,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
         }
         return GSON.fromJsonObject<GithubRelease>(body)
             .getOrElse {
-                throw NoStackTraceException("获取新版本出错 " + it.localizedMessage)
+                throw NoStackTraceException("获取新版本出错" + it.localizedMessage)
             }
             .gitReleaseToAppReleaseInfo()
             .sortedByDescending { it.createdAt }
@@ -80,12 +73,13 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
             }
             ?.let {
                 AppUpdate.UpdateInfo(
-                    it.versionName,
-                    it.note,
-                    AppUpdateConfig.applyGithubProxy(it.downloadUrl),
-                    it.name
+                    tagName = it.versionName,
+                    updateLog = it.note,
+                    downloadUrl = AppUpdateConfig.applyGithubProxy(it.downloadUrl),
+                    fileName = it.name,
+                    versionCode = it.versionCode
                 )
             }
-            ?: throw NoStackTraceException("已是最新版本")
+            ?: throw AppUpdate.latestVersionError()
     }
 }

@@ -330,14 +330,6 @@ class OtherConfigFragment : ComposeSettingFragment() {
                 summary = getString(R.string.show_add_to_shelf_alert_summary),
                 defaultValue = true
             ),
-            choice(
-                key = PreferKey.updateToVariant,
-                title = getString(R.string.update_to_variant_title),
-                summary = getString(R.string.update_to_variant_summary),
-                entriesRes = R.array.default_app_variant,
-                valuesRes = R.array.default_app_variant_value,
-                defaultValue = "default_version"
-            ),
             switch(
                 key = KEY_AUTO_UPDATE_VARIANT,
                 title = getString(R.string.auto_update),

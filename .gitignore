@@ -17,6 +17,9 @@ node_modules/
 /app/google
 /app/gradle.properties
 package-lock.json
+!cloudflare/download-gate/package-lock.json
+cloudflare/**/.dev.vars
+cloudflare/**/.wrangler/
 .idea/
 # Kotlin 2.0
 .kotlin/

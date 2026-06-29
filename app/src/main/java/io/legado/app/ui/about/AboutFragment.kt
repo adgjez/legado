@@ -18,6 +18,7 @@ import io.legado.app.ui.config.compose.SettingPageSpec
 import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.compose.showComposeTextFormDialogWithChecks
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
@@ -70,6 +71,13 @@ class AboutFragment : ComposeSettingFragment() {
                             title = getString(R.string.check_update)
                         ) {
                             checkUpdate()
+                        },
+                        action(
+                            key = KEY_INTERNAL_BETA,
+                            title = "内测版",
+                            summary = internalBetaSummary()
+                        ) {
+                            showInternalBetaDialog()
                         },
                         action(
                             key = KEY_UPDATE_ACCELERATION,
@@ -143,6 +151,46 @@ class AboutFragment : ComposeSettingFragment() {
         UpdateAcceleratorDialog.show(this) {
             refreshSettings()
         }
+    }
+
+    private fun internalBetaSummary(): String {
+        val enabled = AppUpdateConfig.internalBetaConfigured
+        val url = AppUpdateConfig.internalBetaUrl.orEmpty()
+        return if (enabled) {
+            "已启用 · $url"
+        } else {
+            "未启用"
+        }
+    }
+
+    private fun showInternalBetaDialog() {
+        showComposeTextFormDialogWithChecks(
+            title = "内测版更新",
+            labels = listOf("下载密钥", "下载地址"),
+            initialValues = listOf(
+                AppUpdateConfig.internalBetaKey.orEmpty(),
+                AppUpdateConfig.internalBetaUrl.orEmpty()
+            ),
+            passwordFields = setOf(0),
+            checkboxLabels = listOf("启用内测版更新"),
+            checkedIndices = if (AppUpdateConfig.internalBetaEnabled) setOf(0) else emptySet(),
+            message = "启用后，检测更新会优先比较正式版和内测版。正式版版本高于内测版时更新正式版，否则在没有更高正式版时更新内测版。",
+            validateInput = { values ->
+                val key = values.getOrNull(0).orEmpty().trim()
+                val url = values.getOrNull(1).orEmpty().trim()
+                val hasAny = key.isNotBlank() || url.isNotBlank()
+                !hasAny || (key.isNotBlank() && (url.startsWith("https://") || url.startsWith("http://")))
+            },
+            onPositive = { values, checked ->
+                val key = values.getOrNull(0).orEmpty().trim()
+                val url = values.getOrNull(1).orEmpty().trim()
+                val valid = key.isNotBlank() && (url.startsWith("https://") || url.startsWith("http://"))
+                AppUpdateConfig.internalBetaKey = key
+                AppUpdateConfig.internalBetaUrl = url
+                AppUpdateConfig.internalBetaEnabled = checked.getOrNull(0) == true && valid
+                refreshSettings()
+            }
+        )
     }
 
     @Suppress("SameParameterValue")
@@ -300,6 +348,7 @@ class AboutFragment : ComposeSettingFragment() {
         private const val KEY_CONTRIBUTORS = "contributors"
         private const val KEY_UPDATE_LOG = "update_log"
         private const val KEY_CHECK_UPDATE = "check_update"
+        private const val KEY_INTERNAL_BETA = "internal_beta"
         private const val KEY_UPDATE_ACCELERATION = "update_acceleration_manage"
         private const val KEY_LICENSE = "license"
         private const val KEY_DISCLAIMER = "disclaimer"
