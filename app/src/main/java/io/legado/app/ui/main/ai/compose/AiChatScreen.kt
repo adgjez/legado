@@ -1,8 +1,6 @@
 ﻿package io.legado.app.ui.main.ai.compose
 
 import android.widget.ImageView
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -99,6 +97,7 @@ import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.ui.about.ReadRecordWidgetStore
+import io.legado.app.ui.main.ai.AiAgentMode
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
@@ -121,7 +120,6 @@ data class AiChatScreenActions(
     val onOpenHistory: () -> Unit,
     val onSelectModel: () -> Unit,
     val onOpenImageGallery: (() -> Unit)? = null,
-    val onOpenCreationPlatform: (() -> Unit)? = null,
     val onOpenWindowAbilities: (() -> Unit)? = null,
     val onOpenWorldBooks: (() -> Unit)? = null,
     val onToggleAutoSpeak: (() -> Unit)? = null,
@@ -133,7 +131,10 @@ data class AiChatScreenActions(
     val onNewCompanionChat: ((String) -> Unit)? = null,
     val onDeleteSession: ((AiChatSession) -> Unit)? = null,
     val onCompanionLongPress: ((AiChatCompanionConfig) -> Unit)? = null,
-    val onFilePicked: ((android.net.Uri) -> Unit)? = null
+    val onDeleteMessage: ((String) -> Unit)? = null,
+    val onRetryMessage: ((String) -> Unit)? = null,
+    val onSelectAssistantVariant: ((String, Int) -> Unit)? = null,
+    val onAssistantAvatarLongPress: (() -> Unit)? = null
 )
 
 @Stable
@@ -243,6 +244,9 @@ fun AiChatRoute(
     val currentCompanion = remember(refreshToken, messages.size, requesting) {
         viewModel.currentCompanion()
     }
+    val agentMode = remember(refreshToken, messages.size, requesting) {
+        viewModel.currentAgentMode()
+    }
     val currentSessionId = remember(refreshToken, messages.size, requesting, currentCompanion.id) {
         viewModel.activeSessionId()
     }
@@ -264,6 +268,7 @@ fun AiChatRoute(
         modelLabel = modelLabel,
         companions = companions,
         currentCompanion = currentCompanion,
+        agentMode = agentMode,
         sessionRefreshKey = sessionRefreshKey,
         loadCompanionSessions = loadCompanionSessions,
         currentSessionId = currentSessionId,
@@ -283,6 +288,7 @@ fun AiChatScreen(
     modelLabel: String,
     companions: List<AiChatCompanionConfig>,
     currentCompanion: AiChatCompanionConfig,
+    agentMode: AiAgentMode,
     sessionRefreshKey: String,
     loadCompanionSessions: (String) -> List<AiChatSession>,
     currentSessionId: String,
@@ -480,6 +486,7 @@ fun AiChatScreen(
                 requesting = requesting,
                 compactHeader = compactHeader,
                 autoSpeakEnabled = autoSpeakEnabled,
+                agentMode = agentMode,
                 style = style,
                 onOpenCompanionDrawer = { companionDrawerController.settle(coroutineScope, 1f) },
                 actions = actions
@@ -530,7 +537,8 @@ fun AiChatScreen(
                                             listState.scrollToItem(0)
                                         }
                                     }
-                                }
+                                },
+                                actions = actions
                             )
                         }
                     }
@@ -620,6 +628,7 @@ private fun AiChatTopBar(
     requesting: Boolean,
     compactHeader: Boolean,
     autoSpeakEnabled: Boolean,
+    agentMode: AiAgentMode,
     style: AiComposeStyle,
     onOpenCompanionDrawer: () -> Unit,
     actions: AiChatScreenActions
@@ -653,6 +662,28 @@ private fun AiChatTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        if (agentMode != AiAgentMode.NORMAL) {
+            Surface(
+                onClick = { actions.onAssistantAvatarLongPress?.invoke() },
+                enabled = !requesting,
+                shape = RoundedCornerShape(style.metrics.chipRadius),
+                color = style.colors.accent.copy(alpha = if (requesting) 0.06f else 0.10f),
+                modifier = Modifier.padding(end = 6.dp)
+            ) {
+                Text(
+                    text = when (agentMode) {
+                        AiAgentMode.GOAL -> "Goal"
+                        AiAgentMode.PLAN -> "Plan"
+                        AiAgentMode.NORMAL -> ""
+                    },
+                    color = if (requesting) style.colors.secondaryText else style.colors.accent,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
         }
         if (modelLabel.isNotBlank()) {
             Surface(
@@ -698,9 +729,6 @@ private fun AiChatTopBar(
                         add(AiTopMenuAction(stringResource(R.string.ai_setting)) { actions.onOpenSettings() })
                         actions.onOpenImageGallery?.let { openGallery ->
                             add(AiTopMenuAction(stringResource(R.string.ai_image_gallery), openGallery))
-                        }
-                        actions.onOpenCreationPlatform?.let { openCreation ->
-                            add(AiTopMenuAction("AI 创造平台", openCreation))
                         }
                     },
                     onDismiss = { menuExpanded = false }
@@ -1165,24 +1193,34 @@ private fun AiSessionDrawerItem(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AiCompanionAvatar(
     companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    sizeDp: Int
+    sizeDp: Int,
+    onLongClick: (() -> Unit)? = null
 ) {
     if (companion.avatar.isNotBlank()) {
         CharacterAvatar(
             path = companion.avatar,
             contentDescription = companion.name,
-            sizeDp = sizeDp
+            sizeDp = sizeDp,
+            modifier = Modifier.combinedClickable(
+                onClick = {},
+                onLongClick = onLongClick
+            )
         )
     } else {
         Box(
             modifier = Modifier
                 .size(sizeDp.dp)
                 .clip(CircleShape)
-                .background(style.colors.toolSurface),
+                .background(style.colors.toolSurface)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongClick
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -1257,10 +1295,11 @@ private fun AiMessageRow(
     bubbleMaxWidth: androidx.compose.ui.unit.Dp,
     onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
-    onProcessExpanded: () -> Unit
+    onProcessExpanded: () -> Unit,
+    actions: AiChatScreenActions
 ) {
     when (item) {
-        is AiChatUiItem.User -> AiUserMessageRow(item, userAvatar, style, bubbleMaxWidth)
+        is AiChatUiItem.User -> AiUserMessageRow(item, userAvatar, style, bubbleMaxWidth, actions)
         is AiChatUiItem.Assistant -> AiAssistantMessageRow(
             message = item,
             companion = currentCompanion,
@@ -1268,7 +1307,8 @@ private fun AiMessageRow(
             bubbleMaxWidth = bubbleMaxWidth,
             onSpeak = onSpeak,
             onToolPreview = onToolPreview,
-            onProcessExpanded = onProcessExpanded
+            onProcessExpanded = onProcessExpanded,
+            actions = actions
         )
     }
 }
@@ -1278,7 +1318,8 @@ private fun AiUserMessageRow(
     message: AiChatUiItem.User,
     userAvatar: String?,
     style: AiComposeStyle,
-    bubbleMaxWidth: androidx.compose.ui.unit.Dp
+    bubbleMaxWidth: androidx.compose.ui.unit.Dp,
+    actions: AiChatScreenActions
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1299,11 +1340,22 @@ private fun AiUserMessageRow(
                     style = style,
                     color = style.colors.userText
                 )
-                AiCopyTextButton(
-                    text = message.content,
-                    style = style,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AiCopyTextButton(
+                        text = message.content,
+                        style = style
+                    )
+                    actions.onDeleteMessage?.let { delete ->
+                        AiMessageIconButton(
+                            iconRes = R.drawable.ic_outline_delete,
+                            style = style,
+                            onClick = { delete(message.id) }
+                        )
+                    }
+                }
             }
         }
         Spacer(modifier = Modifier.width(8.dp))
@@ -1323,14 +1375,20 @@ private fun AiAssistantMessageRow(
     bubbleMaxWidth: androidx.compose.ui.unit.Dp,
     onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
-    onProcessExpanded: () -> Unit
+    onProcessExpanded: () -> Unit,
+    actions: AiChatScreenActions
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.Top
     ) {
-        AiCompanionAvatar(companion, style, 36)
+        AiCompanionAvatar(
+            companion = companion,
+            style = style,
+            sizeDp = 36,
+            onLongClick = actions.onAssistantAvatarLongPress
+        )
         Spacer(modifier = Modifier.width(8.dp))
         Column(
             modifier = Modifier.widthIn(max = bubbleMaxWidth),
@@ -1343,7 +1401,9 @@ private fun AiAssistantMessageRow(
                             part = part,
                             companion = companion,
                             style = style,
-                            onSpeak = onSpeak
+                            onSpeak = onSpeak,
+                            assistantMessage = message,
+                            actions = actions
                         )
                         is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
                         is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
@@ -1360,7 +1420,9 @@ private fun AiAssistantTextPart(
     part: AiMessagePartUi.Text,
     companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?
+    onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
+    assistantMessage: AiChatUiItem.Assistant,
+    actions: AiChatScreenActions
 ) {
     AiChatBubbleSurface(isUser = false, style = style) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -1384,8 +1446,27 @@ private fun AiAssistantTextPart(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (assistantMessage.variantTotal > 1 && assistantMessage.variantGroupId != null) {
+                        AiVariantSwitcher(
+                            style = style,
+                            currentIndex = assistantMessage.variantIndex,
+                            total = assistantMessage.variantTotal,
+                            onPrevious = {
+                                val target = (assistantMessage.variantIndex - 1)
+                                    .coerceAtLeast(0)
+                                actions.onSelectAssistantVariant?.invoke(assistantMessage.variantGroupId, target)
+                            },
+                            onNext = {
+                                val target = (assistantMessage.variantIndex + 1)
+                                    .coerceAtMost(assistantMessage.variantTotal - 1)
+                                actions.onSelectAssistantVariant?.invoke(assistantMessage.variantGroupId, target)
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
                     AiCopyTextButton(
                         text = part.content,
                         style = style
@@ -1400,9 +1481,88 @@ private fun AiAssistantTextPart(
                             onSpeak = onSpeak
                         )
                     }
+                    actions.onRetryMessage?.let { retry ->
+                        Spacer(modifier = Modifier.width(6.dp))
+                        AiMessageIconButton(
+                            iconRes = R.drawable.ic_refresh_black_24dp,
+                            style = style,
+                            onClick = { retry(part.messageId) }
+                        )
+                    }
+                    actions.onDeleteMessage?.let { delete ->
+                        Spacer(modifier = Modifier.width(6.dp))
+                        AiMessageIconButton(
+                            iconRes = R.drawable.ic_outline_delete,
+                            style = style,
+                            onClick = { delete(assistantMessage.primaryMessageId) }
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AiVariantSwitcher(
+    style: AiComposeStyle,
+    currentIndex: Int,
+    total: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        AiMessageIconButton(
+            iconRes = R.drawable.ic_cursor_left,
+            style = style,
+            enabled = currentIndex > 0,
+            onClick = onPrevious
+        )
+        Text(
+            text = "${currentIndex + 1}/$total",
+            color = style.colors.secondaryText,
+            fontSize = 12.sp,
+            maxLines = 1
+        )
+        AiMessageIconButton(
+            iconRes = R.drawable.ic_cursor_right,
+            style = style,
+            enabled = currentIndex < total - 1,
+            onClick = onNext
+        )
+    }
+}
+
+@Composable
+private fun AiMessageIconButton(
+    iconRes: Int,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(style.colors.accent.copy(alpha = if (enabled) 0.10f else 0.04f))
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = if (enabled) style.colors.accent else style.colors.secondaryText.copy(alpha = 0.45f),
+            modifier = Modifier.size(15.dp)
+        )
     }
 }
 
@@ -1654,12 +1814,6 @@ private fun AiComposer(
             text = ""
         }
     }
-    val onFilePicked = actions.onFilePicked
-    val imagePicker = if (onFilePicked != null) {
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.GetContent()
-        ) { uri -> uri?.let { onFilePicked(it) } }
-    } else null
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
@@ -1671,21 +1825,6 @@ private fun AiComposer(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)
         ) {
-            // 文件上传按钮
-            if (imagePicker != null) {
-                IconButton(
-                    onClick = { imagePicker.launch("image/*") },
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_add),
-                        contentDescription = "上传文件",
-                        tint = style.colors.secondaryText,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-            }
             Box(
                 modifier = Modifier
                     .weight(1f)

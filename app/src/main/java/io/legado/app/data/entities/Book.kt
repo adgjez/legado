@@ -33,7 +33,15 @@ import kotlin.math.max
 @TypeConverters(Book.Converters::class)
 @Entity(
     tableName = "books",
-    indices = [Index(value = ["name", "author"], unique = true)]
+    indices = [
+        Index(value = ["name", "author"], unique = true),
+        Index(value = ["durChapterTime"]),
+        Index(value = ["latestChapterTime"]),
+        Index(value = ["order"]),
+        Index(value = ["name"]),
+        Index(value = ["author"]),
+        Index(value = ["type"])
+    ]
 )
 data class Book(
     // 详情页Url(本地书源存储完整文件路径)

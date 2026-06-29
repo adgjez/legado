@@ -12,7 +12,6 @@ import splitties.init.appCtx
 
 internal object AiAgentRuntime {
 
-    private const val MAX_TOOL_ROUNDS = 12
     private const val MAX_SEARCH_RESULT_CARDS = 8
 
     suspend fun runToolLoop(
@@ -25,6 +24,8 @@ internal object AiAgentRuntime {
         useAllTools: Boolean,
         extraToolNames: Set<String>,
         agentRun: AiAgentStateStore.Run?,
+        maxToolRounds: Int = AppConfig.aiAgentMaxToolRounds,
+        requireGoalCompletion: Boolean = false,
         requestAssistantTurn: suspend (
             round: Int,
             messages: List<JSONObject>,
@@ -38,7 +39,7 @@ internal object AiAgentRuntime {
             useAllTools = useAllTools,
             extraToolNames = extraToolNames
         )
-        repeat(MAX_TOOL_ROUNDS) { round ->
+        repeat(maxToolRounds) { round ->
             val roundNo = round + 1
             AiAgentStateStore.trace(
                 run = agentRun,
@@ -97,6 +98,41 @@ internal object AiAgentRuntime {
                         message = "Empty response",
                         debugLog = requestLog.toSafeDebugLog()
                     )
+                }
+                if (requireGoalCompletion) {
+                    val completionCheck = requestAssistantTurn(
+                        roundNo,
+                        conversation + JSONObject().apply {
+                            put("role", "system")
+                            put(
+                                "content",
+                                "Goal completion check. Decide if the latest assistant answer truly completes the user's concrete goal using the available conversation and tool results. Answer exactly one line: ACHIEVED or CONTINUE: <reason>. Use ACHIEVED only when no required work remains."
+                            )
+                        },
+                        emptyList()
+                    ).content.trim()
+                    if (!completionCheck.startsWith("ACHIEVED", ignoreCase = true)) {
+                        val reason = completionCheck.removePrefix("CONTINUE:").trim().ifBlank {
+                            "Goal is not verified as complete."
+                        }
+                        conversation += JSONObject().apply {
+                            put("role", "system")
+                            put(
+                                "content",
+                                "Goal mode completion check failed: $reason Continue working. If more information or changes are needed, call tools instead of ending."
+                            )
+                        }
+                        AiAgentStateStore.trace(
+                            run = agentRun,
+                            eventType = AiAgentTrace.EVENT_STATUS,
+                            payload = JSONObject()
+                                .put("stage", "goal_continue")
+                                .put("round", roundNo)
+                                .put("reason", reason.take(2_000)),
+                            round = roundNo
+                        )
+                        return@repeat
+                    }
                 }
                 AiAgentStateStore.trace(
                     run = agentRun,
@@ -232,10 +268,10 @@ internal object AiAgentRuntime {
             run = agentRun,
             eventType = AiAgentTrace.EVENT_STATUS,
             payload = JSONObject().put("stage", "round_limit"),
-            round = MAX_TOOL_ROUNDS,
+            round = maxToolRounds,
             checkpointPayload = buildRuntimeCheckpoint(
                 stage = "round_limit",
-                round = MAX_TOOL_ROUNDS,
+                round = maxToolRounds,
                 conversation = conversation,
                 toolEvents = toolEvents
             )
@@ -247,7 +283,7 @@ internal object AiAgentRuntime {
                 appCtx.getString(R.string.ai_tool_round_limit_system_prompt)
             )
         }
-        val finalTurn = requestAssistantTurn(MAX_TOOL_ROUNDS + 1, conversation, emptyList())
+        val finalTurn = requestAssistantTurn(maxToolRounds + 1, conversation, emptyList())
         if (finalTurn.content.isBlank()) {
             throw AiChatException(
                 message = appCtx.getString(R.string.ai_tool_round_limit_summary),

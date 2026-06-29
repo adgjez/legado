@@ -4,6 +4,19 @@ import androidx.annotation.Keep
 import java.util.UUID
 
 @Keep
+enum class AiAgentMode(val id: String) {
+    NORMAL("normal"),
+    GOAL("goal"),
+    PLAN("plan");
+
+    companion object {
+        fun fromId(id: String?): AiAgentMode {
+            return entries.firstOrNull { it.id == id } ?: NORMAL
+        }
+    }
+}
+
+@Keep
 data class AiChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val role: Role,
@@ -18,7 +31,10 @@ data class AiChatMessage(
     val statusDetail: String? = null,
     val statusKey: String? = null,
     val collapsed: Boolean = false,
-    val updatedAt: Long = createdAt
+    val updatedAt: Long = createdAt,
+    val variantGroupId: String? = null,
+    val variantIndex: Int = 0,
+    val variantSelected: Boolean = true
 ) {
     @Keep
     enum class Role {

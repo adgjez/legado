@@ -20,6 +20,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
@@ -120,30 +121,49 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
 
     private suspend fun initBook(book: Book) {
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
+        AppLog.put(
+            "read-init: start, sameBook=$isSameBook, book=${book.name}, " +
+                "bookUrl=${book.bookUrl}, origin=${book.origin}, tocUrl=${book.tocUrl}, " +
+                "durChapterIndex=${book.durChapterIndex}, totalChapterNum=${book.totalChapterNum}, " +
+                "local=${book.isLocal}"
+        )
         if (isSameBook) {
             ReadBook.upData(book)
         } else {
             ReadBook.resetData(book)
         }
+        AppLog.put(
+            "read-init: after data, chapterSize=${ReadBook.chapterSize}, " +
+                "simulatedChapterSize=${ReadBook.simulatedChapterSize}, " +
+                "bookSource=${ReadBook.bookSource?.bookSourceUrl}"
+        )
         isInitFinish = true
         notifyNoSourceIfNeeded(book)
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
+            AppLog.put("read-init: stop, reason=book_info_failed, bookUrl=${book.bookUrl}")
             return
         }
         if (book.isLocal && !checkLocalBookFileExist(book)) {
+            AppLog.put("read-init: stop, reason=local_file_missing, bookUrl=${book.bookUrl}")
             return
         }
         if ((ReadBook.chapterSize == 0 || book.isLocalModified()) && !loadChapterListAwait(book)) {
+            AppLog.put(
+                "read-init: stop, reason=toc_failed, chapterSize=${ReadBook.chapterSize}, " +
+                    "bookUrl=${book.bookUrl}, origin=${book.origin}"
+            )
             return
         }
         ReadBook.upMsg(null)
         if (!isSameBook) {
+            AppLog.put("read-init: loadContent, mode=reset, index=${ReadBook.durChapterIndex}")
             ReadBook.loadContent(resetPageOffset = true) {
                 ReadBook.bookSource?.let {
                     SourceCallBack.callBackBook(SourceCallBack.START_READ, it, book, ReadBook.curTextChapter?.chapter)
                 }
             }
         } else {
+            AppLog.put("read-init: loadContent, mode=same, index=${ReadBook.durChapterIndex}")
             ReadBook.loadOrUpContent {
                 ReadBook.bookSource?.let {
                     SourceCallBack.callBackBook(SourceCallBack.START_READ, it, book, ReadBook.curTextChapter?.chapter)
@@ -160,7 +180,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                 syncBookProgress(book)
             }
         }
-        if (shouldAutoChangeSourceForCurrentChapter(book)) {
+        if (!book.isLocal && ReadBook.bookSource == null) {
             autoChangeSource(book.name, book.author)
             return
         }
@@ -170,13 +190,6 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         if (!book.isLocal && ReadBook.bookSource == null) {
             context.toastOnUi(R.string.error_no_source)
         }
-    }
-
-    private fun shouldAutoChangeSourceForCurrentChapter(book: Book): Boolean {
-        if (book.isLocal || ReadBook.bookSource != null) return false
-        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
-            ?: return true
-        return !BookHelp.hasContent(book, chapter)
     }
 
     private fun checkLocalBookFileExist(book: Book): Boolean {
@@ -227,7 +240,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                         appDb.bookChapterDao.insert(*it.toTypedArray())
                         appDb.bookDao.update(book)
                     }
-                    ReadBook.onChapterListUpdated(book, loadContent = false)
+                    ReadBook.onChapterListUpdated(book)
                 }
                 return true
             }.onFailure {
@@ -246,8 +259,17 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         } else {
             ReadBook.bookSource?.let {
                 val oldBook = book.copy()
+                AppLog.put(
+                    "read-toc: start, book=${book.name}, bookUrl=${book.bookUrl}, " +
+                        "origin=${book.origin}, source=${it.bookSourceUrl}"
+                )
                 WebBook.getChapterListAwait(it, book, true)
                     .onSuccess { cList ->
+                        AppLog.put(
+                            "read-toc: success, size=${cList.size}, oldBookUrl=${oldBook.bookUrl}, " +
+                                "newBookUrl=${book.bookUrl}, first=${cList.firstOrNull()?.title}, " +
+                                "last=${cList.lastOrNull()?.title}"
+                        )
                         val oldChapterList = appDb.bookChapterDao.getChapterList(oldBook.bookUrl)
                         BookHelp.remapContentCache(oldBook, oldChapterList, cList)
                         if (oldBook.bookUrl == book.bookUrl) {
@@ -260,11 +282,16 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                             appDb.bookChapterDao.delByBook(oldBook.bookUrl)
                             appDb.bookChapterDao.insert(*cList.toTypedArray())
                         }
-                        ReadBook.onChapterListUpdated(book, loadContent = false)
+                        ReadBook.onChapterListUpdated(book)
                         return true
                     }.onFailure {
                         currentCoroutineContext().ensureActive()
                         ReadBook.upMsg(context.getString(R.string.error_load_toc))
+                        AppLog.put(
+                            "read-toc: failed, book=${book.name}, bookUrl=${book.bookUrl}, " +
+                                "origin=${book.origin}\n${it.localizedMessage}",
+                            it
+                        )
                         return false
                     }
             }
@@ -379,7 +406,14 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     fun removeFromBookshelf(success: (() -> Unit)?) {
         val book = ReadBook.book
         Coroutine.async {
-            book?.delete()
+            val dbBook = book?.bookUrl?.let { appDb.bookDao.getBook(it) }
+            when {
+                dbBook?.isNotShelf == true -> dbBook.delete()
+                book?.isNotShelf == true && dbBook == null -> book.delete()
+                book != null -> AppLog.put(
+                    "跳过删除正式书架书: ${book.name}, bookUrl=${book.bookUrl}, inBookshelf=${ReadBook.inBookshelf}"
+                )
+            }
         }.onSuccess {
             success?.invoke()
         }

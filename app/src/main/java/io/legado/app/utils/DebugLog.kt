@@ -1,18 +1,18 @@
 package io.legado.app.utils
 
 import android.util.Log
-import io.legado.app.BuildConfig
+import io.legado.app.help.config.AppConfig
 
 object DebugLog {
 
     fun e(tag: String, throwable: Throwable) {
-        if (BuildConfig.DEBUG) {
+        if (AppConfig.recordLog) {
             Log.e(tag, throwable.stackTraceToString())
         }
     }
 
     fun e(tag: String, msg: String, throwable: Throwable? = null) {
-        if (BuildConfig.DEBUG) {
+        if (AppConfig.recordLog) {
             if (throwable == null) {
                 Log.e(tag, msg)
             } else {
@@ -22,7 +22,7 @@ object DebugLog {
     }
 
     fun d(tag: String, msg: String, throwable: Throwable? = null) {
-        if (BuildConfig.DEBUG) {
+        if (AppConfig.recordLog) {
             if (throwable == null) {
                 Log.d(tag, msg)
             } else {
@@ -32,7 +32,7 @@ object DebugLog {
     }
 
     fun i(tag: String, msg: String, throwable: Throwable? = null) {
-        if (BuildConfig.DEBUG) {
+        if (AppConfig.recordLog) {
             if (throwable == null) {
                 Log.i(tag, msg)
             } else {
@@ -42,7 +42,7 @@ object DebugLog {
     }
 
     fun w(tag: String, msg: String, throwable: Throwable? = null) {
-        if (BuildConfig.DEBUG) {
+        if (AppConfig.recordLog) {
             if (throwable == null) {
                 Log.w(tag, msg)
             } else {

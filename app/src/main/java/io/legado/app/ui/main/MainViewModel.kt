@@ -11,6 +11,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
+import io.legado.app.data.dao.BookUpdateInfo
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppCloudStorage
@@ -98,7 +99,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun upAllBookToc() {
         execute {
-            addToWaitUp(appDb.bookDao.hasUpdateBooks, AppConfig.onlyUpdateRead)
+            addUpdateInfosToWaitUp(appDb.bookDao.updateBookInfos, AppConfig.onlyUpdateRead)
         }
     }
 
@@ -129,6 +130,20 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     @Synchronized
     private fun addToWaitUp(books: List<Book>, onlyUpdateRead: Boolean) {
         books.forEach { book ->
+            if (onlyUpdateRead && book.getUnreadChapterNum() > 0) return@forEach
+            if (!waitUpTocBooks.contains(book.bookUrl) && !onUpTocBooks.contains(book.bookUrl)) {
+                waitUpTocBooks.add(book.bookUrl)
+            }
+        }
+        if (upTocJob == null) {
+            startUpTocJob()
+        }
+    }
+
+    @Synchronized
+    private fun addUpdateInfosToWaitUp(books: List<BookUpdateInfo>, onlyUpdateRead: Boolean) {
+        books.forEach { book ->
+            if (book.isLocal) return@forEach
             if (onlyUpdateRead && book.getUnreadChapterNum() > 0) return@forEach
             if (!waitUpTocBooks.contains(book.bookUrl) && !onUpTocBooks.contains(book.bookUrl)) {
                 waitUpTocBooks.add(book.bookUrl)

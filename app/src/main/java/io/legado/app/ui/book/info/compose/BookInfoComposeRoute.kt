@@ -321,9 +321,11 @@ fun BookInfoComposeRoute(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var coverColor by remember(state.coverPath) { mutableStateOf<Int?>(null) }
+    var coverColor by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(state.coverPath) {
-        coverColor = loadCoverThemeColor(context, state.coverPath)
+        loadCoverThemeColor(context, state.coverPath)?.let { color ->
+            coverColor = color
+        }
     }
     val style = remember(context, coverColor) { bookInfoComposeStyle(context, coverColor) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -1189,7 +1191,7 @@ private fun BookInfoPosterHero(
             path = state.coverPath,
             modifier = Modifier
                 .width(126.dp)
-                .aspectRatio(0.72f)
+                .aspectRatio(0.75f)
                 .shadow(6.dp, RoundedCornerShape(style.metrics.panelRadius), clip = false)
                 .clip(RoundedCornerShape(style.metrics.panelRadius))
                 .combinedClickable(
@@ -1295,7 +1297,7 @@ private fun BookInfoHero(
             path = state.coverPath,
             modifier = Modifier
                 .width(108.dp)
-                .aspectRatio(0.72f)
+                .aspectRatio(0.75f)
                 .clip(RoundedCornerShape(style.metrics.panelRadius))
                 .combinedClickable(
                     onClick = actions.onChangeCover,
@@ -1782,10 +1784,15 @@ private fun BookInfoImage(
                     ImageLoader.load(context, R.drawable.image_cover_default)
                         .into(imageView)
                 } else {
-                    ImageLoader.load(context, target)
+                    val request = ImageLoader.load(context, target)
                         .error(R.drawable.image_cover_default)
-                        .placeholder(R.drawable.image_cover_default)
-                        .into(imageView)
+                    val currentDrawable = imageView.drawable
+                    if (currentDrawable != null) {
+                        request.placeholder(currentDrawable)
+                    } else {
+                        request.placeholder(R.drawable.image_cover_default)
+                    }
+                    request.into(imageView)
                 }
             }
         },

@@ -11,7 +11,6 @@ import android.graphics.Color
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.InputDevice
@@ -22,7 +21,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.view.WindowInsetsController
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -187,7 +187,6 @@ import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
 import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.openBookshelf
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.showDialogFragment
@@ -532,7 +531,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             if (getPrefBoolean("disableReturnKey") && !menuLayoutIsVisible) {
                 return@addCallback
             }
-            returnToBookshelf()
+            finish()
         }
     }
 
@@ -626,9 +625,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         viewModel.initReadBookConfig(intent)
-        Looper.myQueue().addIdleHandler {
+        binding.root.post {
+            AppLog.put("read-init: schedule, source=postCreate")
             viewModel.initData(intent)
-            false
         }
         justInitData = true
     }
@@ -2994,46 +2993,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun returnToBookshelf() {
-        val book = ReadBook.book
-        if (book == null) {
-            super.finish()
-            openBookshelf()
-            return
-        }
-        if (ReadBook.inBookshelf) {
-            callBackBookEnd()
-            super.finish()
-            openBookshelf()
-            return
-        }
-        if (!AppConfig.showAddToShelfAlert) {
-            callBackBookEnd()
-            viewModel.removeFromBookshelf {
-                super.finish()
-                openBookshelf()
-            }
-        } else {
-            alert(title = getString(R.string.add_to_bookshelf)) {
-                setMessage(getString(R.string.check_add_bookshelf, book.name))
-                okButton {
-                    ReadBook.book?.removeType(BookType.notShelf)
-                    ReadBook.book?.save()
-                    SourceCallBack.callBackBook(SourceCallBack.ADD_BOOK_SHELF, ReadBook.bookSource, ReadBook.book)
-                    ReadBook.inBookshelf = true
-                    setResult(RESULT_OK)
-                    callBackBookEnd()
-                    super.finish()
-                    openBookshelf()
-                }
-                noButton {
-                    callBackBookEnd()
-                    viewModel.removeFromBookshelf {
-                        super.finish()
-                        openBookshelf()
-                    }
-                }
-            }
-        }
+        finish()
     }
 
     override fun openReplaceRule() {
@@ -3210,7 +3170,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 if (refresh) {
                     LibraryCloudSync.refreshSession(book)
                 } else {
-                    libraryCloudSession ?: LibraryCloudSync.openSession(book)
+                    currentLibraryCloudSession() ?: LibraryCloudSync.openSession(book)
                 }
             }
             libraryCloudSession = session
@@ -3406,7 +3366,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 if (refresh) {
                     LibraryCloudSync.refreshSession(book)
                 } else {
-                    libraryCloudSession ?: LibraryCloudSync.openSession(book)
+                    currentLibraryCloudSession() ?: LibraryCloudSync.openSession(book)
                 }
             }
             if (ReadBook.book?.bookUrl != book.bookUrl) return@launch
@@ -3417,6 +3377,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 toastOnUi(libraryCloudStateMessage(session))
             }
         }
+    }
+
+    private fun currentLibraryCloudSession(): LibraryCloudSession? {
+        val currentContainerId = LibraryContainerManager.readContainer()?.id
+        return libraryCloudSession?.takeIf { it.config?.id == currentContainerId }
     }
 
     private fun downloadLibraryCloudChapter(
@@ -3696,22 +3661,19 @@ class ReadBookActivity : BaseReadBookActivity(),
         WindowCompat.setDecorFitsSystemWindows(window, false)
         binding.navigationBar.visibility = View.GONE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.run {
+            WindowCompat.getInsetsController(window, binding.root)?.run {
                 if (ReadBookConfig.hideNavigationBar) {
-                    hide(WindowInsets.Type.navigationBars())
+                    hide(WindowInsetsCompat.Type.navigationBars())
                 } else {
-                    show(WindowInsets.Type.navigationBars())
+                    show(WindowInsetsCompat.Type.navigationBars())
                 }
                 if (ReadBookConfig.hideStatusBar) {
-                    hide(WindowInsets.Type.statusBars())
+                    hide(WindowInsetsCompat.Type.statusBars())
                 } else {
-                    show(WindowInsets.Type.statusBars())
+                    show(WindowInsetsCompat.Type.statusBars())
                 }
-                setSystemBarsAppearance(
-                    0,
-                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                )
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = false
             }
         }
         var flag = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
@@ -4639,6 +4601,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                     SourceCallBack.callBackBook(SourceCallBack.ADD_BOOK_SHELF, ReadBook.bookSource, ReadBook.book)
                     ReadBook.inBookshelf = true
                     setResult(RESULT_OK)
+                    callBackBookEnd()
+                    super.finish()
                 }
                 noButton {
                     callBackBookEnd()
@@ -4719,6 +4683,17 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<ArrayList<Int>>(EventBus.UP_CONFIG) {
             handleReadConfigUpdate(it)
+        }
+        observeEvent<Boolean>(EventBus.LIBRARY_CONTAINER_CHANGED) {
+            val bookUrl = ReadBook.book?.bookUrl.orEmpty()
+            if (BookCloudEntryModeStore.get(bookUrl) == BookCloudEntryMode.LIBRARY_CHAPTER) {
+                libraryCloudSession = null
+                refreshLibraryCloudSession(refresh = true, silent = true)
+            } else {
+                libraryCloudSession = null
+                libraryCloudState = LibraryCloudState.DISABLED
+                readMenu.updateCloudLibraryState(libraryCloudState)
+            }
         }
         observeEvent<Bundle>(EventBus.READ_ALOUD_CONFIG_CHANGED) {
             readAloudPlayerPanel.onReadAloudConfigChanged(

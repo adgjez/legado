@@ -139,7 +139,7 @@ private fun SearchResultItem(
             AndroidView(
                 modifier = Modifier
                     .width(metrics.coverWidth)
-                    .aspectRatio(0.72f)
+                    .aspectRatio(0.75f)
                     .clip(RoundedCornerShape(metrics.cornerRadius)),
                 factory = { context -> CoverImageView(context) },
                 update = { view -> view.load(book, AppConfig.loadCoverOnlyWifi, null, lifecycle) },

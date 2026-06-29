@@ -32,6 +32,12 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
+        android:key="discoverySubscriptionSettings"
+        android:summary="@string/discovery_subscription_settings_summary"
+        android:title="@string/discovery_subscription_settings_title"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
         android:key="top_bar_manage"
         android:summary="@string/top_bar_manage_summary"
         android:title="@string/top_bar_manage"

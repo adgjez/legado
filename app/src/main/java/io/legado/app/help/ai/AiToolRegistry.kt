@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 9
+    private const val TOOL_SETTINGS_VERSION = 16
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -49,6 +49,41 @@ object AiToolRegistry {
     private val version9AddedDefaultTools = setOf(
         "batch_manage_speech_voice_groups"
     )
+    private val version10AddedDefaultTools = setOf(
+        "workspace_list_files",
+        "workspace_read_file",
+        "workspace_write_file",
+        "workspace_edit_file",
+        "workspace_delete_file",
+        "workspace_list_backups",
+        "workspace_restore_backup",
+        "workspace_import_book_source",
+        "workspace_create_book_source_file",
+        "workspace_debug_book_source",
+        "workspace_apply_book_source"
+    )
+    private val version11AddedDefaultTools = setOf(
+        "workspace_read_matches",
+        "workspace_search_files",
+        "workspace_save_input_file"
+    )
+    private val version12RemovedDefaultTools = setOf(
+        "create_book_source",
+        "update_book_source"
+    )
+    private val version13AddedDefaultTools = setOf(
+        "workspace_create_backup"
+    )
+    private val version14AddedDefaultTools = setOf(
+        "workspace_replace_text",
+        "workspace_replace_regex",
+        "workspace_edit_lines",
+        "workspace_insert_text"
+    )
+    private val version15AddedDefaultTools = setOf(
+        "workspace_read_lines",
+        "workspace_diff_file"
+    )
 
     val characterCompanionToolNames = setOf(
         "query_bookshelf",
@@ -82,7 +117,16 @@ object AiToolRegistry {
         "assign_read_aloud_bgm_ranges",
         "list_world_books",
         "list_world_book_bindings",
-        "get_app_settings"
+        "get_app_settings",
+        "workspace_list_files",
+        "workspace_read_file",
+        "workspace_read_lines",
+        "workspace_read_matches",
+        "workspace_search_files",
+        "workspace_list_backups",
+        "workspace_diff_file",
+        "workspace_import_book_source",
+        "workspace_debug_book_source"
     )
 
     data class ToolMeta(
@@ -105,9 +149,7 @@ object AiToolRegistry {
         "list_book_sources",
         "search_book_source",
         "search_web_tavily",
-        "create_book_source",
         "get_book_source",
-        "update_book_source",
         "fetch_source_html",
         "debug_book_source",
         "reading_ajax",
@@ -145,7 +187,28 @@ object AiToolRegistry {
         "export_world_book_json",
         "get_app_settings",
         "set_app_setting",
-        "set_app_settings_batch"
+        "set_app_settings_batch",
+        "workspace_list_files",
+        "workspace_read_file",
+        "workspace_read_lines",
+        "workspace_read_matches",
+        "workspace_search_files",
+        "workspace_save_input_file",
+        "workspace_write_file",
+        "workspace_edit_file",
+        "workspace_replace_text",
+        "workspace_replace_regex",
+        "workspace_edit_lines",
+        "workspace_insert_text",
+        "workspace_diff_file",
+        "workspace_delete_file",
+        "workspace_list_backups",
+        "workspace_create_backup",
+        "workspace_restore_backup",
+        "workspace_import_book_source",
+        "workspace_create_book_source_file",
+        "workspace_debug_book_source",
+        "workspace_apply_book_source"
     )
 
     private val nativeToolLabels = mapOf(
@@ -201,7 +264,28 @@ object AiToolRegistry {
         "export_world_book_json" to "导出世界书 JSON",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
-        "set_app_settings_batch" to "批量修改设置"
+        "set_app_settings_batch" to "批量修改设置",
+        "workspace_list_files" to "工作区：列出文件",
+        "workspace_read_file" to "工作区：读取文件",
+        "workspace_read_lines" to "工作区：按行读取",
+        "workspace_read_matches" to "工作区：正则读取",
+        "workspace_search_files" to "工作区：正则搜索",
+        "workspace_save_input_file" to "工作区：保存输入为文件",
+        "workspace_write_file" to "工作区：写入文件",
+        "workspace_edit_file" to "工作区：编辑文件",
+        "workspace_replace_text" to "工作区：精确替换",
+        "workspace_replace_regex" to "工作区：正则替换",
+        "workspace_edit_lines" to "工作区：行号编辑",
+        "workspace_insert_text" to "工作区：插入文本",
+        "workspace_diff_file" to "工作区：查看差异",
+        "workspace_delete_file" to "工作区：删除文件",
+        "workspace_list_backups" to "工作区：列出备份",
+        "workspace_create_backup" to "工作区：创建备份",
+        "workspace_restore_backup" to "工作区：恢复备份",
+        "workspace_import_book_source" to "工作区：导入书源",
+        "workspace_create_book_source_file" to "工作区：创建书源文件",
+        "workspace_debug_book_source" to "工作区：调试书源",
+        "workspace_apply_book_source" to "工作区：应用书源"
     )
 
     private val nativeToolGroups = mapOf(
@@ -257,7 +341,28 @@ object AiToolRegistry {
         "export_world_book_json" to "世界书",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
-        "set_app_settings_batch" to "设置"
+        "set_app_settings_batch" to "设置",
+        "workspace_list_files" to "AI workspace",
+        "workspace_read_file" to "AI workspace",
+        "workspace_read_lines" to "AI workspace",
+        "workspace_read_matches" to "AI workspace",
+        "workspace_search_files" to "AI workspace",
+        "workspace_save_input_file" to "AI workspace",
+        "workspace_write_file" to "AI workspace",
+        "workspace_edit_file" to "AI workspace",
+        "workspace_replace_text" to "AI workspace",
+        "workspace_replace_regex" to "AI workspace",
+        "workspace_edit_lines" to "AI workspace",
+        "workspace_insert_text" to "AI workspace",
+        "workspace_diff_file" to "AI workspace",
+        "workspace_delete_file" to "AI workspace",
+        "workspace_list_backups" to "AI workspace",
+        "workspace_create_backup" to "AI workspace",
+        "workspace_restore_backup" to "AI workspace",
+        "workspace_import_book_source" to "AI workspace",
+        "workspace_create_book_source_file" to "AI workspace",
+        "workspace_debug_book_source" to "AI workspace",
+        "workspace_apply_book_source" to "AI workspace"
     )
 
     fun groupLabelOfTool(name: String): String {
@@ -282,6 +387,17 @@ object AiToolRegistry {
         )
     }
 
+    fun isReadOnlyTool(name: String): Boolean {
+        return name in readSafeToolNames ||
+                name == "load_ai_skill" ||
+                name.startsWith("search_") ||
+                name.startsWith("list_") ||
+                name.startsWith("get_") ||
+                name.startsWith("query_") ||
+                name.startsWith("read_") ||
+                name.startsWith("fetch_")
+    }
+
     private fun nativeResolvedTools(): List<AiResolvedTool> {
         val tools = AiBookshelfTool.resolvedTools().toMutableList()
         tools += AiLibraryTool.resolvedTools()
@@ -289,6 +405,7 @@ object AiToolRegistry {
         tools += AiBookSourceTool.resolvedTools()
         tools += AiReadingNetworkTool.resolvedTools()
         tools += AiSettingsTool.resolvedTools()
+        tools += AiWorkspaceTool.resolvedTools()
         tools += AiImageTool.resolvedTools()
         tools += AiBookCharacterTool.resolvedTools()
         tools += AiReadAloudBgmTool.resolvedTools()
@@ -328,8 +445,14 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 7) addAll(version7AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 8) addAll(version8AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 9) addAll(version9AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 10) addAll(version10AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 11) addAll(version11AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 13) addAll(version13AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 14) addAll(version14AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 15) addAll(version15AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
+                .minus(if (AppConfig.aiEnabledToolNamesVersion < 12) version12RemovedDefaultTools else emptySet())
                 .filter { it.isNotBlank() }
                 .toSet()
             AppConfig.aiEnabledToolNames = migrated

@@ -19,7 +19,7 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
     override val titleRes: Int = R.string.discovery_subscription_settings_title
 
     override fun buildPageSpec(): SettingPageSpec {
-        val useModernDiscovery = booleanSetting(PreferKey.modernDiscoveryPage, true)
+        val discoveryMode = AppConfig.discoveryPageMode
         val useModernRss = booleanSetting(PreferKey.modernRssPage, true)
         return SettingPageSpec(
             titleRes = titleRes,
@@ -43,27 +43,17 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
                                 entriesRes = R.array.discovery_page_mode_entries,
                                 valuesRes = R.array.discovery_page_mode_values
                             ),
-                            selectedValue = if (useModernDiscovery) {
-                                PAGE_MODE_MODERN
-                            } else {
-                                PAGE_MODE_LEGACY
-                            },
+                            selectedValue = discoveryMode,
                             summary = pageModeLabel(
                                 entriesRes = R.array.discovery_page_mode_entries,
                                 valuesRes = R.array.discovery_page_mode_values,
-                                selectedValue = if (useModernDiscovery) {
-                                    PAGE_MODE_MODERN
-                                } else {
-                                    PAGE_MODE_LEGACY
-                                }
+                                selectedValue = discoveryMode
                             ),
                             onSelected = {
-                                updateBooleanSetting(
-                                    PreferKey.modernDiscoveryPage,
-                                    it == PAGE_MODE_MODERN
-                                )
+                                AppConfig.discoveryPageMode = it
                             },
                             searchKeys = listOf(
+                                PreferKey.discoveryPageMode,
                                 PreferKey.modernDiscoveryPage,
                                 KEY_SEARCH_JUMP_DISCOVERY_MODE
                             )
@@ -72,7 +62,7 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
                             key = PreferKey.discoveryPageLayout,
                             title = getString(R.string.discovery_page_layout),
                             summary = discoveryLayoutSummary(),
-                            visible = useModernDiscovery,
+                            visible = discoveryMode == AppConfig.DISCOVERY_PAGE_MODE_MODERN,
                             onClick = ::showDiscoveryLayoutDialog
                         )
                     )
@@ -130,6 +120,7 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
         return when (rawKey) {
             KEY_SEARCH_JUMP_SHOW_DISCOVERY -> PreferKey.showDiscovery
             KEY_SEARCH_JUMP_SHOW_RSS -> PreferKey.showRss
+            PreferKey.discoveryPageMode,
             PreferKey.modernDiscoveryPage,
             KEY_SEARCH_JUMP_DISCOVERY_MODE -> KEY_DISCOVERY_MODE
             PreferKey.modernRssPage,
@@ -144,6 +135,7 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
             PreferKey.showDiscovery,
             PreferKey.showRss -> postEvent(EventBus.NOTIFY_MAIN, true)
 
+            PreferKey.discoveryPageMode,
             PreferKey.modernDiscoveryPage,
             PreferKey.modernRssPage,
             PreferKey.discoveryPageLayout,

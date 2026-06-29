@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import com.google.gson.stream.JsonWriter
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -40,6 +41,7 @@ import io.legado.app.utils.outputStream
 import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -48,6 +50,7 @@ import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -119,13 +122,18 @@ object Backup {
     }
 
     fun autoBack(context: Context) {
+        val appContext = context.applicationContext ?: context
         Coroutine.async {
+            if (shouldBackup()) {
+                LogUtils.d(TAG, "auto backup delayed for foreground first frame")
+                delay(5000)
+            }
             mutex.withLock {
                 if (shouldBackup()) {
                     AppLog.put("自动备份触发")
                     AppLog.put("Auto backup trigger")
                     LogUtils.d(TAG, "auto backup trigger")
-                    backup(context, AppConfig.backupPath)
+                    backup(appContext, AppConfig.backupPath)
                 } else {
                     AppLog.put("自动备份跳过: 今日已备份")
                     AppLog.put("Auto backup skipped: already backed up today")
@@ -159,7 +167,7 @@ object Backup {
         LogUtils.d(TAG, "开始备份 path:$path")
         val aes = BackupAES()
         FileUtils.delete(backupPath)
-        writeListToJson(appDb.bookDao.all, "bookshelf.json", backupPath)
+        writeBookshelfToJson(backupPath)
         writeListToJson(appDb.bookmarkDao.all, "bookmark.json", backupPath)
         writeListToJson(appDb.bookGroupDao.all, "bookGroup.json", backupPath)
         writeListToJson(appDb.bookSourceDao.all, "bookSource.json", backupPath)
@@ -404,6 +412,32 @@ object Backup {
             } else {
                 LogUtils.d(TAG, "阅读备份 $fileName 列表为空")
             }
+        }
+    }
+
+    private suspend fun writeBookshelfToJson(path: String) {
+        currentCoroutineContext().ensureActive()
+        withContext(IO) {
+            val bookUrls = appDb.bookDao.allBookUrls
+            if (bookUrls.isEmpty()) {
+                LogUtils.d(TAG, "Backup bookshelf.json list is empty")
+                return@withContext
+            }
+            LogUtils.d(TAG, "Backup bookshelf.json list size ${bookUrls.size}")
+            val file = FileUtils.createFileIfNotExist(path + File.separator + "bookshelf.json")
+            file.outputStream().buffered().use { output ->
+                JsonWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
+                    writer.beginArray()
+                    bookUrls.chunked(50).forEach { chunk ->
+                        currentCoroutineContext().ensureActive()
+                        appDb.bookDao.getBooksSafe(chunk, chunkSize = 50).forEach { book ->
+                            GSON.toJson(book, book.javaClass, writer)
+                        }
+                    }
+                    writer.endArray()
+                }
+            }
+            LogUtils.d(TAG, "Backup bookshelf.json written size ${file.length()}")
         }
     }
 

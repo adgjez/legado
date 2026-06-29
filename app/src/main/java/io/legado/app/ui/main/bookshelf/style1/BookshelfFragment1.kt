@@ -15,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
+import io.legado.app.data.dao.BookShelfDisplay
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf1Binding
@@ -58,7 +59,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private var groupMenuPopup: ModernActionPopup.Handle? = null
     private var bookTags = emptyList<String>()
     private var selectedBookTag = ""
-    private val groupBooksCache = hashMapOf<Long, List<Book>>()
+    private val groupShelfCache = hashMapOf<Long, List<BookShelfDisplay>>()
     private var currentGroupIndex = 0
     private var topOverlaySpace = 0
     private var topOverlayEnabled = false
@@ -138,7 +139,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                     updateHeaderTitle()
                     val group = bookGroups[position]
                     fragmentMap[group.groupId]?.setBookTagFilter("")
-                    renderBookTags(groupBooksCache[group.groupId].orEmpty())
+                    renderBookTags(groupShelfCache[group.groupId].orEmpty())
                 }
             }
         )
@@ -261,12 +262,16 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     }
 
     fun onBooksChanged(groupId: Long, books: List<Book>) {
-        groupBooksCache[groupId] = books
+        onShelfDisplaysChanged(groupId, books.map { it.toShelfDisplay() })
+    }
+
+    fun onShelfDisplaysChanged(groupId: Long, books: List<BookShelfDisplay>) {
+        groupShelfCache[groupId] = books
         if (groupId != this.groupId) return
         renderBookTags(books)
     }
 
-    private fun renderBookTags(books: List<Book>) {
+    private fun renderBookTags(books: List<BookShelfDisplay>) {
         if (!isAdded) return
         val allText = getString(R.string.bookshelf_tag_all)
         val storedTags = AppConfig.bookshelfGroupTags[groupId].orEmpty()
@@ -317,7 +322,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         AppConfig.saveTabPosition = index
         selectedBookTag = ""
         fragmentMap[groupId]?.setBookTagFilter("")
-        renderBookTags(groupBooksCache[groupId].orEmpty())
+        renderBookTags(groupShelfCache[groupId].orEmpty())
         updateHeaderTitle()
     }
 
@@ -330,7 +335,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
 
     override fun showBookTagManageAlert() {
         val group = selectedGroup ?: return
-        val targetBooks = groupBooksCache[group.groupId].orEmpty()
+        val targetBooks = groupShelfCache[group.groupId].orEmpty()
         val tags = targetBooks
             .flatMap { BookTagHelper.parse(it.customTag) }
             .distinct()
@@ -354,7 +359,8 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                 onPositive = { result ->
                     val keepTags = tags.filterIndexed { index, _ -> result[index] }.toSet()
                 lifecycleScope.launch(IO) {
-                    targetBooks.forEach { book ->
+                    val fullBooks = appDb.bookDao.getBooksSafe(targetBooks.map { it.bookUrl })
+                    fullBooks.forEach { book ->
                         val normalized = BookTagHelper.join(
                             BookTagHelper.parse(book.customTag).filter { it in keepTags }
                         )
@@ -373,7 +379,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     override fun observeLiveBus() {
         super.observeLiveBus()
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
-            renderBookTags(groupBooksCache[groupId].orEmpty())
+            renderBookTags(groupShelfCache[groupId].orEmpty())
         }
         observeEvent<String>(EventBus.BOOKSHELF_STRUCTURE_CHANGED) {
             rebuildBookshelfContent()
@@ -397,7 +403,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             } else {
                 selectSavedGroup()
             }
-            renderBookTags(groupBooksCache[groupId].orEmpty())
+            renderBookTags(groupShelfCache[groupId].orEmpty())
             updateTopBarOverlay()
         }
     }
@@ -457,5 +463,30 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             return fragment
         }
 
+    }
+
+    private fun Book.toShelfDisplay(): BookShelfDisplay {
+        return BookShelfDisplay(
+            bookUrl = bookUrl,
+            origin = origin,
+            originName = originName,
+            name = name,
+            author = author,
+            customTag = customTag,
+            coverUrl = coverUrl,
+            customCoverUrl = customCoverUrl,
+            type = type,
+            group = group,
+            latestChapterTitle = latestChapterTitle,
+            latestChapterTime = latestChapterTime,
+            lastCheckCount = lastCheckCount,
+            totalChapterNum = totalChapterNum,
+            durChapterTitle = durChapterTitle,
+            durChapterIndex = durChapterIndex,
+            durChapterTime = durChapterTime,
+            canUpdate = canUpdate,
+            order = order,
+            readConfig = readConfig
+        )
     }
 }

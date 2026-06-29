@@ -114,7 +114,6 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onOpenHistory = ::openHistoryFromMenu,
                     onSelectModel = ::showModelSelectorDialog,
                     onOpenImageGallery = ::openImageGallery,
-                    onOpenCreationPlatform = ::openCreationPlatform,
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
                     onOpenWorldBooks = { showCompanionWorldBookDialog() },
                     onToggleAutoSpeak = ::toggleAutoSpeak,
@@ -128,7 +127,10 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onNewCompanionChat = ::startNewChatFromDrawer,
                     onDeleteSession = ::confirmDeleteHistorySession,
                     onCompanionLongPress = ::showCompanionActions,
-                    onFilePicked = ::handleFilePicked
+                    onDeleteMessage = ::confirmDeleteMessageFromHere,
+                    onRetryMessage = ::dispatchRetryMessage,
+                    onSelectAssistantVariant = ::selectAssistantVariant,
+                    onAssistantAvatarLongPress = ::showAgentModeDialog
                 )
             )
             if (characterPickerVisible) {
@@ -177,6 +179,81 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         viewModel.stopRequest(getString(R.string.ai_chat_cancelled))
     }
 
+    private fun showAgentModeDialog() {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        val modes = listOf(
+            AiAgentMode.NORMAL,
+            AiAgentMode.GOAL,
+            AiAgentMode.PLAN
+        )
+        val labels = listOf(
+            "普通模式：正常对话和工具调用",
+            "Goal 模式：持续执行直到目标达成",
+            "Plan 模式：只读分析，只写计划不执行"
+        )
+        selector("Agent 模式", labels) { _, _, index ->
+            val mode = modes.getOrNull(index) ?: return@selector
+            viewModel.setAgentMode(mode)
+            refreshToken.intValue += 1
+            toastOnUi(
+                when (mode) {
+                    AiAgentMode.NORMAL -> "已切换普通模式"
+                    AiAgentMode.GOAL -> "已切换 Goal 模式"
+                    AiAgentMode.PLAN -> "已切换 Plan 模式"
+                }
+            )
+        }
+    }
+
+    private fun dispatchRetryMessage(messageId: String) {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        val provider = AppConfig.aiCurrentProvider
+        if (provider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
+            toastOnUi(R.string.ai_missing_config)
+            return
+        }
+        val started = viewModel.retryFromMessage(
+            messageId = messageId,
+            thinkingText = getString(R.string.ai_chat_thinking),
+            cancelledText = getString(R.string.ai_chat_cancelled),
+            failureMessage = { getString(R.string.ai_request_failed, it) }
+        )
+        if (!started) {
+            toastOnUi("无法重试此条消息")
+        }
+        refreshToken.intValue += 1
+    }
+
+    private fun selectAssistantVariant(variantGroupId: String, variantIndex: Int) {
+        if (viewModel.selectAssistantVariant(variantGroupId, variantIndex)) {
+            refreshToken.intValue += 1
+        }
+    }
+
+    private fun confirmDeleteMessageFromHere(messageId: String) {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        alert(
+            title = getString(R.string.delete),
+            message = "删除此条及其之后的所有内容？"
+        ) {
+            okButton {
+                if (viewModel.deleteFromMessage(messageId)) {
+                    refreshToken.intValue += 1
+                }
+            }
+            cancelButton()
+        }
+    }
+
     private fun openHistoryFromMenu() {
         if (viewModel.isRequesting) {
             toastOnUi(R.string.ai_chat_wait_current)
@@ -202,30 +279,6 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
 
     private fun openImageGallery() {
         startActivity(android.content.Intent(this, AiImageGalleryActivity::class.java))
-    }
-
-    private fun openCreationPlatform() {
-        startActivity(android.content.Intent(this, io.legado.app.ui.main.ai.creation.AiCreationActivity::class.java))
-    }
-
-    private fun handleFilePicked(uri: android.net.Uri) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val inputStream = contentResolver.openInputStream(uri)
-                val bytes = inputStream?.readBytes() ?: return@launch
-                inputStream.close()
-                val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                val mimeType = contentResolver.getType(uri) ?: "image/png"
-                val dataUri = "data:$mimeType;base64,$base64"
-                withContext(Dispatchers.Main) {
-                    dispatchSend(dataUri)
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    toastOnUi("文件读取失败: ${e.message}")
-                }
-            }
-        }
     }
 
     private fun selectCompanion(companionId: String) {
@@ -552,7 +605,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     }
 
     private fun showWindowSkillDialog() {
-        val skills = AppConfig.aiSkillList
+        val skills = AppConfig.aiSkillList.filter { it.enabled }
         if (skills.isEmpty()) {
             toastOnUi("没有可用 Skill")
             return
@@ -936,7 +989,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 AndroidView(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(0.72f)
+                        .aspectRatio(0.75f)
                         .clip(RoundedCornerShape(style.metrics.chipRadius)),
                     factory = {
                         CoverImageView(it).apply {

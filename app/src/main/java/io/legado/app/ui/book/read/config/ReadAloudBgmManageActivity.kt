@@ -60,6 +60,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private var expandedGroupsInitialized = false
     private var currentAssetType: String = ReadAloudBgmTrack.TYPE_BGM
     private var pendingPackageAssetType: String = ReadAloudBgmTrack.TYPE_SFX
+    private var pendingExportPackageFile: File? = null
     private var importing = false
     private var importingText = ""
     private lateinit var batchActionBar: LinearLayout
@@ -122,6 +123,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private val exportAudioPackage = registerForActivityResult(HandleFileContract()) { result ->
+        pendingExportPackageFile?.delete()
+        pendingExportPackageFile = null
         result.uri?.let {
             toastOnUi("已导出${currentAssetLabel} ZIP")
         }
@@ -130,6 +133,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
         load()
+    }
+
+    override fun onDestroy() {
+        pendingExportPackageFile?.delete()
+        pendingExportPackageFile = null
+        super.onDestroy()
     }
 
     private fun initView() = binding.run {
@@ -306,6 +315,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             }
             finishImportingAndLoad()
             result.onSuccess { data ->
+                pendingExportPackageFile?.delete()
+                pendingExportPackageFile = data
                 exportAudioPackage.launch {
                     mode = HandleFileContract.EXPORT
                     title = "导出${label} ZIP"
@@ -570,15 +581,16 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         return imported
     }
 
-    private fun buildAudioPackageZip(assetType: String): ByteArray {
+    private fun buildAudioPackageZip(assetType: String): File {
         val normalizedType = ReadAloudBgmTrack.normalizeAssetType(assetType)
         val exportTracks = appDb.readAloudBgmDao.enabledTracksByType(normalizedType)
         if (exportTracks.isEmpty()) error("暂无可导出的${assetLabel(normalizedType)}")
         val exportGroups = appDb.readAloudBgmDao.groupsByType(normalizedType).associateBy { it.id }
         val entries = buildPackageExportEntries(exportTracks, exportGroups)
         if (entries.isEmpty()) error("没有可导出的本地音频文件")
-        val output = ByteArrayOutputStream()
-        ZipOutputStream(output).use { zip ->
+        val output = File.createTempFile("read_aloud_${normalizedType}_", ".zip", cacheDir)
+        runCatching {
+        ZipOutputStream(output.outputStream().buffered()).use { zip ->
             zip.putNextEntry(ZipEntry("config.yaml"))
             zip.write(buildPackageConfigYaml(entries).toByteArray(Charsets.UTF_8))
             zip.closeEntry()
@@ -588,7 +600,11 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 zip.closeEntry()
             }
         }
-        return output.toByteArray()
+        }.onFailure {
+            output.delete()
+            throw it
+        }
+        return output
     }
 
     private fun buildPackageExportEntries(
@@ -653,7 +669,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 var entry = zip.nextEntry
                 while (entry != null) {
                     if (!entry.isDirectory && entry.name.substringAfterLast('/') == "config.yaml") {
-                        return@use zip.readBytes().toString(Charsets.UTF_8)
+                        return@use zip.readTextLimited(MAX_AUDIO_PACKAGE_CONFIG_BYTES)
                     }
                     zip.closeEntry()
                     entry = zip.nextEntry
@@ -662,6 +678,20 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             }
         }.orEmpty()
         return parsePackageAudioConfig(configText)
+    }
+
+    private fun ZipInputStream.readTextLimited(maxBytes: Int): String {
+        val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val read = read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= maxBytes) { "音频包配置文件过大" }
+            output.write(buffer, 0, read)
+        }
+        return output.toString(Charsets.UTF_8.name())
     }
 
     private fun parsePackageAudioConfig(text: String): Map<String, PackageAudioInfo> {
@@ -1152,6 +1182,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         private const val MENU_MANAGE_GROUPS = 4
         private const val VIEW_TYPE_GROUP = 1
         private const val VIEW_TYPE_TRACK = 2
+        private const val MAX_AUDIO_PACKAGE_CONFIG_BYTES = 1024 * 1024
         private val supportedAudioExtensions = setOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
     }
 

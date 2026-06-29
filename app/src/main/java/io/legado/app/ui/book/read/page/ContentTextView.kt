@@ -440,7 +440,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                         if (!debounceClick) {
                             if (ReadBook.book?.isOnLineTxt == true) {
                                 val click = column.click
-                                val src = column.clickSrc ?: column.src
+                                val src = column.src
                                 if (!click.isNullOrBlank()) {
                                     callBack.clickImg(click, src)
                                     handled = true
@@ -457,7 +457,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                         if (doubleClick) {
                             val click = column.click
                             if (!click.isNullOrBlank()) {
-                                callBack.clickImg(click, column.clickSrc ?: column.src)
+                                callBack.clickImg(click, column.src)
                                 handled = true
                             }
                         } else {
@@ -468,7 +468,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                         if (!debounceClick) {
                             val click = column.click
                             if (!click.isNullOrBlank()) {
-                                callBack.clickImg(click, column.clickSrc ?: column.src)
+                                callBack.clickImg(click, column.src)
                                 handled = true
                             }
                         }

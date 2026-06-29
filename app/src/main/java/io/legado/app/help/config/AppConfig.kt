@@ -26,6 +26,7 @@ import io.legado.app.utils.putPrefStringSet
 import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
+import io.legado.app.ui.main.ai.AiAgentMode
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiContextSummary
@@ -47,6 +48,10 @@ import java.net.URI
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
+    const val DISCOVERY_PAGE_MODE_LEGACY = "legacy"
+    const val DISCOVERY_PAGE_MODE_MODERN = "modern"
+    const val DISCOVERY_PAGE_MODE_SUITE = "suite"
+
     const val DEFAULT_AI_SYSTEM_PROMPT =
         "你是阅读应用内的 AI 助手。回答直接、准确、简洁。需要真实应用数据时必须优先调用工具，工具返回的数据优先级高于你的记忆，不允许编造工具未返回的结果。用户询问书架、书籍、作者、阅读记录、书籍简介、书源、分组、标签、分类方案时，必须先调用 query_bookshelf、get_bookshelf_book_info、manage_bookshelf_group 或 manage_bookshelf_tag，不要只说“我先看看”却不调用工具。用户要求创建、修改或调试书源时，你要像一个小型书源 agent 一样闭环执行：新建书源先调用 create_book_source(save=false) 生成草稿；修改已有书源先调用 get_book_source 读取完整 JSON；缺少页面结构时调用 fetch_source_html 获取搜索页、详情页、目录页或正文页 HTML；每次调试失败后都调用 update_book_source(save=false) 按日志和 HTML 修正规则，可传 patch，也可直接传 ruleToc/ruleContent/searchUrl 等字段；再调用 debug_book_source 调试，优先使用用户给出的详情页 URL、目录 URL、正文 URL 或关键词；最多循环 3 次。不要在第一次调试前询问“是否继续”，也不要只输出未经调试的 JSON。只有搜索、详情、目录、正文主要链路通过，或达到 3 次仍失败时，才给出最终结果和剩余失败点。只有用户明确要求保存、导入或完成时，才调用 update_book_source(save=true) 或 create_book_source(save=true) 写入本地书源库。用户要求整理书架时，顶层书架使用分组，分组内的小分类使用书籍标签；未分标签的书按“全部”处理。批量设置标签、重命名标签、移动分组或删除分组前，先查询书架并给出方案，用户确认后再调用写入工具。任何情况下都不允许删除书籍。工具返回图片路径时直接展示已有图片；用户只要求查看、展示头像时不要调用生图工具，只有明确要求生成、重绘或重新生成时才生成图片。"
 
@@ -338,7 +343,35 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.showDiscovery, true)
 
     val modernDiscoveryPage: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.modernDiscoveryPage, true)
+        get() = discoveryPageMode != DISCOVERY_PAGE_MODE_LEGACY
+
+    var discoveryPageMode: String
+        get() {
+            val stored = appCtx.getPrefString(PreferKey.discoveryPageMode)
+            return when (stored) {
+                DISCOVERY_PAGE_MODE_LEGACY,
+                DISCOVERY_PAGE_MODE_MODERN,
+                DISCOVERY_PAGE_MODE_SUITE -> stored
+                else -> if (appCtx.getPrefBoolean(PreferKey.modernDiscoveryPage, true)) {
+                    DISCOVERY_PAGE_MODE_MODERN
+                } else {
+                    DISCOVERY_PAGE_MODE_LEGACY
+                }
+            }
+        }
+        set(value) {
+            val normalized = when (value) {
+                DISCOVERY_PAGE_MODE_LEGACY,
+                DISCOVERY_PAGE_MODE_MODERN,
+                DISCOVERY_PAGE_MODE_SUITE -> value
+                else -> DISCOVERY_PAGE_MODE_MODERN
+            }
+            appCtx.putPrefString(PreferKey.discoveryPageMode, normalized)
+            appCtx.putPrefBoolean(
+                PreferKey.modernDiscoveryPage,
+                normalized != DISCOVERY_PAGE_MODE_LEGACY
+            )
+        }
 
     val modernRssPage: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.modernRssPage, true)
@@ -365,6 +398,35 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 appCtx.putPrefString(PreferKey.modernDiscoverySourceUrl, value)
             }
         }
+
+    fun modernDiscoveryTagUrl(sourceUrl: String?): String? {
+        val sourceKey = sourceUrl?.takeIf { it.isNotBlank() } ?: return null
+        return modernDiscoveryTagUrlMap()[sourceKey]?.takeIf { it.isNotBlank() }
+    }
+
+    fun rememberModernDiscoveryTagUrl(sourceUrl: String?, tagUrl: String?) {
+        val sourceKey = sourceUrl?.takeIf { it.isNotBlank() } ?: return
+        val current = modernDiscoveryTagUrlMap().toMutableMap()
+        val normalizedTag = tagUrl?.takeIf { it.isNotBlank() }
+        if (normalizedTag == null) {
+            current.remove(sourceKey)
+        } else {
+            current[sourceKey] = normalizedTag
+        }
+        if (current.isEmpty()) {
+            appCtx.removePref(PreferKey.modernDiscoveryTagUrls)
+        } else {
+            appCtx.putPrefString(PreferKey.modernDiscoveryTagUrls, GSON.toJson(current))
+        }
+    }
+
+    private fun modernDiscoveryTagUrlMap(): Map<String, String> {
+        return GSON.fromJsonObject<Map<String, String>>(
+            appCtx.getPrefString(PreferKey.modernDiscoveryTagUrls)
+        ).getOrDefault(emptyMap())
+            .filterKeys { it.isNotBlank() }
+            .filterValues { it.isNotBlank() }
+    }
 
     var modernRssSourceUrl: String?
         get() = appCtx.getPrefString(PreferKey.modernRssSourceUrl)
@@ -1236,9 +1298,17 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             } ?: AI_READ_TOOL_MODE_ENABLED
         )
 
+    var aiChatAgentMode: AiAgentMode
+        get() = AiAgentMode.fromId(appCtx.getPrefString(PreferKey.aiChatAgentMode))
+        set(value) = appCtx.putPrefString(PreferKey.aiChatAgentMode, value.id)
+
     var aiAgentToolMaxAttempts: Int
         get() = appCtx.getPrefInt(PreferKey.aiAgentToolMaxAttempts, 3).coerceIn(1, 5)
         set(value) = appCtx.putPrefInt(PreferKey.aiAgentToolMaxAttempts, value.coerceIn(1, 5))
+
+    var aiAgentMaxToolRounds: Int
+        get() = appCtx.getPrefInt(PreferKey.aiAgentMaxToolRounds, 32).coerceIn(4, 64)
+        set(value) = appCtx.putPrefInt(PreferKey.aiAgentMaxToolRounds, value.coerceIn(4, 64))
 
     var aiAgentToolRetryBackoffMillis: Int
         get() = appCtx.getPrefInt(PreferKey.aiAgentToolRetryBackoffMillis, 600).coerceIn(0, 5_000)
@@ -1250,14 +1320,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             val key = value.trim()
             if (key.isBlank()) appCtx.removePref(PreferKey.aiTavilyApiKey)
             else appCtx.putPrefString(PreferKey.aiTavilyApiKey, key)
-        }
-
-    var aiAgnesApiKey: String
-        get() = appCtx.getPrefString(PreferKey.aiAgnesApiKey).orEmpty()
-        set(value) {
-            val key = value.trim()
-            if (key.isBlank()) appCtx.removePref(PreferKey.aiAgnesApiKey)
-            else appCtx.putPrefString(PreferKey.aiAgnesApiKey, key)
         }
 
     var aiTavilyBaseUrl: String

@@ -19,7 +19,7 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
     override val titleRes: Int = R.string.discovery_settings_title
 
     override fun buildPageSpec(): SettingPageSpec {
-        val useModern = booleanSetting(PreferKey.modernDiscoveryPage, true)
+        val discoveryMode = AppConfig.discoveryPageMode
         return SettingPageSpec(
             titleRes = titleRes,
             sections = listOf(
@@ -41,19 +41,17 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
                                 entriesRes = R.array.discovery_page_mode_entries,
                                 valuesRes = R.array.discovery_page_mode_values
                             ),
-                            selectedValue = if (useModern) PAGE_MODE_MODERN else PAGE_MODE_LEGACY,
+                            selectedValue = discoveryMode,
                             summary = pageModeLabel(
                                 entriesRes = R.array.discovery_page_mode_entries,
                                 valuesRes = R.array.discovery_page_mode_values,
-                                selectedValue = if (useModern) PAGE_MODE_MODERN else PAGE_MODE_LEGACY
+                                selectedValue = discoveryMode
                             ),
                             onSelected = {
-                                updateBooleanSetting(
-                                    PreferKey.modernDiscoveryPage,
-                                    it == PAGE_MODE_MODERN
-                                )
+                                AppConfig.discoveryPageMode = it
                             },
                             searchKeys = listOf(
+                                PreferKey.discoveryPageMode,
                                 PreferKey.modernDiscoveryPage,
                                 KEY_SEARCH_JUMP_DISCOVERY_MODE
                             )
@@ -62,7 +60,7 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
                             key = PreferKey.discoveryPageLayout,
                             title = getString(R.string.discovery_page_layout),
                             summary = discoveryLayoutSummary(),
-                            visible = useModern,
+                            visible = discoveryMode == AppConfig.DISCOVERY_PAGE_MODE_MODERN,
                             onClick = ::showDiscoveryLayoutDialog
                         )
                     )
@@ -74,6 +72,7 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
     override fun normalizeTargetKey(rawKey: String): String {
         return when (rawKey) {
             KEY_SEARCH_JUMP_SHOW_DISCOVERY -> PreferKey.showDiscovery
+            PreferKey.discoveryPageMode,
             PreferKey.modernDiscoveryPage,
             KEY_SEARCH_JUMP_DISCOVERY_MODE -> KEY_DISCOVERY_MODE
             else -> rawKey
@@ -83,6 +82,7 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
     override fun onSettingPreferenceChanged(key: String) {
         when (key) {
             PreferKey.showDiscovery -> postEvent(EventBus.NOTIFY_MAIN, true)
+            PreferKey.discoveryPageMode,
             PreferKey.modernDiscoveryPage,
             PreferKey.discoveryPageLayout -> postEvent(EventBus.NOTIFY_MAIN, false)
         }
@@ -144,8 +144,6 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
     }
 
     companion object {
-        private const val PAGE_MODE_MODERN = "modern"
-        private const val PAGE_MODE_LEGACY = "legacy"
         private const val KEY_DISCOVERY_MODE = "modernDiscoveryMode"
         private const val KEY_SEARCH_JUMP_SHOW_DISCOVERY = "search_jump_showDiscovery"
         private const val KEY_SEARCH_JUMP_DISCOVERY_MODE = "search_jump_modernDiscoveryMode"

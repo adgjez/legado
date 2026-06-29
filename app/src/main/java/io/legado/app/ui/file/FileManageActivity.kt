@@ -18,15 +18,28 @@ import java.io.File
 
 class FileManageActivity : io.legado.app.base.VMBaseActivity<ActivityFileManageBinding, FileManageViewModel>() {
 
+    companion object {
+        const val EXTRA_ROOT_PATH = "rootPath"
+        const val EXTRA_TITLE = "title"
+    }
+
     override val binding by viewBinding(ActivityFileManageBinding::inflate)
     override val viewModel by viewModels<FileManageViewModel>()
     private val dirParent = ".."
+    private val pageTitle by lazy {
+        intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { getString(io.legado.app.R.string.file_manage) }
+    }
 
     private val filesState = mutableStateOf<List<File>>(emptyList())
     private val subDocsState = mutableStateOf<List<File>>(emptyList())
     private val searchQueryState = mutableStateOf("")
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        intent.getStringExtra(EXTRA_ROOT_PATH)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it) }
+            ?.apply { mkdirs() }
+            ?.let(viewModel::setRoot)
         initComposeContent()
         onBackPressedDispatcher.addCallback(this) {
             handleBack()
@@ -45,6 +58,7 @@ class FileManageActivity : io.legado.app.base.VMBaseActivity<ActivityFileManageB
             )
             setContent {
                 FileManageScreen(
+                    title = pageTitle,
                     currentFiles = filesState.value,
                     subDocs = subDocsState.value,
                     searchQuery = searchQueryState.value,
@@ -53,7 +67,7 @@ class FileManageActivity : io.legado.app.base.VMBaseActivity<ActivityFileManageB
                     onFileLongClick = ::onFileLongClick,
                     onBreadcrumbClick = ::onBreadcrumbClick,
                     onRootBreadcrumbClick = ::onRootBreadcrumbClick,
-                    onBackClick = ::handleBack
+                    onBackClick = { finish() }
                 )
             }
         }
@@ -71,10 +85,12 @@ class FileManageActivity : io.legado.app.base.VMBaseActivity<ActivityFileManageB
     private fun onFileClick(file: File) {
         if (file.name == dirParent) {
             gotoLastDir()
-        } else if (file.isDirectory) {
+        } else if (file.isDirectory && !file.isHiddenWorkspaceBackupDir()) {
             viewModel.subDocs.add(file)
             subDocsState.value = viewModel.subDocs.toList()
             viewModel.upFiles(file)
+        } else if (file.isDirectory) {
+            return
         } else {
             openFileUri(
                 FileProvider.getUriForFile(
@@ -125,4 +141,8 @@ class FileManageActivity : io.legado.app.base.VMBaseActivity<ActivityFileManageB
         }
     }
 
+}
+
+private fun File.isHiddenWorkspaceBackupDir(): Boolean {
+    return name.lowercase() in setOf(".backup", ".backups")
 }

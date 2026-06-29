@@ -153,10 +153,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
         if (w > 0 && h > 0) {
             upBg()
             callBack.upSystemUiVisibility()
-            curPage.syncContentViewSizeToChapterProvider()
-            post {
-                curPage.syncContentViewSizeToChapterProvider()
-            }
         }
     }
 

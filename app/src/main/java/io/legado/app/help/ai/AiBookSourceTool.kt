@@ -59,7 +59,7 @@ object AiBookSourceTool {
                 put("name", TOOL_CREATE_SOURCE)
                 put(
                     "description",
-                    "创建、规范化或预览 Legado 书源草稿。可传完整 sourceJson，也可传基础字段和规则字段。创建后必须继续调用 debug_book_source 调试；调试失败时应调用 update_book_source 修改草稿，再继续调试。只有用户明确要求保存时才 save=true 写入本地书源库。"
+                    "Legacy direct BookSource draft creator. Prefer the workspace workflow for normal work: workspace_create_book_source_file, workspace_edit_file, workspace_debug_book_source, then workspace_apply_book_source. Use this tool only for quick preview when workspace tools are unavailable. Do not use save=true unless the user explicitly asks for direct database write."
                 )
                 put("parameters", JSONObject().apply {
                     put("type", "object")
@@ -129,7 +129,7 @@ object AiBookSourceTool {
                 put("name", TOOL_UPDATE_SOURCE)
                 put(
                     "description",
-                    "修改 Legado 书源草稿或本地已保存书源。可传 sourceJson 作为草稿基底，或传 bookSourceUrl 读取本地书源；推荐用 patch 做深度合并，也可直接传 bookSourceName/searchUrl/ruleToc/ruleContent 等顶层字段作为修改项。patch 字段值为 null 表示清空。若只传 sourceJson 和 save=true，则直接保存该完整书源。返回修改后的完整 sourceJson。调试失败后用本工具修正，再调用 debug_book_source。"
+                    "Legacy direct BookSource updater. Prefer workspace_replace_text, workspace_replace_regex, workspace_edit_lines, or workspace_insert_text on a workspace file for normal edits because they support focused changes, previews, and automatic backups. Use this tool only when workspace tools are disabled or for emergency direct database writes explicitly requested by the user."
                 )
                 put("parameters", JSONObject().apply {
                     put("type", "object")
@@ -201,7 +201,7 @@ object AiBookSourceTool {
                 put("name", TOOL_DEBUG_SOURCE)
                 put(
                     "description",
-                    "使用 Legado 原生 Debug 流程调试书源，支持搜索、详情 URL、发现、目录和正文。返回调试日志。若 success=false，必须根据 logs 修改 sourceJson，然后再次调用 create_book_source(save=false) 和 debug_book_source，最多重试 3 轮。"
+                    "Use the native Legado debug flow for a BookSource. For normal source repair, prefer workspace_debug_book_source on a workspace file; if debug fails, edit that file with workspace_replace_text, workspace_replace_regex, workspace_edit_lines, or workspace_insert_text and retry. This legacy direct debug tool accepts sourceJson for compatibility."
                 )
                 put("parameters", JSONObject().apply {
                     put("type", "object")

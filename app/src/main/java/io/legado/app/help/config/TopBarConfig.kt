@@ -62,6 +62,7 @@ object TopBarConfig {
         var backgroundColor: Int? = null,
         var cornerScale: Float? = null,
         var expandFiltersByDefault: Boolean = false,
+        var hideFilterToggleWhenExpanded: Boolean = false,
         var showSearchInDefaultStyle: Boolean = false,
         var updatedAt: Long = System.currentTimeMillis()
     )

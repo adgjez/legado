@@ -20,7 +20,11 @@ sealed class AiChatUiItem {
     @Immutable
     data class Assistant(
         override val id: String,
-        val parts: List<AiMessagePartUi>
+        val primaryMessageId: String,
+        val parts: List<AiMessagePartUi>,
+        val variantGroupId: String? = null,
+        val variantIndex: Int = 0,
+        val variantTotal: Int = 1
     ) : AiChatUiItem()
 }
 
@@ -31,6 +35,7 @@ sealed class AiMessagePartUi {
     @Immutable
     data class Text(
         override val id: String,
+        val messageId: String,
         val content: String,
         val pending: Boolean
     ) : AiMessagePartUi()
@@ -125,7 +130,13 @@ fun buildAiChatUiItems(
     fun flushAssistant() {
         val id = assistantId
         if (id != null && assistantMessages.isNotEmpty()) {
-            val processMessages = assistantMessages.filter { it.isProcessMessage() }
+            val variantGroupIds = assistantMessages.mapNotNull { it.variantGroupId?.takeIf { groupId -> groupId.isNotBlank() } }
+                .distinct()
+            val selectedMessages = assistantMessages.filter {
+                it.variantGroupId.isNullOrBlank() || it.variantSelected
+            }
+            val visibleAssistantMessages = selectedMessages.ifEmpty { assistantMessages }
+            val processMessages = visibleAssistantMessages.filter { it.isProcessMessage() }
             val processSteps = if (showProcessChain) {
                 processMessages.map { it.toProcessStep(context) }
             } else {
@@ -148,7 +159,7 @@ fun buildAiChatUiItems(
                     steps = processSteps
                 )
             }
-            assistantMessages
+            visibleAssistantMessages
                 .filterNot { it.isProcessMessage() }
                 .forEach { assistantParts += it.toTextParts() }
             if (processImages.isNotEmpty()) {
@@ -166,9 +177,28 @@ fun buildAiChatUiItems(
                 }
             }
             if (assistantParts.isNotEmpty()) {
+                val variantGroupId = variantGroupIds.singleOrNull()
+                val selectedVariantIndex = visibleAssistantMessages
+                    .firstOrNull { it.variantGroupId == variantGroupId }
+                    ?.variantIndex
+                    ?: 0
+                val variantTotal = if (variantGroupId != null) {
+                    assistantMessages
+                        .filter { it.variantGroupId == variantGroupId }
+                        .map { it.variantIndex }
+                        .distinct()
+                        .size
+                        .coerceAtLeast(1)
+                } else {
+                    1
+                }
                 result += AiChatUiItem.Assistant(
                     id = id,
-                    parts = assistantParts.toList()
+                    primaryMessageId = visibleAssistantMessages.first().id,
+                    parts = assistantParts.toList(),
+                    variantGroupId = variantGroupId,
+                    variantIndex = selectedVariantIndex,
+                    variantTotal = variantTotal
                 )
             }
         }
@@ -212,6 +242,7 @@ private fun AiChatMessage.toTextParts(): List<AiMessagePartUi> {
     if (parsed.content.isNotBlank() || pending) {
         parts += AiMessagePartUi.Text(
             id = "$id-text",
+            messageId = id,
             content = parsed.content.ifBlank { if (pending) "..." else " " },
             pending = pending
         )

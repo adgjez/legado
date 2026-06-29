@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -46,6 +45,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
+import io.legado.app.data.dao.BookShelfDisplay
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
@@ -59,6 +59,7 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfBookItemUi
 import io.legado.app.ui.main.bookshelf.compose.BookshelfGridItem
 import io.legado.app.ui.main.bookshelf.compose.BookshelfItemUi
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListItem
+import io.legado.app.ui.main.bookshelf.compose.BookshelfSnapshotStore
 import io.legado.app.ui.main.bookshelf.compose.buildBookshelfItems
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.updateBookshelfItemUpdating
@@ -74,6 +75,7 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -82,6 +84,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 /**
@@ -136,12 +139,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private val useComposeList get() = bookshelfLayout < 2
     private val useComposeGrid get() = bookshelfLayout >= 2
     private val useComposeBookshelf get() = useComposeList || useComposeGrid
-    private data class ComposeScrollPosition(val index: Int, val offset: Int)
     private var composeItems by mutableStateOf<List<BookshelfItemUi>>(emptyList())
+    private var shelfDisplays: List<BookShelfDisplay> = emptyList()
     private var composeCanScrollBackward by mutableStateOf(false)
     private var composeScrollToTopTick by mutableStateOf(0)
+    private var composeImmediateScrollToTopTick by mutableStateOf(0)
     private var composeListItemStyle by mutableIntStateOf(AppConfig.bookshelfListItemStyle)
-    private var composeScrollPosition: ComposeScrollPosition? = null
+    private var scrollToTopWhenReturnFromRead = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -154,6 +158,16 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
         initRecyclerView()
         upRecyclerData()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (scrollToTopWhenReturnFromRead) {
+            scrollToTopWhenReturnFromRead = false
+            binding.root.post {
+                scrollBookshelfToTop(immediate = true)
+            }
+        }
     }
 
     private fun initRecyclerView() {
@@ -279,10 +293,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     @Composable
     private fun BookshelfGridContent() {
-        val gridState = rememberLazyGridState(
-            initialFirstVisibleItemIndex = composeScrollPosition?.index ?: 0,
-            initialFirstVisibleItemScrollOffset = composeScrollPosition?.offset ?: 0
-        )
+        val gridState = rememberLazyGridState()
         val canScrollBackward by remember {
             derivedStateOf {
                 gridState.firstVisibleItemIndex > 0 ||
@@ -314,16 +325,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val bottomBarPadding = with(LocalDensity.current) {
             resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
         }
-        DisposableEffect(Unit) {
-            onDispose {
-                composeScrollPosition = ComposeScrollPosition(
-                    index = gridState.firstVisibleItemIndex,
-                    offset = gridState.firstVisibleItemScrollOffset
-                )
-            }
-        }
         LaunchedEffect(canScrollBackward) {
             composeCanScrollBackward = canScrollBackward
+        }
+        LaunchedEffect(composeImmediateScrollToTopTick) {
+            if (composeImmediateScrollToTopTick > 0) {
+                gridState.scrollToItem(0)
+            }
         }
         LaunchedEffect(composeScrollToTopTick) {
             if (composeScrollToTopTick > 0) {
@@ -371,10 +379,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     @Composable
     private fun BookshelfListContent() {
-        val listState = rememberLazyListState(
-            initialFirstVisibleItemIndex = composeScrollPosition?.index ?: 0,
-            initialFirstVisibleItemScrollOffset = composeScrollPosition?.offset ?: 0
-        )
+        val listState = rememberLazyListState()
         val canScrollBackward by remember {
             derivedStateOf {
                 listState.firstVisibleItemIndex > 0 ||
@@ -407,16 +412,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
         }
         val renderConfig = rememberBookshelfListRenderConfig()
-        DisposableEffect(Unit) {
-            onDispose {
-                composeScrollPosition = ComposeScrollPosition(
-                    index = listState.firstVisibleItemIndex,
-                    offset = listState.firstVisibleItemScrollOffset
-                )
-            }
-        }
         LaunchedEffect(canScrollBackward) {
             composeCanScrollBackward = canScrollBackward
+        }
+        LaunchedEffect(composeImmediateScrollToTopTick) {
+            if (composeImmediateScrollToTopTick > 0) {
+                listState.scrollToItem(0)
+            }
         }
         LaunchedEffect(composeScrollToTopTick) {
             if (composeScrollToTopTick > 0) {
@@ -558,6 +560,50 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private fun upRecyclerData() {
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
+            if (useComposeBookshelf) {
+                val snapshotKey = currentComposeSnapshotKey()
+                restoreComposeSnapshot(snapshotKey)
+                appDb.bookDao.flowShelfByGroup(groupId).map { list ->
+                    val sortedList = sortShelfDisplays(list, bookSort)
+                    val filteredList = if (bookTagFilter.isBlank()) {
+                        sortedList
+                    } else {
+                        sortedList.filter { it.hasCustomTag(bookTagFilter) }
+                    }
+                    Triple(
+                        sortedList,
+                        filteredList,
+                        buildBookshelfItems(
+                            groups = emptyList(),
+                            books = filteredList,
+                            isRootGroup = false,
+                            groupId = groupId,
+                            isUpdating = ::isUpdate
+                        )
+                    )
+                }.flowWithLifecycleAndDatabaseChangeFirst(
+                    viewLifecycleOwner.lifecycle,
+                    Lifecycle.State.RESUMED,
+                    AppDatabase.BOOK_TABLE_NAME
+                ).catch {
+                    AppLog.put("涔︽灦鏇存柊鍑洪敊", it)
+                }.conflate().flowOn(Dispatchers.Default).collect { (allBooks, list, items) ->
+                    shelfDisplays = list
+                    (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
+                        ?.onShelfDisplaysChanged(groupId, allBooks)
+                    itemCount = list.size
+                    val spanCount = bookshelfLayout
+                    if (spanCount >= 2) {
+                        totalRows = if (itemCount % spanCount == 0) itemCount / spanCount else itemCount / spanCount + 1
+                    }
+                    binding.tvEmptyMsg.isGone = itemCount > 0
+                    binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
+                    composeItems = items
+                    saveComposeSnapshot(snapshotKey, items)
+                    delay(100)
+                }
+                return@launch
+            }
             appDb.bookDao.flowByGroup(groupId).map { list ->
                 //排序
                 when (bookSort) {
@@ -603,7 +649,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 binding.tvEmptyMsg.isGone = itemCount > 0
                 binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
                 if (useComposeBookshelf) {
-                    updateComposeItems(list)
+                    updateComposeItems(list.map { it.toShelfDisplay() })
                 } else {
                     booksAdapter.setItems(list)
                 }
@@ -621,7 +667,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (isActive) {
                     if (useComposeBookshelf) {
-                        updateComposeItems(getBooks())
+                        updateComposeItems(shelfDisplays)
                     } else {
                         booksAdapter.upLastUpdateTime()
                     }
@@ -633,9 +679,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     fun getBooks(): List<Book> {
         if (useComposeBookshelf) {
-            return composeItems.mapNotNull { (it as? BookshelfBookItemUi)?.book }
+            return shelfDisplays.map { it.toMinimalBook() }
         }
         return booksAdapter.getItems()
+    }
+
+    private fun BookShelfDisplay.hasCustomTag(tag: String): Boolean {
+        return BookTagHelper.has(customTag, tag)
     }
 
     private fun Book.hasCustomTag(tag: String): Boolean {
@@ -643,11 +693,19 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun gotoTop() {
+        scrollBookshelfToTop(immediate = false)
+    }
+
+    private fun scrollBookshelfToTop(immediate: Boolean) {
         if (useComposeBookshelf) {
-            composeScrollToTopTick++
+            if (immediate) {
+                composeImmediateScrollToTopTick++
+            } else {
+                composeScrollToTopTick++
+            }
             return
         }
-        if (AppConfig.isEInkMode) {
+        if (immediate || AppConfig.isEInkMode) {
             binding.rvBookshelf.scrollToPosition(0)
         } else {
             binding.rvBookshelf.smoothScrollToPosition(0)
@@ -676,6 +734,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun open(book: Book) {
+        scrollToTopWhenReturnFromRead = true
         startActivityForBook(book)
     }
 
@@ -687,7 +746,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         return activityViewModel.isUpdate(bookUrl)
     }
 
-    private fun updateComposeItems(list: List<Book>) {
+    private fun updateComposeItems(list: List<BookShelfDisplay>) {
         composeItems = buildBookshelfItems(
             groups = emptyList(),
             books = list,
@@ -697,12 +756,73 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         )
     }
 
+    private fun currentComposeSnapshotKey(): String {
+        return BookshelfSnapshotStore.buildKey(
+            style = "style1",
+            groupId = groupId,
+            sort = bookSort,
+            tagFilter = bookTagFilter,
+            groups = emptyList()
+        )
+    }
+
+    private fun restoreComposeSnapshot(snapshotKey: String) {
+        BookshelfSnapshotStore.getMemory(snapshotKey)?.let { items ->
+            applyComposeSnapshot(snapshotKey, items)
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch(IO) {
+            val items = BookshelfSnapshotStore.read(snapshotKey) ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (!isAdded || currentComposeSnapshotKey() != snapshotKey || composeItems.isNotEmpty()) {
+                    return@withContext
+                }
+                applyComposeSnapshot(snapshotKey, items)
+            }
+        }
+    }
+
+    private fun applyComposeSnapshot(
+        snapshotKey: String,
+        items: List<BookshelfItemUi>
+    ) {
+        if (currentComposeSnapshotKey() != snapshotKey || items.isEmpty()) {
+            return
+        }
+        composeItems = items
+        shelfDisplays = items.mapNotNull { (it as? BookshelfBookItemUi)?.display }
+        itemCount = shelfDisplays.size
+        val spanCount = bookshelfLayout
+        if (spanCount >= 2) {
+            totalRows = if (itemCount % spanCount == 0) {
+                itemCount / spanCount
+            } else {
+                itemCount / spanCount + 1
+            }
+        }
+        binding.tvEmptyMsg.isGone = itemCount > 0
+        binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
+    }
+
+    private fun saveComposeSnapshot(
+        snapshotKey: String,
+        items: List<BookshelfItemUi>
+    ) {
+        viewLifecycleOwner.lifecycleScope.launch(IO) {
+            BookshelfSnapshotStore.save(snapshotKey, items)
+        }
+    }
+
     private fun onComposeItemClick(item: BookshelfItemUi) {
-        (item as? BookshelfBookItemUi)?.book?.let(::open)
+        (item as? BookshelfBookItemUi)?.display?.toMinimalBook()?.let(::open)
     }
 
     private fun onComposeItemLongClick(item: BookshelfItemUi) {
-        (item as? BookshelfBookItemUi)?.book?.let(::openBookInfo)
+        val bookUrl = (item as? BookshelfBookItemUi)?.display?.bookUrl ?: return
+        lifecycleScope.launch {
+            val book = withContext(IO) { appDb.bookDao.getBook(bookUrl) } ?: return@launch
+            openBookInfo(book)
+        }
     }
 
     private fun updateComposeItemUpdating(bookUrl: String) {
@@ -726,12 +846,51 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
             if (useComposeBookshelf) {
                 composeListItemStyle = AppConfig.bookshelfListItemStyle
-                updateComposeItems(getBooks())
+                updateComposeItems(shelfDisplays)
             } else {
                 booksAdapter.notifyDataSetChanged()
             }
             startLastUpdateTimeJob()
             upFastScrollerBar()
         }
+    }
+
+    private fun sortShelfDisplays(
+        list: List<BookShelfDisplay>,
+        sort: Int
+    ): List<BookShelfDisplay> {
+        return when (sort) {
+            1 -> list.sortedByDescending { it.latestChapterTime }
+            2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
+            3 -> list.sortedBy { it.order }
+            4 -> list.sortedByDescending { max(it.latestChapterTime, it.durChapterTime) }
+            5 -> list.sortedWith { o1, o2 -> o1.author.cnCompare(o2.author) }
+            else -> list.sortedByDescending { it.durChapterTime }
+        }
+    }
+
+    private fun Book.toShelfDisplay(): BookShelfDisplay {
+        return BookShelfDisplay(
+            bookUrl = bookUrl,
+            origin = origin,
+            originName = originName,
+            name = name,
+            author = author,
+            customTag = customTag,
+            coverUrl = coverUrl,
+            customCoverUrl = customCoverUrl,
+            type = type,
+            group = group,
+            latestChapterTitle = latestChapterTitle,
+            latestChapterTime = latestChapterTime,
+            lastCheckCount = lastCheckCount,
+            totalChapterNum = totalChapterNum,
+            durChapterTitle = durChapterTitle,
+            durChapterIndex = durChapterIndex,
+            durChapterTime = durChapterTime,
+            canUpdate = canUpdate,
+            order = order,
+            readConfig = readConfig
+        )
     }
 }

@@ -432,6 +432,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         refreshEditDialog()
                     }
                 },
+                onToggleFilterToggleHidden = { hidden ->
+                    pendingConfig?.hideFilterToggleWhenExpanded = hidden
+                    refreshEditDialog()
+                },
                 onShowTagBarAlphaPicker = { current ->
                     showComposeNumberPickerDialog(
                         title = getString(R.string.top_bar_tag_bar_alpha),

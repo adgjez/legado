@@ -25,6 +25,18 @@ object NetworkUtils {
     @SuppressLint("ObsoleteSdkInt")
     @Suppress("DEPRECATION")
     fun isAvailable(): Boolean {
+        return try {
+            queryNetworkAvailable()
+        } catch (_: OutOfMemoryError) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
+    @SuppressLint("ObsoleteSdkInt")
+    @Suppress("DEPRECATION")
+    private fun queryNetworkAvailable(): Boolean {
         if (Build.VERSION.SDK_INT < 23) {
             val mWiFiNetworkInfo = connectivityManager.activeNetworkInfo
             if (mWiFiNetworkInfo != null) {

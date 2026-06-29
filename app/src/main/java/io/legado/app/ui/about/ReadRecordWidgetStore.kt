@@ -95,11 +95,13 @@ object ReadRecordWidgetStore {
     }
 
     fun loadRecentVisualItems(limit: Int): List<ReadRecentVisualItem> {
-        val booksByUrl = appDb.bookDao.getDisplayInfos().associateBy { it.bookUrl }
-        return loadRecentSnapshots()
+        val snapshots = loadRecentSnapshots()
             .sortedByDescending { it.lastRead }
             .distinctBy { it.identityKey() }
             .take(limit)
+        val booksByUrl = loadDisplayInfosByUrls(snapshots.map { it.bookUrl })
+            .associateBy { it.bookUrl }
+        return snapshots
             .map { ReadRecentVisualItem(it, booksByUrl[it.bookUrl]?.toBook()) }
     }
 
@@ -116,9 +118,9 @@ object ReadRecordWidgetStore {
 
     fun buildRankItems(limit: Int? = null): List<ReadRecordRankItem> {
         val readRecords = appDb.readRecordDao.allShow.sortedByDescending { it.readTime }
-        val booksByName = appDb.bookDao.getDisplayInfos().groupBy { it.name }.mapValues { entry ->
-            entry.value.maxByOrNull { it.durChapterTime }
-        }
+        val booksByName = loadLatestDisplayInfosByNames(readRecords.map { it.bookName })
+            .groupBy { it.name }
+            .mapValues { entry -> entry.value.maxByOrNull { it.durChapterTime } }
         val snapshotsByName = loadRecentSnapshots()
             .sortedByDescending { it.lastRead }
             .associateBy { it.name }
@@ -135,6 +137,20 @@ object ReadRecordWidgetStore {
         }
         return if (limit != null) result.take(limit) else result
     }
+
+    private const val SQLITE_IN_CHUNK_SIZE = 500
+
+    private fun loadDisplayInfosByUrls(bookUrls: List<String>) = bookUrls
+        .filter { it.isNotBlank() }
+        .distinct()
+        .chunked(SQLITE_IN_CHUNK_SIZE)
+        .flatMap { appDb.bookDao.getDisplayInfosByUrls(it) }
+
+    private fun loadLatestDisplayInfosByNames(names: List<String>) = names
+        .filter { it.isNotBlank() }
+        .distinct()
+        .chunked(SQLITE_IN_CHUNK_SIZE)
+        .flatMap { appDb.bookDao.getLatestDisplayInfosByNames(it) }
 
     private fun ReadRecentVisualSnapshot.identityKey(): String {
         val normalizedName = name.trim()

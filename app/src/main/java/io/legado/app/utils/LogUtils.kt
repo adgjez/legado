@@ -6,7 +6,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.webkit.WebSettings
-import io.legado.app.BuildConfig
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
@@ -27,24 +26,26 @@ object LogUtils {
     val logTimeFormat by lazy { SimpleDateFormat(TIME_PATTERN) }
 
     fun init(context: Context) {
-        fileHandler = createFileHandler(context)?.also {
-            logger.addHandler(it)
+        if (AppConfig.recordLog) {
+            ensureFileHandler(context)
         }
     }
 
     @JvmStatic
     fun d(tag: String, msg: String) {
+        if (!AppConfig.recordLog) return
         logger.log(Level.INFO, "$tag $msg")
     }
 
     inline fun d(tag: String, lazyMsg: () -> String) {
-        if (logger.isLoggable(Level.INFO)) {
+        if (AppConfig.recordLog && logger.isLoggable(Level.INFO)) {
             logger.log(Level.INFO, "$tag ${lazyMsg()}")
         }
     }
 
     @JvmStatic
     fun e(tag: String, msg: String) {
+        if (!AppConfig.recordLog) return
         logger.log(Level.WARNING, "$tag $msg")
     }
 
@@ -53,6 +54,13 @@ object LogUtils {
     }
 
     private var fileHandler: FileHandler? = null
+
+    private fun ensureFileHandler(context: Context) {
+        if (fileHandler != null) return
+        fileHandler = createFileHandler(context)?.also {
+            logger.addHandler(it)
+        }
+    }
 
     private fun createFileHandler(context: Context): FileHandler? {
         try {
@@ -89,6 +97,9 @@ object LogUtils {
     }
 
     fun upLevel() {
+        if (AppConfig.recordLog) {
+            ensureFileHandler(appCtx)
+        }
         val level = if (AppConfig.recordLog) {
             Level.INFO
         } else {
@@ -108,6 +119,7 @@ object LogUtils {
     }
 
     fun logDeviceInfo() {
+        if (!AppConfig.recordLog) return
         d("DeviceInfo") {
             buildString {
                 kotlin.runCatching {
@@ -138,7 +150,7 @@ object LogUtils {
 }
 
 fun Throwable.printOnDebug() {
-    if (BuildConfig.DEBUG) {
+    if (AppConfig.recordLog) {
         printStackTrace()
     }
 }

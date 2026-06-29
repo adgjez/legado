@@ -50,7 +50,7 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
                 }
                 .values
                 .flatten()
-            val existing = appDb.bookDao.all
+            val existing = appDb.bookDao.allTagInfos
                 .filter { it.group and book.group != 0L || it.bookUrl == book.bookUrl }
                 .flatMap { BookTagHelper.parse(it.customTag) }
             (configured + existing)

@@ -32,6 +32,15 @@ object AiSettingsTool {
         SettingDef(PreferKey.showRss, "boolean"),
         SettingDef(PreferKey.showReadRecord, "boolean"),
         SettingDef(PreferKey.modernDiscoveryPage, "boolean"),
+        SettingDef(
+            PreferKey.discoveryPageMode,
+            "string",
+            values = setOf(
+                AppConfig.DISCOVERY_PAGE_MODE_LEGACY,
+                AppConfig.DISCOVERY_PAGE_MODE_MODERN,
+                AppConfig.DISCOVERY_PAGE_MODE_SUITE
+            )
+        ),
         SettingDef(PreferKey.modernRssPage, "boolean"),
         SettingDef(PreferKey.mergeDiscoveryRss, "boolean"),
         SettingDef(PreferKey.defaultHomePage, "string", values = setOf("bookshelf", "explore", "rss", "my")),
@@ -41,6 +50,7 @@ object AiSettingsTool {
         SettingDef(PreferKey.aiTavilyTopic, "string", values = setOf("general", "news", "finance")),
         SettingDef(PreferKey.aiTavilySearchDepth, "string", values = setOf("basic", "advanced", "ultra-fast")),
         SettingDef(PreferKey.aiTavilyMaxResults, "int", min = 1, max = 10),
+        SettingDef(PreferKey.aiAgentMaxToolRounds, "int", min = 4, max = 64),
         SettingDef(PreferKey.aiAgentToolMaxAttempts, "int", min = 1, max = 5),
         SettingDef(PreferKey.aiAgentToolRetryBackoffMillis, "int", min = 0, max = 5000)
     )
@@ -206,7 +216,15 @@ object AiSettingsTool {
                         is Number -> rawValue.toInt() != 0
                         else -> throw IllegalArgumentException("invalid boolean")
                     }
-                    appCtx.putPrefBoolean(key, value)
+                    if (key == PreferKey.modernDiscoveryPage) {
+                        AppConfig.discoveryPageMode = if (value) {
+                            AppConfig.DISCOVERY_PAGE_MODE_MODERN
+                        } else {
+                            AppConfig.DISCOVERY_PAGE_MODE_LEGACY
+                        }
+                    } else {
+                        appCtx.putPrefBoolean(key, value)
+                    }
                 }
 
                 "int" -> {
@@ -225,7 +243,11 @@ object AiSettingsTool {
                     if (def.values.isNotEmpty() && value !in def.values) {
                         throw IllegalArgumentException("invalid enum")
                     }
-                    appCtx.putPrefString(key, value)
+                    if (key == PreferKey.discoveryPageMode) {
+                        AppConfig.discoveryPageMode = value
+                    } else {
+                        appCtx.putPrefString(key, value)
+                    }
                 }
             }
             JSONObject().apply {
@@ -243,6 +265,12 @@ object AiSettingsTool {
     }
 
     private fun readSettingValue(key: String, type: String): Any? {
+        if (key == PreferKey.discoveryPageMode) {
+            return AppConfig.discoveryPageMode
+        }
+        if (key == PreferKey.modernDiscoveryPage) {
+            return AppConfig.modernDiscoveryPage
+        }
         return when (type) {
             "boolean" -> appCtx.getPrefBoolean(key, false)
             "int" -> appCtx.getPrefInt(key, 0)
@@ -254,6 +282,7 @@ object AiSettingsTool {
         return when (category) {
             "discovery" -> listOf(
                 PreferKey.showDiscovery,
+                PreferKey.discoveryPageMode,
                 PreferKey.modernDiscoveryPage
             )
 
@@ -270,6 +299,7 @@ object AiSettingsTool {
                 PreferKey.aiTavilyTopic,
                 PreferKey.aiTavilySearchDepth,
                 PreferKey.aiTavilyMaxResults,
+                PreferKey.aiAgentMaxToolRounds,
                 PreferKey.aiAgentToolMaxAttempts,
                 PreferKey.aiAgentToolRetryBackoffMillis
             )

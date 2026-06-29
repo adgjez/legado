@@ -15,6 +15,7 @@ import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
+import io.legado.app.ui.main.ai.AiAgentMode
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
@@ -53,11 +54,28 @@ data class AiSingleToolCallResult(
 
 object AiChatService {
 
-    private const val NETWORK_ABORT_RETRY_COUNT = 1
+    private const val NETWORK_ABORT_RETRY_COUNT = 2
     private const val MAX_DEBUG_LOG_CHARS = 16_000
     private const val MAX_DEBUG_PAYLOAD_CHARS = 8_000
     private const val TOOL_ONLY_SYSTEM_PROMPT =
         "You are a deterministic extraction worker. Read the user payload and call the provided tool with complete, valid JSON. Do not answer with prose unless the tool is impossible."
+    private const val AI_WORKSPACE_POLICY_PROMPT =
+        "Agent file workflow is mandatory for source, rule, log, JSON, HTML, and project-style edits. " +
+                "If the user provides long data, source text, logs, JSON, HTML, or project snippets, first save it with workspace_save_input_file. " +
+                "Before editing, inspect files with workspace_list_files, workspace_search_files, workspace_read_file, workspace_read_lines, or workspace_read_matches. " +
+                "Before modifying any existing file, proactively call workspace_create_backup, especially before regex replacements, bulk edits, deletes, overwrites, or applying a book source. " +
+                "Make focused changes with the most specific edit tool: workspace_replace_text for plain exact snippets, workspace_replace_regex for rule-like text, escaped quotes, capture groups, or regex patterns, workspace_edit_lines only after workspace_read_lines or workspace_read_matches gives stable line numbers and include expectedText when possible, and workspace_insert_text for additive edits. Use workspace_edit_file only for small batches of already verified replacements. " +
+                "Always set expectMatches for replacement tools and keep backup=true or backup=auto. Never set backup=false unless the user explicitly requests no backup. " +
+                "After editing, call workspace_diff_file with the returned backupId to verify the diff is exactly what was intended before applying a book source or reporting success. " +
+                "Do not pass regex-looking or heavily escaped text as a literal oldText. For regex edits, use workspace_replace_regex with pattern, replacement, flags, expectMatches, and Python replacement syntax like \\1, \\g<1>, or \\g<name>. " +
+                "For Legado book sources, do not use create_book_source or update_book_source for normal modification. " +
+                "Instead import with workspace_import_book_source, create drafts with workspace_create_book_source_file, explicitly back up the workspace file, edit with workspace_edit_file, debug with workspace_debug_book_source, and apply with workspace_apply_book_source only after validation or explicit user request. " +
+                "After destructive or high-risk changes, report the backupId and the edited path. " +
+                "Do not paste full book source JSON in chat unless the user explicitly asks for it."
+    private const val AI_GOAL_MODE_PROMPT =
+        "Goal mode is active. Treat the latest user message as a concrete goal. Keep working with tools until the goal is genuinely achieved or a real blocker is proven. Do not stop just because a subtask is done. Before final response, verify the result and state what was completed. If more tool work is needed, call tools instead of giving a final answer."
+    private const val AI_PLAN_MODE_PROMPT =
+        "Plan mode is active. Do not modify files, settings, databases, book sources, or external state. You may only inspect/read/search. Produce a clear executable plan with steps, risks, validation, and commit/checkpoint suggestions. If the user asks to implement while still in plan mode, explain that plan mode must be switched off first."
 
     private data class ToolCallBuilder(
         var id: String = "",
@@ -273,7 +291,8 @@ object AiChatService {
         activeSkills: List<AiSkillConfig> = emptyList(),
         onUsage: (AiUsageStats) -> Unit = {},
         agentRun: AiAgentStateStore.Run? = null,
-        memoryContext: AiMemoryContext? = null
+        memoryContext: AiMemoryContext? = null,
+        agentMode: AiAgentMode = AiAgentMode.NORMAL
     ): String {
         val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
         val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
@@ -296,10 +315,17 @@ object AiChatService {
         val baseTools = toolOverride ?: runCatching {
             if (useAllTools) AiToolRegistry.resolveAllTools() else AiToolRegistry.resolveAvailableTools()
         }.getOrDefault(emptyList())
-        val tools = baseTools
+        val skillTools = AiSkillPromptTool.resolvedTools(activeSkills)
+        val resolvedTools = baseTools
             .plus(extraTools)
+            .plus(skillTools)
             .distinctBy { it.name }
+        val tools = when (agentMode) {
+            AiAgentMode.PLAN -> resolvedTools.filter { AiToolRegistry.isReadOnlyTool(it.name) }
+            else -> resolvedTools
+        }
         val extraToolNames = extraTools.mapTo(hashSetOf()) { it.name }.apply {
+            addAll(skillTools.map { it.name })
             if (toolOverride != null) {
                 addAll(toolOverride.map { it.name })
             }
@@ -316,7 +342,7 @@ object AiChatService {
             messages = messages,
             tools = tools,
             activeSkills = activeSkills,
-            systemPrompt = systemPrompt
+            systemPrompt = buildModeSystemPrompt(systemPrompt, agentMode)
         )
         val preparedContext = AiContextManager.prepare(messages, contextSummary, reserveTokens)
         val estimatedTotalTokens = reserveTokens + preparedContext.inputTokens
@@ -372,7 +398,7 @@ object AiChatService {
             worldBookContext = worldBookContext,
             agentPlan = agentPlan,
             activeSkills = activeSkills,
-            systemPrompt = systemPrompt
+            systemPrompt = buildModeSystemPrompt(systemPrompt, agentMode)
         )
         if (totalTokensWithDynamicContext > preparedContext.limitTokens) {
             throw AiChatException(
@@ -414,7 +440,9 @@ object AiChatService {
                 apiMode = apiMode,
                 useAllTools = useAllTools,
                 extraToolNames = extraToolNames,
-                agentRun = agentRun
+                agentRun = agentRun,
+                maxToolRounds = maxToolRoundsForMode(agentMode),
+                requireGoalCompletion = agentMode == AiAgentMode.GOAL
             ) { roundNo, roundMessages, roundTools ->
                 requestCompletionStreamWithFallback(
                     chatUrl = chatUrl,
@@ -563,7 +591,7 @@ object AiChatService {
                         .append(" retry=").append(attempt)
                         .append(" reason=").append(lastError?.message ?: lastError?.javaClass?.simpleName)
                         .append('\n')
-                    onThinking("连接中断，正在重试一次")
+                    onThinking("AI 请求失败，正在重试 $attempt/$NETWORK_ABORT_RETRY_COUNT")
                 }
                 return requestCompletionStream(
                     chatUrl = chatUrl,
@@ -583,7 +611,7 @@ object AiChatService {
                 )
             } catch (throwable: Throwable) {
                 lastError = throwable
-                if (attempt >= NETWORK_ABORT_RETRY_COUNT || !throwable.isAiRetryableNetworkAbort()) {
+                if (attempt >= NETWORK_ABORT_RETRY_COUNT || !throwable.isAiRetryableRequestFailure()) {
                     throw throwable
                 }
             }
@@ -1188,6 +1216,10 @@ object AiChatService {
             put("role", "system")
             put("content", systemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT })
         }
+        conversation += JSONObject().apply {
+            put("role", "system")
+            put("content", AI_WORKSPACE_POLICY_PROMPT)
+        }
         appendWorldBookInjections(
             conversation = conversation,
             worldBookContext = worldBookContext,
@@ -1217,27 +1249,10 @@ object AiChatService {
                 put("content", planPrompt)
             }
         }
-        activeSkills.forEach { skill ->
+        AiSkillPromptTool.catalogPrompt(activeSkills).takeIf { it.isNotBlank() }?.let { skillCatalog ->
             conversation += JSONObject().apply {
                 put("role", "system")
-                put(
-                    "content",
-                    buildString {
-                        append("以下是用户启用的真实 SKILL.md，请把它作为当前 agent 的能力规范执行。")
-                        append("Skill 名称：")
-                        append(skill.name)
-                        if (skill.description.isNotBlank()) {
-                            append("\nSkill 描述：")
-                            append(skill.description)
-                        }
-                        if (skill.sourceUrl.isNotBlank()) {
-                            append("\nSkill 来源：")
-                            append(skill.sourceUrl)
-                        }
-                        append("\n\n")
-                        append(skill.content)
-                    }
-                )
+                put("content", skillCatalog)
             }
         }
         if (requiresBookshelfTool(messages)) {
@@ -1450,12 +1465,7 @@ object AiChatService {
     ): Int {
         val systemTokens = AiContextManager.estimateTokens(systemPrompt)
         val personaTokens = AiContextManager.estimateTokens(personaPrompt)
-        val skillTokens = activeSkills.sumOf {
-            AiContextManager.estimateTokens(it.name) +
-                AiContextManager.estimateTokens(it.description) +
-                AiContextManager.estimateTokens(it.sourceUrl) +
-                AiContextManager.estimateTokens(it.content)
-        }
+        val skillTokens = AiContextManager.estimateTokens(AiSkillPromptTool.catalogTokenText(activeSkills))
         val bookshelfHintTokens = if (requiresBookshelfTool(messages)) 180 else 0
         val toolTokens = tools.sumOf { AiContextManager.estimateTokens(it.definition.toString()) + 16 }
         return systemTokens + personaTokens + skillTokens + bookshelfHintTokens + toolTokens + 256
@@ -1601,6 +1611,26 @@ object AiChatService {
         }
     }
 
+    private fun buildModeSystemPrompt(basePrompt: String, agentMode: AiAgentMode): String {
+        val modePrompt = when (agentMode) {
+            AiAgentMode.GOAL -> AI_GOAL_MODE_PROMPT
+            AiAgentMode.PLAN -> AI_PLAN_MODE_PROMPT
+            AiAgentMode.NORMAL -> ""
+        }
+        return if (modePrompt.isBlank()) {
+            basePrompt
+        } else {
+            "$basePrompt\n\n$modePrompt"
+        }
+    }
+
+    private fun maxToolRoundsForMode(agentMode: AiAgentMode): Int {
+        return when (agentMode) {
+            AiAgentMode.GOAL -> 256
+            else -> AppConfig.aiAgentMaxToolRounds
+        }
+    }
+
     private fun buildPromptCacheKey(provider: AiProviderConfig, model: String): String {
         val raw = "${provider.id}:${model}".lowercase()
         return normalizePromptCacheKey(raw).ifBlank { provider.id.take(64) }
@@ -1613,7 +1643,7 @@ object AiChatService {
     }
 
     private fun Throwable.isAiFastFallbackCandidate(): Boolean {
-        if (isAiRetryableNetworkAbort()) return true
+        if (isAiRetryableRequestFailure()) return true
         var current: Throwable? = this
         while (current != null) {
             val message = current.message.orEmpty().lowercase()
@@ -1621,6 +1651,39 @@ object AiChatService {
             if (
                 "timeout" in message ||
                 "timed out" in message ||
+                "429" in message ||
+                "rate limit" in message ||
+                "too many requests" in message
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
+    }
+
+    private fun Throwable.isAiRetryableRequestFailure(): Boolean {
+        if (isAiRetryableNetworkAbort()) return true
+        var current: Throwable? = this
+        while (current != null) {
+            val message = current.message.orEmpty().lowercase()
+            if (current is InterruptedIOException) return true
+            if (
+                "upstream error" in message ||
+                "do request failed" in message ||
+                "upstream request" in message ||
+                "server error" in message ||
+                "internal server error" in message ||
+                "bad gateway" in message ||
+                "service unavailable" in message ||
+                "gateway timeout" in message ||
+                "temporarily unavailable" in message ||
+                "overloaded" in message ||
+                "try again" in message ||
+                "500" in message ||
+                "502" in message ||
+                "503" in message ||
+                "504" in message ||
                 "429" in message ||
                 "rate limit" in message ||
                 "too many requests" in message

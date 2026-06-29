@@ -21,6 +21,7 @@ object LibraryCloudCrypto {
     private const val ITERATIONS = 120_000
     private const val KEY_BITS = 256
     private const val TAG_BITS = 128
+    private const val MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
     private val random = SecureRandom()
 
     data class EncryptedPayload(
@@ -66,7 +67,19 @@ object LibraryCloudCrypto {
     }
 
     private fun gunzip(bytes: ByteArray): ByteArray {
-        return GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
+        return GZIPInputStream(ByteArrayInputStream(bytes)).use { input ->
+            val output = ByteArrayOutputStream(minOf(bytes.size * 2, 1024 * 1024))
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                require(total <= MAX_DECOMPRESSED_BYTES) { "云端书库数据解压后过大" }
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        }
     }
 
     private fun encrypt(bytes: ByteArray, password: String): EncryptedPayload {

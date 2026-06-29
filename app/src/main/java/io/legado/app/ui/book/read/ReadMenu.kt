@@ -203,7 +203,8 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     fun upBookView() {
-        currentBookName = ReadBook.book?.name
+        val currentBook = ReadBook.book
+        currentBookName = currentBook?.name
         if (callBack.isEpubCoreBook()) {
             currentChapterUrl = callBack.epubCoreChapterUrl()
             currentChapterName = callBack.epubCoreChapterTitle().orEmpty()
@@ -212,19 +213,26 @@ class ReadMenu @JvmOverloads constructor(
             canGoNext = ReadBook.durChapterIndex != ReadBook.simulatedChapterSize - 1
             return
         }
-        ReadBook.curTextChapter?.let {
-            currentChapterName = it.title
+        val currentTextChapter = ReadBook.curTextChapter
+        val currentChapter = currentTextChapter?.chapter
+            ?: currentBook?.let { book ->
+                appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+            }
+        if (currentChapter != null) {
+            currentChapterName = currentTextChapter?.title
+                ?: currentChapter.title.takeIf { it.isNotBlank() }
+                ?: currentBook?.durChapterTitle?.takeIf { it.isNotBlank() }
             if (!ReadBook.isLocalBook) {
-                currentChapterUrl = resolveChapterUrl(it.chapter)
+                currentChapterUrl = resolveChapterUrl(currentChapter)
             } else {
                 currentChapterUrl = null
             }
             upSeekBar()
             canGoPrev = ReadBook.durChapterIndex != 0
             canGoNext = ReadBook.durChapterIndex != ReadBook.simulatedChapterSize - 1
-        } ?: run {
+        } else {
             currentChapterUrl = null
-            currentChapterName = null
+            currentChapterName = currentBook?.durChapterTitle?.takeIf { it.isNotBlank() }
         }
     }
 
@@ -401,42 +409,44 @@ class ReadMenu @JvmOverloads constructor(
                         style = style,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    // 操作栏（章节信息 + 操作按钮）
-                    ReadMenuActionBar(
-                        state = ReadMenuActionBarState(
-                            chapterName = currentChapterName,
-                            isLocalBook = ReadBook.isLocalBook,
-                            sourceName = ReadBook.bookSource?.bookSourceName,
-                            showCustomButton = ReadBook.bookSource?.customButton == true,
-                            showCloudIcon = showCloudIcon,
-                            cloudState = cloudState,
-                            hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
-                            hasVipChapter = !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
-                                    && ReadBook.curTextChapter?.isVip == true
-                                    && ReadBook.curTextChapter?.isPay != true
-                        ),
-                        actions = ReadMenuActionBarActions(
-                            onChapterClick = { handleChapterClick() },
-                            onChapterLongClick = { handleChapterLongClick() },
-                            onLoginClick = { callBack.showLogin() },
-                            onPayClick = { callBack.payAction() },
-                            onEditSourceClick = { callBack.openSourceEditActivity() },
-                            onDisableSourceClick = { callBack.disableSource() },
-                            onCustomButtonClick = { handleCustomButtonClick() },
-                            onCustomButtonLongClick = { handleCustomButtonLongClick() },
-                            onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
-                            onCloudLongClick = {
-                                if (io.legado.app.BuildConfig.DEBUG) {
-                                    callBack.showLibraryCloudDebug()
-                                } else {
-                                    callBack.showLibraryCloudChapters(refresh = true)
+                    if (AppConfig.showReadTitleBarAddition) {
+                        // 操作栏（章节信息 + 操作按钮）
+                        ReadMenuActionBar(
+                            state = ReadMenuActionBarState(
+                                chapterName = currentChapterName,
+                                isLocalBook = ReadBook.isLocalBook,
+                                sourceName = ReadBook.bookSource?.bookSourceName,
+                                showCustomButton = ReadBook.bookSource?.customButton == true,
+                                showCloudIcon = showCloudIcon,
+                                cloudState = cloudState,
+                                hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
+                                hasVipChapter = !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
+                                        && ReadBook.curTextChapter?.isVip == true
+                                        && ReadBook.curTextChapter?.isPay != true
+                            ),
+                            actions = ReadMenuActionBarActions(
+                                onChapterClick = { handleChapterClick() },
+                                onChapterLongClick = { handleChapterLongClick() },
+                                onLoginClick = { callBack.showLogin() },
+                                onPayClick = { callBack.payAction() },
+                                onEditSourceClick = { callBack.openSourceEditActivity() },
+                                onDisableSourceClick = { callBack.disableSource() },
+                                onCustomButtonClick = { handleCustomButtonClick() },
+                                onCustomButtonLongClick = { handleCustomButtonLongClick() },
+                                onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
+                                onCloudLongClick = {
+                                    if (io.legado.app.BuildConfig.DEBUG) {
+                                        callBack.showLibraryCloudDebug()
+                                    } else {
+                                        callBack.showLibraryCloudChapters(refresh = true)
+                                    }
+                                    true
                                 }
-                                true
-                            }
-                        ),
-                        style = style,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                            ),
+                            style = style,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
 

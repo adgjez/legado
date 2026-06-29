@@ -64,6 +64,7 @@ private val PanelHorizontalPadding = 12.dp
 fun SettingSpecScreen(
     page: SettingPageSpec,
     scrollTargetKey: String?,
+    drawPanelImage: Boolean = true,
     onTargetReady: (String) -> Unit,
     onTargetMissing: () -> Unit,
     onItemClick: (SettingItemSpec) -> Unit
@@ -127,6 +128,7 @@ fun SettingSpecScreen(
                     section = section,
                     colors = colors,
                     panelRadiusPx = panelRadiusPx,
+                    drawPanelImage = drawPanelImage,
                     onItemClick = onItemClick
                 )
             }
@@ -139,10 +141,15 @@ private fun SettingSectionPanel(
     section: SettingSectionSpec,
     colors: AppSettingPalette,
     panelRadiusPx: Float,
+    drawPanelImage: Boolean,
     onItemClick: (SettingItemSpec) -> Unit
 ) {
     val context = LocalContext.current
-    val panelImage = UiCorner.panelImageDrawable(context, panelRadiusPx)
+    val panelImage = if (drawPanelImage) {
+        UiCorner.panelImageDrawable(context, panelRadiusPx)
+    } else {
+        null
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()

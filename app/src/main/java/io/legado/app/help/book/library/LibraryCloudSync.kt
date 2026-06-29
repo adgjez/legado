@@ -29,6 +29,10 @@ object LibraryCloudSync {
     private val sessions = ConcurrentHashMap<String, LibraryCloudSession>()
     private val activeBooks = ConcurrentHashMap<String, Boolean>()
 
+    fun clearSessions() {
+        sessions.clear()
+    }
+
     fun enqueueUpload(book: Book, chapter: BookChapter, content: String) {
         if (!canUpload(book, chapter, content)) return
         val config = LibraryContainerManager.matchForSource(book.origin) ?: return

@@ -31,7 +31,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -148,7 +147,6 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.openBookshelf
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
@@ -485,22 +483,14 @@ class BookInfoActivity :
         })
     }
 
-    private fun returnToBookshelf() {
-        finish()
-        openBookshelf()
-    }
-
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         useComposeBookInfo = false
-        onBackPressedDispatcher.addCallback(this) {
-            returnToBookshelf()
-        }
         binding.bgBook.setBackgroundColor(backgroundColor)
         binding.vwBg.alpha = 1f
         binding.titleBar.setBackgroundResource(R.color.transparent)
         binding.titleBar.setNavigationOnClickListener {
-            returnToBookshelf()
+            finish()
         }
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.arcView.setBgColor(backgroundColor)
@@ -552,6 +542,7 @@ class BookInfoActivity :
         binding.refreshLayout.visibility = View.GONE
         binding.flAction.visibility = View.GONE
         binding.llInfo.visibility = View.GONE
+        composeBookInfoState = buildInitialComposeBookInfoStateFromIntent()
         composeBookInfoView = ComposeView(this@BookInfoActivity).apply {
             id = View.generateViewId()
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -575,7 +566,7 @@ class BookInfoActivity :
 
     private fun composeBookInfoActions(): BookInfoActions {
         return BookInfoActions(
-            onBack = ::returnToBookshelf,
+            onBack = ::finish,
             onRefresh = ::refreshBook,
             onRead = {
                 viewModel.getBook()?.let { book ->
@@ -808,7 +799,14 @@ class BookInfoActivity :
     private fun updateComposeBookInfoState() {
         val safeBook = viewModel.getBook(false)
         if (safeBook == null) {
-            composeBookInfoState = BookInfoUiState(loading = true)
+            composeBookInfoState = if (
+                composeBookInfoState.name.isBlank() &&
+                composeBookInfoState.bookUrl.isBlank()
+            ) {
+                buildInitialComposeBookInfoStateFromIntent()
+            } else {
+                composeBookInfoState.copy(loading = true)
+            }
             return
         }
         val chapterList = viewModel.chapterListData.value.orEmpty()
@@ -825,6 +823,7 @@ class BookInfoActivity :
         val currentChapterEnd = (currentChapterPosition + 5)
             .coerceAtMost(readableChapters.size)
         val intro = resolveComposeStableIntro(safeBook)
+        val coverPath = resolveStableComposeCoverPath(CoverDisplayResolver.resolve(safeBook).path)
         composeBookInfoState = BookInfoUiState(
             bookUrl = safeBook.bookUrl,
             name = safeBook.name,
@@ -832,7 +831,7 @@ class BookInfoActivity :
             originName = getString(R.string.origin_show, safeBook.originName),
             latestChapterTitle = getString(R.string.lasted_show, safeBook.latestChapterTitle),
             readTimeText = composeReadTimeText,
-            coverPath = CoverDisplayResolver.resolve(safeBook).path,
+            coverPath = coverPath,
             intro = intro,
             kinds = safeBook.getKindList(),
             groupText = composeGroupText,
@@ -856,6 +855,67 @@ class BookInfoActivity :
             cloudEntryMode = BookCloudEntryModeStore.get(safeBook.bookUrl),
             loading = false
         )
+    }
+
+    private fun buildInitialComposeBookInfoStateFromIntent(): BookInfoUiState {
+        val name = intent.getStringExtra("name").orEmpty()
+        val author = intent.getStringExtra("author").orEmpty()
+        val bookUrl = intent.getStringExtra("bookUrl").orEmpty()
+        val origin = intent.getStringExtra("origin").orEmpty()
+        val originName = intent.getStringExtra("originName").orEmpty()
+        val coverUrl = intent.getStringExtra("coverUrl").orEmpty()
+        if (name.isBlank() && author.isBlank() && bookUrl.isBlank() && coverUrl.isBlank()) {
+            return BookInfoUiState(loading = true)
+        }
+        val coverPath = resolveInitialComposeCoverPathFromIntent(
+            name = name,
+            author = author,
+            bookUrl = bookUrl,
+            origin = origin,
+            originName = originName,
+            coverUrl = coverUrl
+        )
+        return BookInfoUiState(
+            bookUrl = bookUrl,
+            name = name,
+            author = author,
+            originName = originName.takeIf { it.isNotBlank() }?.let {
+                getString(R.string.origin_show, it)
+            }.orEmpty(),
+            coverPath = coverPath,
+            hasBookSource = origin.isNotBlank(),
+            loading = true
+        )
+    }
+
+    private fun resolveInitialComposeCoverPathFromIntent(
+        name: String,
+        author: String,
+        bookUrl: String,
+        origin: String,
+        originName: String,
+        coverUrl: String
+    ): String? {
+        val rawCover = coverUrl.takeIf { it.isNotBlank() }
+        if (name.isBlank() && author.isBlank() && bookUrl.isBlank()) {
+            return rawCover
+        }
+        return CoverDisplayResolver.resolve(
+            Book(
+                bookUrl = bookUrl,
+                origin = origin,
+                originName = originName,
+                name = name,
+                author = author,
+                coverUrl = rawCover
+            )
+        ).path ?: rawCover
+    }
+
+    private fun resolveStableComposeCoverPath(nextPath: String?): String? {
+        val next = nextPath?.takeIf { it.isNotBlank() }
+        val current = composeBookInfoState.coverPath?.takeIf { it.isNotBlank() }
+        return next ?: current
     }
 
     private fun resolveComposeStableIntro(book: Book): String {
@@ -3093,17 +3153,8 @@ class BookInfoActivity :
             return
         }
         viewModel.getBook()?.let { book ->
-            if (!viewModel.inBookshelf) {
-                book.addType(BookType.notShelf)
-                viewModel.saveBook(book) {
-                    viewModel.saveChapterList {
-                        openChapterList()
-                    }
-                }
-            } else {
-                viewModel.saveChapterList {
-                    openChapterList()
-                }
+            viewModel.prepareBookForEntry(book) { targetBook ->
+                tocActivityResult.launch(targetBook.bookUrl)
             }
         }
     }
@@ -3111,8 +3162,8 @@ class BookInfoActivity :
     private fun openChapterDirect(chapter: BookChapter) {
         viewModel.getBook()?.let { book ->
             chapterChanged = true
-            viewModel.saveBookAtChapter(book, chapter) {
-                startReadActivity(book)
+            viewModel.saveBookAtChapter(book, chapter) { targetBook ->
+                startReadActivity(targetBook)
             }
         }
     }
@@ -3184,17 +3235,8 @@ class BookInfoActivity :
     }
 
     private fun readBook(book: Book) {
-        if (!viewModel.inBookshelf) {
-            book.addType(BookType.notShelf)
-            viewModel.saveBook(book) {
-                viewModel.saveChapterList {
-                    startReadActivity(book)
-                }
-            }
-        } else {
-            viewModel.saveBook(book) {
-                startReadActivity(book)
-            }
+        viewModel.prepareBookForEntry(book) { targetBook ->
+            startReadActivity(targetBook)
         }
     }
 

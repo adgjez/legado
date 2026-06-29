@@ -24,8 +24,19 @@ object DatabaseMigrations {
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
             migration_99_100, migration_100_101, migration_101_102, migration_102_103,
             migration_103_104, migration_104_105, migration_105_106,
-            migration_106_107, migration_107_108,
+            migration_106_107, migration_107_108, migration_108_109,
         )
+    }
+
+    private val migration_108_109 = object : Migration(108, 109) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_durChapterTime` ON `books` (`durChapterTime`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_latestChapterTime` ON `books` (`latestChapterTime`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_order` ON `books` (`order`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_name` ON `books` (`name`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_author` ON `books` (`author`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_type` ON `books` (`type`)")
+        }
     }
 
     private val migration_107_108 = object : Migration(107, 108) {

@@ -63,6 +63,7 @@ class TopBarEditDialog : ComposeDialogFragment() {
     private var onShowWallpaperSelector: (() -> Unit)? = null
     private var onShowWallpaperAlphaPicker: ((Int) -> Unit)? = null
     private var onShowFilterDefaultSelector: ((Boolean) -> Unit)? = null
+    private var onToggleFilterToggleHidden: ((Boolean) -> Unit)? = null
     private var onShowTagBarAlphaPicker: ((Int) -> Unit)? = null
     private var onShowTagSelectedAlphaPicker: ((Int) -> Unit)? = null
     private var onToggleSearchInDefaultStyle: ((Boolean) -> Unit)? = null
@@ -85,6 +86,7 @@ class TopBarEditDialog : ComposeDialogFragment() {
                     onShowWallpaperSelector != null &&
                     onShowWallpaperAlphaPicker != null &&
                     onShowFilterDefaultSelector != null &&
+                    onToggleFilterToggleHidden != null &&
                     onShowTagBarAlphaPicker != null &&
                     onShowTagSelectedAlphaPicker != null &&
                     onToggleSearchInDefaultStyle != null
@@ -122,6 +124,9 @@ class TopBarEditDialog : ComposeDialogFragment() {
                         },
                         onShowFilterDefaultSelector = {
                             onShowFilterDefaultSelector?.invoke(it) ?: dismissAllowingStateLoss()
+                        },
+                        onToggleFilterToggleHidden = {
+                            onToggleFilterToggleHidden?.invoke(it) ?: dismissAllowingStateLoss()
                         },
                         onShowTagBarAlphaPicker = {
                             onShowTagBarAlphaPicker?.invoke(it) ?: dismissAllowingStateLoss()
@@ -162,6 +167,7 @@ class TopBarEditDialog : ComposeDialogFragment() {
             onShowWallpaperSelector: () -> Unit,
             onShowWallpaperAlphaPicker: (Int) -> Unit,
             onShowFilterDefaultSelector: (Boolean) -> Unit,
+            onToggleFilterToggleHidden: (Boolean) -> Unit,
             onShowTagBarAlphaPicker: (Int) -> Unit,
             onShowTagSelectedAlphaPicker: (Int) -> Unit,
             onToggleSearchInDefaultStyle: (Boolean) -> Unit,
@@ -179,6 +185,7 @@ class TopBarEditDialog : ComposeDialogFragment() {
                     putString(ARG_WALLPAPER_PATH, config.wallpaperPath)
                     putInt(ARG_WALLPAPER_ALPHA, config.wallpaperAlpha)
                     putBoolean(ARG_FILTER_EXPANDED, config.expandFiltersByDefault)
+                    putBoolean(ARG_HIDE_FILTER_TOGGLE, config.hideFilterToggleWhenExpanded)
                     putInt(ARG_TAG_BAR_COLOR, config.tagBarColor ?: 0)
                     putBoolean(ARG_HAS_TAG_BAR_COLOR, config.tagBarColor != null)
                     putInt(ARG_TAG_BAR_ALPHA, config.tagBarAlpha)
@@ -195,6 +202,7 @@ class TopBarEditDialog : ComposeDialogFragment() {
                 this.onShowWallpaperSelector = onShowWallpaperSelector
                 this.onShowWallpaperAlphaPicker = onShowWallpaperAlphaPicker
                 this.onShowFilterDefaultSelector = onShowFilterDefaultSelector
+                this.onToggleFilterToggleHidden = onToggleFilterToggleHidden
                 this.onShowTagBarAlphaPicker = onShowTagBarAlphaPicker
                 this.onShowTagSelectedAlphaPicker = onShowTagSelectedAlphaPicker
                 this.onToggleSearchInDefaultStyle = onToggleSearchInDefaultStyle
@@ -212,6 +220,7 @@ class TopBarEditDialog : ComposeDialogFragment() {
         const val ARG_WALLPAPER_PATH = "wallpaperPath"
         const val ARG_WALLPAPER_ALPHA = "wallpaperAlpha"
         const val ARG_FILTER_EXPANDED = "filterExpanded"
+        const val ARG_HIDE_FILTER_TOGGLE = "hideFilterToggle"
         const val ARG_TAG_BAR_COLOR = "tagBarColor"
         const val ARG_HAS_TAG_BAR_COLOR = "hasTagBarColor"
         const val ARG_TAG_BAR_ALPHA = "tagBarAlpha"
@@ -233,6 +242,7 @@ private fun TopBarEditDialogContent(
     onShowWallpaperSelector: () -> Unit,
     onShowWallpaperAlphaPicker: (Int) -> Unit,
     onShowFilterDefaultSelector: (Boolean) -> Unit,
+    onToggleFilterToggleHidden: (Boolean) -> Unit,
     onShowTagBarAlphaPicker: (Int) -> Unit,
     onShowTagSelectedAlphaPicker: (Int) -> Unit,
     onToggleSearchInDefaultStyle: (Boolean) -> Unit,
@@ -250,6 +260,7 @@ private fun TopBarEditDialogContent(
     val wallpaperPath = args.getString(TopBarEditDialog.ARG_WALLPAPER_PATH)
     val wallpaperAlpha = args.getInt(TopBarEditDialog.ARG_WALLPAPER_ALPHA, 100)
     val filterExpanded = args.getBoolean(TopBarEditDialog.ARG_FILTER_EXPANDED)
+    val hideFilterToggle = args.getBoolean(TopBarEditDialog.ARG_HIDE_FILTER_TOGGLE)
     val showSearchInDefaultStyle = args.getBoolean(TopBarEditDialog.ARG_SHOW_SEARCH)
     val hasTagBarColor = args.getBoolean(TopBarEditDialog.ARG_HAS_TAG_BAR_COLOR)
     val tagBarColor = args.getInt(TopBarEditDialog.ARG_TAG_BAR_COLOR)
@@ -329,6 +340,13 @@ private fun TopBarEditDialogContent(
                         palette = palette,
                         style = style,
                         onClick = { onShowFilterDefaultSelector(filterExpanded) }
+                    )
+                    TopBarEditOptionRow(
+                        title = stringResource(R.string.top_bar_filter_toggle_button),
+                        value = filterToggleLabelResource(hideFilterToggle),
+                        palette = palette,
+                        style = style,
+                        onClick = { onToggleFilterToggleHidden(!hideFilterToggle) }
                     )
                     // Tag bar color
                     TopBarEditOptionRow(
@@ -558,5 +576,13 @@ private fun filterDefaultLabelResource(expanded: Boolean): String {
     return stringResource(
         if (expanded) R.string.top_bar_filter_default_expanded
         else R.string.top_bar_filter_default_collapsed
+    )
+}
+
+@Composable
+private fun filterToggleLabelResource(hiddenWhenExpanded: Boolean): String {
+    return stringResource(
+        if (hiddenWhenExpanded) R.string.top_bar_filter_toggle_hide_when_expanded
+        else R.string.top_bar_filter_toggle_show
     )
 }

@@ -24,15 +24,12 @@
  */
 package com.script.rhino
 
-import android.os.Build
 import org.mozilla.javascript.ClassShutter
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.Scriptable
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.lang.reflect.Member
-import java.nio.file.FileSystem
-import java.nio.file.Path
 import java.util.Collections
 
 /**
@@ -135,11 +132,7 @@ object RhinoClassShutter : ClassShutter {
             okio.FileHandle::class.java,
             okio.Path::class.java,
             android.content.Context::class.java,
-        ) + if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            arrayOf(FileSystem::class.java, Path::class.java)
-        } else {
-            emptyArray()
-        }
+        )
     }
 
     fun visibleToScripts(obj: Any): Boolean {
@@ -155,12 +148,10 @@ object RhinoClassShutter : ClassShutter {
             is okio.Path,
             is android.content.Context -> return false
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            when (obj) {
-                is FileSystem,
-                is Path -> return false
-            }
-        }
+        // java.nio.file.* 由下方类名黑名单（"java.nio.file"）拦截。
+        // 这里不能直接引用 FileSystem/Path 类型：API<26 无 java.nio.file，
+        // 且 nio desugar 未启用，ART 方法校验会因找不到类而抛 NoClassDefFoundError，
+        // 导致书源 JS 在安卓7等低版本上无法运行、书打不开。
         return visibleToScripts(obj.javaClass.name)
     }
 

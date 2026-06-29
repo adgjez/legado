@@ -400,6 +400,7 @@ object CacheBook {
                     return content
                 }
                 val content = WebBook.getContentAwait(bookSource, book, chapter)
+                AppLog.put("chapter content fetched: ${book.name} #${chapter.index}, length=${content.length}")
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
@@ -472,11 +473,13 @@ object CacheBook {
                 executeContext = IO,
                 semaphore = semaphore
             ).onSuccess { content ->
+                AppLog.put("chapter content fetched: ${book.name} #${chapter.index}, length=${content.length}")
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
                 downloadFinish(chapter, content, resetPageOffset)
             }.onError {
+                AppLog.put("chapter content fetch failed: ${book.name} #${chapter.index}\n${it.localizedMessage}", it)
                 val sourceError = it
                 val cloudContent = LibraryCloudSync.tryCloudFallback(book, chapter)
                 if (cloudContent != null) {

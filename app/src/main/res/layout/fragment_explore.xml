@@ -91,6 +91,12 @@
                 android:layout_height="match_parent"
                 tools:listitem="@layout/item_find_book" />
 
+            <androidx.compose.ui.platform.ComposeView
+                android:id="@+id/compose_discovery_suite"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/tv_empty_msg"
                 android:layout_width="wrap_content"

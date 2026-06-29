@@ -43,12 +43,6 @@
             android:title="@string/show_read_record"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.Preference
-            android:key="discoverySubscriptionSettings"
-            android:summary="@string/discovery_subscription_settings_summary"
-            android:title="@string/discovery_subscription_settings_title"
-            app:iconSpaceReserved="false" />
-
         <io.legado.app.lib.prefs.NameListPreference
             android:defaultValue="bookshelf"
             android:key="defaultHomePage"

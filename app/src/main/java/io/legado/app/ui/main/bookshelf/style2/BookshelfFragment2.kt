@@ -40,6 +40,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
+import io.legado.app.data.dao.BookShelfDisplay
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf2Binding
@@ -55,6 +56,7 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfFolderItemUi
 import io.legado.app.ui.main.bookshelf.compose.BookshelfGridItem
 import io.legado.app.ui.main.bookshelf.compose.BookshelfItemUi
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListItem
+import io.legado.app.ui.main.bookshelf.compose.BookshelfSnapshotStore
 import io.legado.app.ui.main.bookshelf.compose.buildBookshelfItems
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.updateBookshelfItemUpdating
@@ -71,6 +73,7 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -78,6 +81,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 /**
@@ -102,6 +106,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private var booksFlowJob: Job? = null
     override var groupId = BookGroup.IdRoot
     override var books: List<Book> = emptyList()
+    private var shelfDisplays: List<BookShelfDisplay> = emptyList()
     private var enableRefresh = true
     override var onlyUpdateRead = false
     private var bookshelfMargin by mutableIntStateOf(AppConfig.bookshelfMargin)
@@ -381,7 +386,12 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         if (data != bookGroups) {
             bookGroups = data
             if (useComposeBookshelf) {
-                updateComposeItems()
+                if (shelfDisplays.isEmpty() && composeItems.isEmpty()) {
+                    restoreComposeSnapshot(currentComposeSnapshotKey())
+                } else {
+                    updateComposeItems(shelfDisplays)
+                    saveComposeSnapshot(currentComposeSnapshotKey(), composeItems)
+                }
             } else {
                 booksAdapter.updateItems(groupId)
             }
@@ -419,6 +429,38 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
+            if (useComposeBookshelf) {
+                val snapshotKey = currentComposeSnapshotKey()
+                restoreComposeSnapshot(snapshotKey)
+                appDb.bookDao.flowShelfByGroup(groupId).map { list ->
+                    val sortedList = sortShelfDisplays(list, AppConfig.getBookSortByGroupId(groupId))
+                    val items = buildBookshelfItems(
+                        groups = bookGroups,
+                        books = sortedList,
+                        isRootGroup = groupId == BookGroup.IdRoot,
+                        groupId = groupId,
+                        isUpdating = ::isUpdate
+                    )
+                    sortedList to items
+                }.flowWithLifecycleAndDatabaseChangeFirst(
+                    viewLifecycleOwner.lifecycle,
+                    Lifecycle.State.RESUMED,
+                    AppDatabase.BOOK_TABLE_NAME
+                ).catch {
+                    AppLog.put("涔︽灦鏇存柊鍑洪敊", it)
+                }.conflate().flowOn(Dispatchers.Default).collect { (list, items) ->
+                    shelfDisplays = list
+                    books = list.map { it.toMinimalBook() }
+                    composeItems = items
+                    composeDataVersion++
+                    itemCount = getItemCount()
+                    binding.tvEmptyMsg.isGone = itemCount > 0
+                    binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
+                    saveComposeSnapshot(snapshotKey, items)
+                    delay(100)
+                }
+                return@launch
+            }
             appDb.bookDao.flowByGroup(groupId).map { list ->
                 //排序
                 when (AppConfig.getBookSortByGroupId(groupId)) {
@@ -523,9 +565,13 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     private fun updateComposeItems() {
+        updateComposeItems(shelfDisplays)
+    }
+
+    private fun updateComposeItems(list: List<BookShelfDisplay>) {
         composeItems = buildBookshelfItems(
             groups = bookGroups,
-            books = books,
+            books = list,
             isRootGroup = groupId == BookGroup.IdRoot,
             groupId = groupId,
             isUpdating = ::isUpdate
@@ -533,9 +579,60 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         composeDataVersion++
     }
 
+    private fun currentComposeSnapshotKey(): String {
+        return BookshelfSnapshotStore.buildKey(
+            style = "style2",
+            groupId = groupId,
+            sort = AppConfig.getBookSortByGroupId(groupId),
+            tagFilter = "",
+            groups = bookGroups
+        )
+    }
+
+    private fun restoreComposeSnapshot(snapshotKey: String) {
+        BookshelfSnapshotStore.getMemory(snapshotKey)?.let { items ->
+            applyComposeSnapshot(snapshotKey, items)
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch(IO) {
+            val items = BookshelfSnapshotStore.read(snapshotKey) ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (!isAdded || currentComposeSnapshotKey() != snapshotKey || composeItems.isNotEmpty()) {
+                    return@withContext
+                }
+                applyComposeSnapshot(snapshotKey, items)
+            }
+        }
+    }
+
+    private fun applyComposeSnapshot(
+        snapshotKey: String,
+        items: List<BookshelfItemUi>
+    ) {
+        if (currentComposeSnapshotKey() != snapshotKey || items.isEmpty()) {
+            return
+        }
+        composeItems = items
+        shelfDisplays = items.mapNotNull { (it as? BookshelfBookItemUi)?.display }
+        books = shelfDisplays.map { it.toMinimalBook() }
+        composeDataVersion++
+        itemCount = items.size
+        binding.tvEmptyMsg.isGone = itemCount > 0
+        binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
+    }
+
+    private fun saveComposeSnapshot(
+        snapshotKey: String,
+        items: List<BookshelfItemUi>
+    ) {
+        viewLifecycleOwner.lifecycleScope.launch(IO) {
+            BookshelfSnapshotStore.save(snapshotKey, items)
+        }
+    }
+
     private fun onComposeItemClick(item: BookshelfItemUi) {
         when (item) {
-            is BookshelfBookItemUi -> startActivityForBook(item.book)
+            is BookshelfBookItemUi -> startActivityForBook(item.display.toMinimalBook())
             is BookshelfFolderItemUi -> {
                 switchGroup(item.group.groupId)
             }
@@ -560,7 +657,10 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun onComposeItemLongClick(item: BookshelfItemUi) {
         when (item) {
-            is BookshelfBookItemUi -> BookInfoNavigator.open(requireContext(), item.book)
+            is BookshelfBookItemUi -> lifecycleScope.launch {
+                val book = withContext(IO) { appDb.bookDao.getBook(item.display.bookUrl) } ?: return@launch
+                BookInfoNavigator.open(requireContext(), book)
+            }
             is BookshelfFolderItemUi -> showDialogFragment(GroupEditDialog(item.group))
         }
     }
@@ -631,5 +731,18 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             bookUrl = bookUrl,
             isUpdating = ::isUpdate
         )
+    }
+
+    private fun sortShelfDisplays(
+        list: List<BookShelfDisplay>,
+        sort: Int
+    ): List<BookShelfDisplay> {
+        return when (sort) {
+            1 -> list.sortedByDescending { it.latestChapterTime }
+            2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
+            3 -> list.sortedBy { it.order }
+            4 -> list.sortedByDescending { max(it.latestChapterTime, it.durChapterTime) }
+            else -> list.sortedByDescending { it.durChapterTime }
+        }
     }
 }

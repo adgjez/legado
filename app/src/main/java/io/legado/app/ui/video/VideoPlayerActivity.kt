@@ -209,8 +209,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             val record = intent.getStringExtra("record")
             VideoPlay.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
             if (intent.getBooleanExtra(EXTRA_PREPARE_BOOK_INFO, false)) {
-                initView()
-                prepareVideoBook()
+                if (!tryStartPreparedVideoFromCache(sourceKey, sourceType, bookUrl)) {
+                    initView()
+                    prepareVideoBook()
+                }
             } else if (!VideoPlay.initSource(sourceKey, sourceType, bookUrl, record)) {
                 finish()
                 return
@@ -234,6 +236,26 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
             finish()
         }
+    }
+
+    private fun tryStartPreparedVideoFromCache(
+        sourceKey: String?,
+        sourceType: Int,
+        bookUrl: String?
+    ): Boolean {
+        if (sourceKey.isNullOrBlank() || bookUrl.isNullOrBlank()) return false
+        if (!VideoPlay.initSource(sourceKey, sourceType, bookUrl, null)) return false
+        if (VideoPlay.book == null || VideoPlay.toc.isNullOrEmpty()) return false
+        intent.getStringExtra("videoTitle")?.takeIf { it.isNotBlank() }?.let {
+            binding.titleBar.title = it
+            VideoPlay.videoTitle = it
+        } ?: run {
+            binding.titleBar.title = VideoPlay.book?.name
+        }
+        VideoPlay.startPlay(playerView)
+        VideoPlay.saveRead()
+        initView()
+        return true
     }
 
     private fun initView() {

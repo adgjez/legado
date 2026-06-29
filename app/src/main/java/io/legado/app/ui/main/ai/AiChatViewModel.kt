@@ -7,6 +7,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.AiAgentJob
 import io.legado.app.data.entities.AiAgentSession
 import io.legado.app.data.entities.AiMemoryItem
+import io.legado.app.help.ai.AiAgentInterruption
 import io.legado.app.help.ai.AiAgentStateStore
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiMemoryContext
@@ -40,6 +41,7 @@ class AiChatViewModel : ViewModel() {
     private var windowMcpServerIds: Set<String> = emptySet()
     private var lastTransientPublishAt: Long = 0L
     private var pendingTransientPublishJob: Job? = null
+    private var currentAgentMode: AiAgentMode = AppConfig.aiChatAgentMode
 
     companion object {
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
@@ -52,6 +54,8 @@ class AiChatViewModel : ViewModel() {
         private var activeThinkingKey: String? = null
         private var activeThinkingLabel: String? = null
         private var activePendingAssistantMessageId: String? = null
+        private var activeVariantGroupId: String? = null
+        private var activeVariantIndex: Int = 0
         private var activeAgentRun: AiAgentStateStore.Run? = null
         private val activeToolMessageIds = linkedMapOf<String, String>()
         private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
@@ -59,6 +63,13 @@ class AiChatViewModel : ViewModel() {
         private const val MAX_STORED_STATUS_CHARS = 4_000
         private const val TRANSIENT_UI_PUBLISH_INTERVAL_MS = 66L
     }
+
+    private data class RetryTarget(
+        val userMessage: AiChatMessage,
+        val requestMessages: List<AiChatMessage>,
+        val variantGroupId: String,
+        val variantIndex: Int
+    )
 
     init {
         restoreCurrentSession()
@@ -76,21 +87,69 @@ class AiChatViewModel : ViewModel() {
         cancelledText: String,
         failureMessage: (String) -> String
     ) {
+        startRequestInternal(
+            userContent = userContent,
+            thinkingText = thinkingText,
+            cancelledText = cancelledText,
+            failureMessage = failureMessage,
+            retryTarget = null
+        )
+    }
+
+    fun retryFromMessage(
+        messageId: String,
+        thinkingText: String,
+        cancelledText: String,
+        failureMessage: (String) -> String
+    ): Boolean {
+        if (isRequesting || activeJob?.isActive == true) return false
+        val retryTarget = prepareRetryTarget(messageId) ?: return false
+        startRequestInternal(
+            userContent = retryTarget.userMessage.content,
+            thinkingText = thinkingText,
+            cancelledText = cancelledText,
+            failureMessage = failureMessage,
+            retryTarget = retryTarget
+        )
+        return true
+    }
+
+    private fun startRequestInternal(
+        userContent: String,
+        thinkingText: String,
+        cancelledText: String,
+        failureMessage: (String) -> String,
+        retryTarget: RetryTarget?
+    ) {
         if (isRequesting || activeJob?.isActive == true) return
         setRequesting(true)
         activeCompanionId = currentCompanionId
         activeSessionId = currentSessionId
         val requestCompanionId = currentCompanionId
         val requestSessionId = currentSessionId
+        val requestAgentMode = currentAgentMode
         activeViewModel = this
         activeThinkingMessageId = null
         activeThinkingKey = null
         activeThinkingLabel = null
         activePendingAssistantMessageId = null
+        activeVariantGroupId = null
+        activeVariantIndex = 0
         activeToolMessageIds.clear()
-        append(AiChatMessage(role = AiChatMessage.Role.USER, content = userContent))
+        val requestMessages = if (retryTarget == null) {
+            val userMessage = AiChatMessage(role = AiChatMessage.Role.USER, content = userContent)
+            messages.add(userMessage)
+            activeVariantGroupId = replyVariantGroupId(userMessage.id)
+            activeVariantIndex = 0
+            publish()
+            snapshotForRequest()
+        } else {
+            activeVariantGroupId = retryTarget.variantGroupId
+            activeVariantIndex = retryTarget.variantIndex
+            publish()
+            retryTarget.requestMessages
+        }
         activePendingContent = ""
-        val requestMessages = snapshotForRequest()
         val activeSkills = activeWindowSkills()
         val activeMcpServerIds = windowMcpServerIds
         val companionExtraTools = if (currentCompanion().type == AiChatCompanionConfig.TYPE_CHARACTER) {
@@ -151,7 +210,8 @@ class AiChatViewModel : ViewModel() {
                             title = "AI Chat"
                         ),
                         activeSkills = activeSkills,
-                        extraTools = companionExtraTools + AiToolRegistry.resolveMcpTools(activeMcpServerIds)
+                        extraTools = companionExtraTools + AiToolRegistry.resolveMcpTools(activeMcpServerIds),
+                        agentMode = requestAgentMode
                     )
                 }
                 targetFor(requestSessionId, requestCompanionId).setRequesting(false)
@@ -172,6 +232,8 @@ class AiChatViewModel : ViewModel() {
                         targetFor(requestSessionId, requestCompanionId).saveContextSummary(requestSessionId, it)
                     }
                     targetFor(requestSessionId, requestCompanionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
+                    activeVariantGroupId = null
+                    activeVariantIndex = 0
                 }.onFailure { throwable ->
                     targetFor(requestSessionId, requestCompanionId).finishActiveThinking(fallback = throwable.localizedMessage)
                     targetFor(requestSessionId, requestCompanionId).finishActiveTools(false, throwable.localizedMessage ?: throwable.javaClass.simpleName)
@@ -179,8 +241,16 @@ class AiChatViewModel : ViewModel() {
                     activeToolMessageIds.clear()
                     if (throwable is CancellationException) {
                         activeAgentRun = null
-                        AiAgentStateStore.cancel(agentRun, "User stopped generation")
-                        targetFor(requestSessionId, requestCompanionId).replacePendingAssistant(cancelledText)
+                        if (AiAgentInterruption.isUserCancellation(throwable)) {
+                            AiAgentStateStore.cancel(agentRun, AiAgentInterruption.USER_STOPPED_GENERATION)
+                            targetFor(requestSessionId, requestCompanionId).replacePendingAssistant(cancelledText)
+                        } else {
+                            val message = AiAgentInterruption.systemCancellationMessage(throwable)
+                            AiAgentStateStore.markWaitingResume(agentRun, message)
+                            targetFor(requestSessionId, requestCompanionId).failPendingAssistant(failureMessage(message))
+                        }
+                        activeVariantGroupId = null
+                        activeVariantIndex = 0
                         return@onFailure
                     }
                     val chatError = throwable as? AiChatException ?: AiChatException(
@@ -192,6 +262,8 @@ class AiChatViewModel : ViewModel() {
                     activeAgentRun = null
                     AiAgentStateStore.finish(agentRun, success = false, error = chatError.message)
                     targetFor(requestSessionId, requestCompanionId).failPendingAssistant(failureMessage(chatError.message))
+                    activeVariantGroupId = null
+                    activeVariantIndex = 0
                 }
             } finally {
                 AiTaskKeepAlive.release(keepAliveId)
@@ -201,21 +273,23 @@ class AiChatViewModel : ViewModel() {
 
     fun stopRequest(cancelledText: String) {
         val job = activeJob ?: return
-        job.cancel(CancellationException("User stopped generation"))
+        job.cancel(CancellationException(AiAgentInterruption.USER_STOPPED_GENERATION))
         activeJob = null
         activeCompanionId = null
         activeSessionId = null
         activePendingContent = ""
-        AiAgentStateStore.cancel(activeAgentRun, "User stopped generation")
+        AiAgentStateStore.cancel(activeAgentRun, AiAgentInterruption.USER_STOPPED_GENERATION)
         activeAgentRun = null
         finishActiveThinking(fallback = cancelledText)
         finishActiveTools(false, cancelledText)
-        activePendingAssistantMessageId = null
         activeToolMessageIds.clear()
         setRequesting(false)
         if (cancelledText.isNotBlank()) {
             replacePendingAssistant(cancelledText)
         }
+        activePendingAssistantMessageId = null
+        activeVariantGroupId = null
+        activeVariantIndex = 0
     }
 
     fun replacePendingAssistant(content: String) {
@@ -232,7 +306,10 @@ class AiChatViewModel : ViewModel() {
             val newMessage = AiChatMessage(
                 role = AiChatMessage.Role.ASSISTANT,
                 content = content,
-                pending = true
+                pending = true,
+                variantGroupId = activeVariantGroupId,
+                variantIndex = activeVariantIndex,
+                variantSelected = true
             )
             activePendingAssistantMessageId = newMessage.id
             messages.add(newMessage)
@@ -299,7 +376,10 @@ class AiChatViewModel : ViewModel() {
             kind = AiChatMessage.Kind.THINKING,
             statusKey = key,
             statusLabel = label,
-            collapsed = false
+            collapsed = false,
+            variantGroupId = activeVariantGroupId,
+            variantIndex = activeVariantIndex,
+            variantSelected = true
         )
         messages.add(message)
         activeThinkingMessageId = message.id
@@ -364,7 +444,10 @@ class AiChatViewModel : ViewModel() {
                 statusLabel = status.optString("label"),
                 statusDetail = content,
                 statusKey = key,
-                collapsed = false
+                collapsed = false,
+                variantGroupId = activeVariantGroupId,
+                variantIndex = activeVariantIndex,
+                variantSelected = true
             )
             messages.add(message)
             activeToolMessageIds[key] = message.id
@@ -432,7 +515,15 @@ class AiChatViewModel : ViewModel() {
         if (index >= 0) {
             messages[index] = messages[index].copy(content = content, pending = false)
         } else {
-            messages.add(AiChatMessage(role = AiChatMessage.Role.ASSISTANT, content = content))
+            messages.add(
+                AiChatMessage(
+                    role = AiChatMessage.Role.ASSISTANT,
+                    content = content,
+                    variantGroupId = activeVariantGroupId,
+                    variantIndex = activeVariantIndex,
+                    variantSelected = true
+                )
+            )
         }
         activePendingAssistantMessageId = null
         publish()
@@ -507,17 +598,119 @@ class AiChatViewModel : ViewModel() {
         publish(saveHistory = false)
     }
 
+    fun deleteFromMessage(messageId: String): Boolean {
+        if (isRequesting || activeJob?.isActive == true) return false
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) return false
+        messages.subList(index, messages.size).clear()
+        clearCurrentSessionSummary()
+        publish()
+        return true
+    }
+
+    fun selectAssistantVariant(variantGroupId: String, variantIndex: Int): Boolean {
+        if (variantGroupId.isBlank() || isRequesting || activeJob?.isActive == true) return false
+        if (messages.none { it.variantGroupId == variantGroupId && it.variantIndex == variantIndex }) {
+            return false
+        }
+        var changed = false
+        messages.indices.forEach { index ->
+            val message = messages[index]
+            if (message.variantGroupId == variantGroupId) {
+                val selected = message.variantIndex == variantIndex
+                if (message.variantSelected != selected) {
+                    messages[index] = message.copy(
+                        variantSelected = selected,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    changed = true
+                }
+            }
+        }
+        if (changed) publish()
+        return changed
+    }
+
+    private fun prepareRetryTarget(messageId: String): RetryTarget? {
+        val targetIndex = messages.indexOfFirst { it.id == messageId }
+        if (targetIndex < 0) return null
+        val userIndex = messages.subList(0, targetIndex)
+            .indexOfLast { it.role == AiChatMessage.Role.USER }
+        if (userIndex < 0) return null
+        val userMessage = messages[userIndex]
+        val nextUserRelative = messages.subList(targetIndex + 1, messages.size)
+            .indexOfFirst { it.role == AiChatMessage.Role.USER }
+        val assistantEndExclusive = if (nextUserRelative >= 0) {
+            targetIndex + 1 + nextUserRelative
+        } else {
+            messages.size
+        }
+        if (assistantEndExclusive < messages.size) {
+            messages.subList(assistantEndExclusive, messages.size).clear()
+        }
+        val range = userIndex + 1 until assistantEndExclusive
+        val existingGroupId = messages.getOrNull(targetIndex)?.variantGroupId
+            ?.takeIf { it.isNotBlank() }
+            ?: replyVariantGroupId(userMessage.id)
+        var maxVariantIndex = -1
+        range.forEach { index ->
+            val message = messages[index]
+            if (message.role == AiChatMessage.Role.ASSISTANT) {
+                val normalized = if (message.variantGroupId.isNullOrBlank()) {
+                    message.copy(
+                        variantGroupId = existingGroupId,
+                        variantIndex = 0,
+                        variantSelected = false,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                } else if (message.variantGroupId == existingGroupId) {
+                    message.copy(
+                        variantSelected = false,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                } else {
+                    message
+                }
+                messages[index] = normalized
+                if (normalized.variantGroupId == existingGroupId) {
+                    maxVariantIndex = maxOf(maxVariantIndex, normalized.variantIndex)
+                }
+            }
+        }
+        clearCurrentSessionSummary()
+        return RetryTarget(
+            userMessage = userMessage,
+            requestMessages = messages.take(userIndex + 1)
+                .filter { message ->
+                    !message.pending &&
+                        (message.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT &&
+                        (message.variantGroupId.isNullOrBlank() || message.variantSelected)
+                }
+                .map { it.copy(content = sanitizeImagePayloadsForRequest(it.content)) },
+            variantGroupId = existingGroupId,
+            variantIndex = (maxVariantIndex + 1).coerceAtLeast(1)
+        )
+    }
+
     fun snapshotForRequest(): List<AiChatMessage> {
         return messages
-            .filter { !it.pending && (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT }
+            .filter { message ->
+                !message.pending &&
+                    (message.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT &&
+                    (message.variantGroupId.isNullOrBlank() || message.variantSelected)
+            }
             .map { it.copy(content = sanitizeImagePayloadsForRequest(it.content)) }
     }
 
-    fun activeWindowSkillIds(): Set<String> = windowSkillIds
+    fun activeWindowSkillIds(): Set<String> {
+        return windowSkillIds.filterTo(linkedSetOf()) { id ->
+            AppConfig.aiSkillList.any { it.id == id && it.enabled }
+        }
+    }
 
     fun setActiveWindowSkillIds(ids: Set<String>) {
         windowSkillIds = ids.filterTo(linkedSetOf()) { id ->
-            AppConfig.aiSkillList.any { it.id == id }
+            AppConfig.aiSkillList.any { it.id == id && it.enabled }
         }
     }
 
@@ -536,6 +729,14 @@ class AiChatViewModel : ViewModel() {
     fun currentCompanion(): AiChatCompanionConfig =
         AppConfig.aiChatCompanionList.firstOrNull { it.id == currentCompanionId }
             ?: AppConfig.aiCurrentChatCompanion
+
+    fun currentAgentMode(): AiAgentMode = currentAgentMode
+
+    fun setAgentMode(mode: AiAgentMode) {
+        currentAgentMode = mode
+        AppConfig.aiChatAgentMode = mode
+        publish(saveHistory = false)
+    }
 
     fun companions(): List<AiChatCompanionConfig> {
         val companions = AppConfig.aiChatCompanionList
@@ -719,6 +920,20 @@ class AiChatViewModel : ViewModel() {
             it.id == currentSessionId && it.companionId == currentCompanionId
         }?.contextSummary
 
+    private fun clearCurrentSessionSummary() {
+        AppConfig.aiChatSessionList = AppConfig.aiChatSessionList.map { session ->
+            if (session.id == currentSessionId && session.companionId == currentCompanionId) {
+                session.copy(contextSummary = null)
+            } else {
+                session
+            }
+        }
+    }
+
+    private fun replyVariantGroupId(userMessageId: String): String {
+        return "reply-$userMessageId"
+    }
+
     private fun sessionsForCurrentCompanion(): List<AiChatSession> {
         return sessionsForCompanion(currentCompanionId)
     }
@@ -741,7 +956,7 @@ class AiChatViewModel : ViewModel() {
 
     private fun activeWindowSkills(): List<AiSkillConfig> {
         if (windowSkillIds.isEmpty()) return emptyList()
-        return AppConfig.aiSkillList.filter { it.id in windowSkillIds }
+        return AppConfig.aiSkillList.filter { it.id in windowSkillIds && it.enabled }
     }
 
     fun saveContextSummary(sessionId: String, summary: io.legado.app.ui.main.ai.AiContextSummary) {

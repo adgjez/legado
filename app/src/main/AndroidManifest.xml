@@ -145,6 +145,9 @@
             android:launchMode="singleTask" />
         <!-- 阅读界面 -->
         <activity
+            android:name=".ui.main.explore.DiscoverySuiteManageActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.book.read.ReadBookActivity"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:exported="true"
@@ -315,10 +318,6 @@
         <activity
             android:name=".ui.main.ai.AiImageGalleryActivity"
             android:launchMode="standard" />
-        <activity
-            android:name=".ui.main.ai.creation.AiCreationActivity"
-            android:launchMode="standard"
-            android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
             android:name=".ui.config.AiWorldBookManageActivity"
             android:launchMode="standard"

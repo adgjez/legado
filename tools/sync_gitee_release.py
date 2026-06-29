@@ -19,7 +19,7 @@ GITHUB_REPO = "Rimchars/legado"
 GITEE_OWNER = "zziji"
 GITEE_REPO = "legado"
 CHANNEL_TAG = "latest-arm64-release"
-CHANNEL_NAME = "阅读Archive 更新通道"
+CHANNEL_NAME = "阅读 Archive 更新通道"
 
 
 def token():

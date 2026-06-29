@@ -528,7 +528,7 @@ private fun ReadRecordRankRow(
         AndroidView(
             modifier = Modifier
                 .width(54.dp)
-                .height(74.dp)
+                .height(72.dp)
                 .clip(RoundedCornerShape(context.composeReadRecordPanelRadius())),
             factory = { CoverImageView(it) },
             update = { cover ->
@@ -584,7 +584,7 @@ private fun ReadRecordCoverItem(
     AndroidView(
         modifier = Modifier
             .width(78.dp)
-            .height(108.dp)
+            .height(104.dp)
             .clip(RoundedCornerShape(context.composeReadRecordPanelRadius()))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         factory = { CoverImageView(it) },
