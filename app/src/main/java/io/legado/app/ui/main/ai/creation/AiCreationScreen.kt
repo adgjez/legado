@@ -38,7 +38,9 @@ import io.legado.app.help.ai.AiCreationService
 import io.legado.app.help.gsyVideo.VideoPlayer
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -70,6 +72,28 @@ private val videoPresets = listOf(
     VideoPreset("10秒", 241),
     VideoPreset("18秒", 441),
 )
+
+// ── 持久化生成状态（离开页面不中断） ──
+
+private val generationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+private class ImageGenState {
+    var generating by mutableStateOf(false)
+    var resultUrl by mutableStateOf<String?>(null)
+    var errorMsg by mutableStateOf<String?>(null)
+    var progressText by mutableStateOf("")
+}
+
+private class VideoGenState {
+    var generating by mutableStateOf(false)
+    var resultUrl by mutableStateOf<String?>(null)
+    var errorMsg by mutableStateOf<String?>(null)
+    var progressText by mutableStateOf("")
+    var videoProgress by mutableFloatStateOf(0f)
+}
+
+private val imageState = ImageGenState()
+private val videoState = VideoGenState()
 
 // ── 主入口 ──
 
@@ -263,13 +287,12 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
     var selectedSize by remember { mutableStateOf(imageSizes[0]) }
     var customWidth by remember { mutableStateOf("1024") }
     var customHeight by remember { mutableStateOf("768") }
-    val currentSizeValue: String get() = selectedSize.value.takeIf { it.isNotBlank() } ?: "${customWidth}x${customHeight}"
+    val currentSizeValue get() = selectedSize.value.takeIf { it.isNotBlank() } ?: "${customWidth}x${customHeight}"
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var generating by remember { mutableStateOf(false) }
-    var resultUrl by remember { mutableStateOf<String?>(null) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var progressText by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
+    var generating get() = imageState.generating; set(v) { imageState.generating = v }
+    var resultUrl get() = imageState.resultUrl; set(v) { imageState.resultUrl = v }
+    var errorMsg get() = imageState.errorMsg; set(v) { imageState.errorMsg = v }
+    var progressText get() = imageState.progressText; set(v) { imageState.progressText = v }
     val context = LocalContext.current
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -432,7 +455,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                 generating = true
                 errorMsg = null
                 resultUrl = null
-                scope.launch {
+                generationScope.launch {
                     try {
                         val result = withContext(Dispatchers.IO) {
                             if (mode == ImageMode.TEXT_TO_IMAGE) {
@@ -621,12 +644,11 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
     var prompt by remember { mutableStateOf("") }
     var selectedPreset by remember { mutableStateOf(videoPresets[0]) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var generating by remember { mutableStateOf(false) }
-    var progressText by remember { mutableStateOf("") }
-    var videoProgress by remember { mutableFloatStateOf(0f) }
-    var resultUrl by remember { mutableStateOf<String?>(null) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+    var generating get() = videoState.generating; set(v) { videoState.generating = v }
+    var resultUrl get() = videoState.resultUrl; set(v) { videoState.resultUrl = v }
+    var errorMsg get() = videoState.errorMsg; set(v) { videoState.errorMsg = v }
+    var progressText get() = videoState.progressText; set(v) { videoState.progressText = v }
+    var videoProgress get() = videoState.videoProgress; set(v) { videoState.videoProgress = v }
     val context = LocalContext.current
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -758,7 +780,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 resultUrl = null
                 progressText = "创建视频任务..."
                 videoProgress = 0f
-                scope.launch {
+                generationScope.launch {
                     try {
                         val onProgress: (AiCreationService.GenerationProgress) -> Unit = { p ->
                             progressText = "${p.statusText} ${p.percent}% (${p.elapsedSeconds}秒)"
