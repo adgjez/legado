@@ -175,6 +175,7 @@ object AiCreationService {
             put("model", VIDEO_MODEL)
             put("prompt", prompt)
             put("num_frames", numFrames)
+            put("frame_rate", 24)
             put("width", width)
             put("height", height)
             if (imageUrl != null) {
@@ -263,6 +264,7 @@ object AiCreationService {
                 val statusText = when (lastStatus) {
                     "queued" -> "排队中"
                     "in_progress" -> "生成中"
+                    "completed" -> "完成"
                     else -> lastStatus
                 }
                 onProgress?.invoke(GenerationProgress(percent, statusText, elapsed))
