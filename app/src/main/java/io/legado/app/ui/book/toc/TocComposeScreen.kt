@@ -34,8 +34,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -116,13 +114,13 @@ fun TocComposeScreen(
         var bookLoaded by remember { mutableStateOf(false) }
         var chaptersLoaded by remember { mutableStateOf(false) }
         var bookmarksLoaded by remember { mutableStateOf(false) }
-        val chapterList = remember { mutableStateListOf<BookChapter>() }
-        val visibleChapters = remember { mutableStateListOf<BookChapter>() }
-        val bookmarks = remember { mutableStateListOf<Bookmark>() }
-        val displayTitles = remember { mutableStateMapOf<String, String>() }
-        val cacheFileNames = remember { mutableStateListOf<String>() }
-        val chapterCacheMap = remember { mutableStateMapOf<String, Boolean>() }
-        val collapsedVolumeIndexes = remember { linkedSetOf<Int>() }
+        var chapterList by remember { mutableStateOf<List<BookChapter>>(emptyList()) }
+        var visibleChapters by remember { mutableStateOf<List<BookChapter>>(emptyList()) }
+        var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
+        var displayTitles by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+        var cacheFileNames by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var chapterCacheMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+        var collapsedVolumeIndexes by remember { mutableStateOf<Set<Int>>(emptySet()) }
         val chapterListState = rememberLazyListState()
         val bookmarkListState = rememberLazyListState()
         val scope = rememberCoroutineScope()
@@ -165,22 +163,16 @@ fun TocComposeScreen(
                 }
             }
             if (searchQuery.isBlank()) {
-                chapterList.clear()
-                chapterList.addAll(chapters)
-                resetCollapsedVolumes(
+                chapterList = chapters
+                collapsedVolumeIndexes = collapsedVolumeIndexesFor(
                     chapters = chapters,
-                    durChapterIndex = currentBook.durChapterIndex,
-                    collapsedVolumeIndexes = collapsedVolumeIndexes
+                    durChapterIndex = currentBook.durChapterIndex
                 )
             }
-            displayTitles.clear()
-            displayTitles.putAll(
-                withContext(Dispatchers.Default) {
-                    buildChapterDisplayTitles(currentBook, chapters)
-                }
-            )
-            visibleChapters.clear()
-            visibleChapters.addAll(visibleChapters(chapters, searchQuery, collapsedVolumeIndexes))
+            displayTitles = withContext(Dispatchers.Default) {
+                buildChapterDisplayTitles(currentBook, chapters)
+            }
+            visibleChapters = visibleChapters(chapters, searchQuery, collapsedVolumeIndexes)
             chaptersLoaded = true
             if (selectedPage == TocPage.Chapters && visibleChapters.isNotEmpty()) {
                 if (searchQuery.isBlank()) {
@@ -197,21 +189,18 @@ fun TocComposeScreen(
 
         LaunchedEffect(book, cacheRefreshTick) {
             val currentBook = book ?: return@LaunchedEffect
-            cacheFileNames.clear()
-            cacheFileNames.addAll(withContext(Dispatchers.IO) { BookHelp.getChapterFiles(currentBook) })
+            cacheFileNames = withContext(Dispatchers.IO) { BookHelp.getChapterFiles(currentBook) }
         }
 
-        LaunchedEffect(book, visibleChapters.toList(), cacheFileNames.toList(), cacheRefreshTick) {
+        LaunchedEffect(book, visibleChapters, cacheFileNames, cacheRefreshTick) {
             val currentBook = book ?: return@LaunchedEffect
-            val visibleSnapshot = visibleChapters.toList()
-            val cacheSnapshot = cacheFileNames.toSet()
-            val cached = withContext(Dispatchers.IO) {
+            val visibleSnapshot = visibleChapters
+            val cacheSnapshot = cacheFileNames
+            chapterCacheMap = withContext(Dispatchers.IO) {
                 visibleSnapshot.associate { chapter ->
                     chapter.primaryStr() to isChapterCached(currentBook, chapter, cacheSnapshot)
                 }
             }
-            chapterCacheMap.clear()
-            chapterCacheMap.putAll(cached)
         }
 
         LaunchedEffect(book, searchQuery, selectedPage, refreshTick, contentRefreshTick) {
@@ -225,8 +214,7 @@ fun TocComposeScreen(
                     appDb.bookmarkDao.search(currentBook.name, currentBook.author, searchQuery)
                 }
             }
-            bookmarks.clear()
-            bookmarks.addAll(result)
+            bookmarks = result
             bookmarksLoaded = true
             if (bookmarks.isNotEmpty()) {
                 val pos = if (searchQuery.isBlank()) {
@@ -306,12 +294,16 @@ fun TocComposeScreen(
                                     listState = chapterListState,
                                     onToggleVolume = { chapter ->
                                         if (!chapter.isVolume || searchQuery.isNotBlank()) return@TocChapterList
-                                        if (!collapsedVolumeIndexes.add(chapter.index)) {
-                                            collapsedVolumeIndexes.remove(chapter.index)
+                                        collapsedVolumeIndexes = if (chapter.index in collapsedVolumeIndexes) {
+                                            collapsedVolumeIndexes - chapter.index
+                                        } else {
+                                            collapsedVolumeIndexes + chapter.index
                                         }
-                                        val updated = visibleChapters(chapterList, searchQuery, collapsedVolumeIndexes)
-                                        visibleChapters.clear()
-                                        visibleChapters.addAll(updated)
+                                        visibleChapters = visibleChapters(
+                                            chapterList,
+                                            searchQuery,
+                                            collapsedVolumeIndexes
+                                        )
                                     },
                                     onOpenChapter = { chapter ->
                                         book?.let { onOpenChapter(it, chapterList, chapter) }
@@ -1007,21 +999,18 @@ private data class TocChapterActionLabels(
     val log: String
 )
 
-private fun resetCollapsedVolumes(
+private fun collapsedVolumeIndexesFor(
     chapters: List<BookChapter>,
-    durChapterIndex: Int,
-    collapsedVolumeIndexes: MutableSet<Int>
-) {
-    collapsedVolumeIndexes.clear()
+    durChapterIndex: Int
+): Set<Int> {
     val currentVolumeIndex = chapters
         .filter { it.isVolume && it.index <= durChapterIndex }
         .maxByOrNull { it.index }
         ?.index
-    chapters.filter { it.isVolume }.forEach { chapter ->
-        if (chapter.index != currentVolumeIndex) {
-            collapsedVolumeIndexes.add(chapter.index)
-        }
-    }
+    return chapters
+        .asSequence()
+        .filter { it.isVolume && it.index != currentVolumeIndex }
+        .mapTo(linkedSetOf()) { it.index }
 }
 
 private fun visibleChapters(

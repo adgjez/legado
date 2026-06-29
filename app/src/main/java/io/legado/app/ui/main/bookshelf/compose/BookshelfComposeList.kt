@@ -217,7 +217,7 @@ private fun BookshelfClassicListItem(
             compact = compact,
             palette = palette,
             modifier = Modifier.weight(1f),
-            showIntro = false,
+            showIntro = true,
             showTags = false,
             introMaxLines = 1
         )
@@ -417,6 +417,19 @@ private fun BookshelfBookMeta(
         text = book.latestChapterTitle,
         palette = palette
     )
+    if (showIntro) {
+        book.getDisplayIntro()?.trim()?.takeIf { it.isNotBlank() }?.let { intro ->
+            Text(
+                text = intro,
+                color = palette.secondaryText,
+                fontSize = 12.sp,
+                fontFamily = palette.bodyFontFamily,
+                maxLines = introMaxLines,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
     if (showTags && item.tags.isNotEmpty()) {
         BookshelfTagChips(
             tags = item.tags,

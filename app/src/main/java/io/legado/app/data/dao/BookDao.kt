@@ -68,7 +68,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -80,7 +80,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -96,7 +96,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -109,7 +109,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -122,7 +122,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -135,7 +135,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -151,7 +151,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -165,7 +165,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -178,7 +178,7 @@ interface BookDao {
 
     @Query(
         """
-        SELECT bookUrl, origin, originName, name, author, customTag, coverUrl, customCoverUrl,
+        SELECT bookUrl, origin, originName, name, author, intro, customIntro, customTag, coverUrl, customCoverUrl,
         type, `group`, latestChapterTitle, latestChapterTime, lastCheckCount, totalChapterNum,
         durChapterTitle, durChapterIndex, durChapterTime, canUpdate, `order`, readConfig
         FROM books
@@ -469,6 +469,8 @@ data class BookShelfDisplay(
     val originName: String,
     val name: String,
     val author: String,
+    val intro: String?,
+    val customIntro: String?,
     val customTag: String?,
     val coverUrl: String?,
     val customCoverUrl: String?,
@@ -504,6 +506,10 @@ data class BookShelfDisplay(
 
     fun getDisplayCover(): String? {
         return if (customCoverUrl.isNullOrEmpty()) coverUrl else customCoverUrl
+    }
+
+    fun getDisplayIntro(): String? {
+        return if (customIntro.isNullOrEmpty()) intro else customIntro
     }
 
     fun getUnreadChapterNum(): Int {

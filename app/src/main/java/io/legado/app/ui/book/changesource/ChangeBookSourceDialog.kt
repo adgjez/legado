@@ -50,7 +50,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -73,24 +72,27 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
     private val viewModel: ChangeBookSourceViewModel by viewModels()
     private val waitDialog by lazy { WaitDialog(requireContext()) }
     private val adapter by lazy { ChangeBookSourceAdapter(requireContext(), viewModel, this) }
+    private var adapterDataObserver: RecyclerView.AdapterDataObserver? = null
     private val editSourceResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
             val origin = it.data?.getStringExtra("origin") ?: return@registerForActivityResult
             viewModel.startSearch(origin)
         }
-    private val searchFinishCallback: (isEmpty: Boolean) -> Unit = {
-        if (it) {
-            val searchGroup = AppConfig.searchGroup
-            if (searchGroup.isNotEmpty()) {
-                lifecycleScope.launch {
-                    context?.alert("搜索结果为空") {
-                        setMessage("${searchGroup}分组搜索结果为空,是否切换到全部分组")
-                        cancelButton()
-                        okButton {
-                            AppConfig.searchGroup = ""
+    private val searchFinishCallback: (isEmpty: Boolean) -> Unit = callback@{ isEmpty ->
+        if (!isEmpty) return@callback
+        val searchGroup = AppConfig.searchGroup
+        if (searchGroup.isNotEmpty()) {
+            val owner = viewLifecycleOwnerLiveData.value ?: return@callback
+            owner.lifecycleScope.launch {
+                context?.alert("搜索结果为空") {
+                    setMessage("${searchGroup}分组搜索结果为空,是否切换到全部分组")
+                    cancelButton()
+                    okButton {
+                        AppConfig.searchGroup = ""
+                        if (view != null) {
                             upGroupMenuName()
-                            viewModel.startSearch()
                         }
+                        viewModel.startSearch()
                     }
                 }
             }
@@ -120,6 +122,14 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
         viewModel.searchFinishCallback = null
     }
 
+    override fun onDestroyView() {
+        viewModel.searchFinishCallback = null
+        adapterDataObserver?.let { adapter.unregisterAdapterDataObserver(it) }
+        adapterDataObserver = null
+        binding.recyclerView.adapter = null
+        super.onDestroyView()
+    }
+
     private fun showTitle() {
         binding.toolBar.title = viewModel.name
         binding.toolBar.subtitle = viewModel.author
@@ -145,19 +155,19 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
     private fun initRecyclerView() {
         binding.recyclerView.addItemDecoration(VerticalDivider(requireContext()))
         binding.recyclerView.adapter = adapter
-        adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+        adapterDataObserver = object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                if (positionStart == 0) {
+                if (positionStart == 0 && view != null) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
 
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                if (toPosition == 0) {
+                if (toPosition == 0 && view != null) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
-        })
+        }.also(adapter::registerAdapterDataObserver)
     }
 
     private fun initSearchView() {
@@ -232,16 +242,17 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
             }
             binding.toolBar.menu.applyTint(requireContext())
         }
-        lifecycleScope.launch {
-            lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
-            viewModel.searchDataFlow.conflate().collect {
-                adapter.setItems(it)
-                delay(1000)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(STARTED) {
+                viewModel.searchDataFlow.conflate().collect {
+                    adapter.setItems(it)
+                    delay(1000)
+                }
             }
         }
 
-        lifecycleScope.launch {
-            repeatOnLifecycle(STARTED) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(STARTED) {
                 viewModel.changeSourceProgress
                     .drop(1)
                     .collect { (count, name) ->
@@ -258,11 +269,13 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
             }
         }
 
-        lifecycleScope.launch {
-            appDb.bookSourceDao.flowEnabledGroups().conflate().collect {
-                groups.clear()
-                groups.addAll(it)
-                upGroupMenu()
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(STARTED) {
+                appDb.bookSourceDao.flowEnabledGroups().conflate().collect {
+                    groups.clear()
+                    groups.addAll(it)
+                    upGroupMenu()
+                }
             }
         }
     }

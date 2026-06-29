@@ -77,8 +77,8 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     private val _changeSourceProgress = MutableStateFlow(0 to "")
     val changeSourceProgress = _changeSourceProgress.asStateFlow()
     private var tocMapChapterCount = 0
-    private val contentProcessor by lazy {
-        ContentProcessor.get(oldBook!!)
+    private fun contentProcessor(book: Book): ContentProcessor {
+        return oldBook?.let { ContentProcessor.get(it) } ?: ContentProcessor.get(book)
     }
     private var searchCallback: SourceCallback? = null
     private val chapterNumRegex = "^\\[(\\d+)]".toRegex()
@@ -217,7 +217,8 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
             tocMap.clear()
             bookMap.clear()
             tocMapChapterCount = 0
-            bookSourceParts.add(appDb.bookSourceDao.getBookSourcePart(origin)!!)
+            val sourcePart = appDb.bookSourceDao.getBookSourcePart(origin) ?: return@execute
+            bookSourceParts.add(sourcePart)
             searchBooks.removeIf { it.origin == origin }
             initSearchPool()
             search()
@@ -317,11 +318,15 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         book: Book,
         chapters: List<BookChapter>
     ) = coroutineScope {
+        if (chapters.isEmpty()) {
+            searchCallback?.searchSuccess(book.toSearchBook())
+            return@coroutineScope
+        }
         val chapterIndex = if (fromReadBookActivity) {
-            BookHelp.getDurChapter(oldBook!!, chapters)
+            oldBook?.let { BookHelp.getDurChapter(it, chapters) } ?: chapters.lastIndex
         } else {
             chapters.lastIndex
-        }
+        }.coerceIn(0, chapters.lastIndex)
         val bookChapter = chapters[chapterIndex]
         var title = bookChapter.title.trim()
         if (title.length > 20) {
@@ -331,7 +336,8 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         val pair = try {
             val nextChapterUrl = chapters.getOrNull(chapterIndex + 1)?.url
             var content = WebBook.getContentAwait(source, book, bookChapter, nextChapterUrl, false)
-            content = contentProcessor.getContent(oldBook!!, bookChapter, content, false).toString()
+            val replaceBook = oldBook ?: book
+            content = contentProcessor(replaceBook).getContent(replaceBook, bookChapter, content, false).toString()
             val len = content.length
             len to "[${chapterIndex + 1}] ${title}\n字数：${len}"
         } catch (t: Throwable) {
@@ -384,7 +390,8 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
             }.onStart {
                 searchStateData.postValue(true)
             }.mapParallelSafe(threadCount) {
-                val source = appDb.bookSourceDao.getBookSource(it.origin)!!
+                val source = appDb.bookSourceDao.getBookSource(it.origin)
+                    ?: return@mapParallelSafe
                 withTimeout(60000L) {
                     loadBookInfo(source, it.toBook())
                 }
@@ -457,7 +464,8 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
             val toc = tocMap[book.primaryStr()]
             if (toc != null) {
                 val source = appDb.bookSourceDao.getBookSource(book.origin)
-                return@execute Pair(toc, source!!)
+                    ?: throw NoStackTraceException("书源不存在")
+                return@execute Pair(toc, source)
             }
             val result = getToc(book).getOrThrow()
             tocMap[book.primaryStr()] = result.first

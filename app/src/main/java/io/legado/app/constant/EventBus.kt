@@ -24,6 +24,7 @@ object EventBus {
     const val AUDIO_SPEED = "audioSpeed"
     const val NOTIFY_MAIN = "notifyMain"
     const val MAIN_APPEARANCE_KIT_CHANGED = "mainAppearanceKitChanged"
+    const val MAIN_THEME_BACKGROUND_CHANGED = "mainThemeBackgroundChanged"
     const val NAVIGATION_BAR_CHANGED = "navigationBarChanged"
     const val TOP_BAR_CHANGED = "topBarChanged"
     const val WEB_SERVICE = "webService"

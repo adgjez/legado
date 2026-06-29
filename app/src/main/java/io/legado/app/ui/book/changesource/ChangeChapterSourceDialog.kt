@@ -13,6 +13,7 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle.State.STARTED
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -48,7 +49,6 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 
@@ -77,28 +77,33 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     private val searchBookAdapter by lazy {
         ChangeChapterSourceAdapter(requireContext(), viewModel, this)
     }
+    private var searchBookAdapterDataObserver: RecyclerView.AdapterDataObserver? = null
     private val tocAdapter by lazy {
         ChangeChapterTocAdapter(requireContext(), this)
     }
     private val contentSuccess: (content: String) -> Unit = {
-        binding.loadingToc.gone()
+        if (view != null) {
+            binding.loadingToc.gone()
+        }
         callBack?.replaceContent(it)
         dismissAllowingStateLoss()
     }
     private var searchBook: SearchBook? = null
-    private val searchFinishCallback: (isEmpty: Boolean) -> Unit = {
-        if (it) {
-            val searchGroup = AppConfig.searchGroup
-            if (searchGroup.isNotEmpty()) {
-                lifecycleScope.launch {
-                    context?.alert("搜索结果为空") {
-                        setMessage("${searchGroup}分组搜索结果为空,是否切换到全部分组")
-                        noButton()
-                        yesButton {
-                            AppConfig.searchGroup = ""
+    private val searchFinishCallback: (isEmpty: Boolean) -> Unit = callback@{ isEmpty ->
+        if (!isEmpty) return@callback
+        val searchGroup = AppConfig.searchGroup
+        if (searchGroup.isNotEmpty()) {
+            val owner = viewLifecycleOwnerLiveData.value ?: return@callback
+            owner.lifecycleScope.launch {
+                context?.alert("搜索结果为空") {
+                    setMessage("${searchGroup}分组搜索结果为空,是否切换到全部分组")
+                    noButton()
+                    yesButton {
+                        AppConfig.searchGroup = ""
+                        if (view != null) {
                             upGroupMenu()
-                            viewModel.startSearch()
                         }
+                        viewModel.startSearch()
                     }
                 }
             }
@@ -121,7 +126,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
         initBottomBar()
         initLiveData()
         viewModel.searchFinishCallback = searchFinishCallback
-        activity?.onBackPressedDispatcher?.addCallback(this) {
+        activity?.onBackPressedDispatcher?.addCallback(viewLifecycleOwner) {
             if (binding.clToc.isVisible) {
                 binding.clToc.gone()
                 return@addCallback
@@ -133,6 +138,17 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     override fun onDestroy() {
         super.onDestroy()
         viewModel.searchFinishCallback = null
+    }
+
+    override fun onDestroyView() {
+        viewModel.searchFinishCallback = null
+        searchBookAdapterDataObserver?.let {
+            searchBookAdapter.unregisterAdapterDataObserver(it)
+        }
+        searchBookAdapterDataObserver = null
+        binding.recyclerView.adapter = null
+        binding.recyclerViewToc.adapter = null
+        super.onDestroyView()
     }
 
     private fun showTitle() {
@@ -163,19 +179,19 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     private fun initRecyclerView() {
         binding.recyclerView.addItemDecoration(VerticalDivider(requireContext()))
         binding.recyclerView.adapter = searchBookAdapter
-        searchBookAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+        searchBookAdapterDataObserver = object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                if (positionStart == 0) {
+                if (positionStart == 0 && view != null) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
 
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                if (toPosition == 0) {
+                if (toPosition == 0 && view != null) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
-        })
+        }.also(searchBookAdapter::registerAdapterDataObserver)
         binding.recyclerViewToc.adapter = tocAdapter
     }
 
@@ -231,18 +247,21 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
             }
             binding.toolBar.menu.applyTint(requireContext())
         }
-        lifecycleScope.launch {
-            lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
-            viewModel.searchDataFlow.conflate().collect {
-                searchBookAdapter.setItems(it)
-                delay(1000)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(STARTED) {
+                viewModel.searchDataFlow.conflate().collect {
+                    searchBookAdapter.setItems(it)
+                    delay(1000)
+                }
             }
         }
-        lifecycleScope.launch {
-            appDb.bookSourceDao.flowEnabledGroups().conflate().collect {
-                groups.clear()
-                groups.addAll(it)
-                upGroupMenu()
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(STARTED) {
+                appDb.bookSourceDao.flowEnabledGroups().conflate().collect {
+                    groups.clear()
+                    groups.addAll(it)
+                    upGroupMenu()
+                }
             }
         }
     }

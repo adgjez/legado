@@ -80,6 +80,7 @@ object ThemeConfig {
         applyTheme(context)
         initNightMode()
         BookCover.upDefaultCover()
+        postEvent(EventBus.MAIN_THEME_BACKGROUND_CHANGED, AppConfig.isNightTheme)
         postEvent(EventBus.RECREATE, "")
     }
 
@@ -344,6 +345,7 @@ object ThemeConfig {
                         }.onSuccess {
                             appCtx.toastOnUi(R.string.theme_background_downloaded)
                             if (notify) {
+                                postEvent(EventBus.MAIN_THEME_BACKGROUND_CHANGED, isNightTheme)
                                 postEvent(EventBus.RECREATE, "")
                             }
                         }.onFailure {
@@ -395,6 +397,7 @@ object ThemeConfig {
             } else {
                 applyTheme(context)
                 BookCover.upDefaultCover()
+                postEvent(EventBus.MAIN_THEME_BACKGROUND_CHANGED, isNightTheme)
                 postEvent(EventBus.RECREATE, "")
             }
         } catch (e: Exception) {

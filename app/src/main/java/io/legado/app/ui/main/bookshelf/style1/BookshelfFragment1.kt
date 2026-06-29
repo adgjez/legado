@@ -472,6 +472,8 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             originName = originName,
             name = name,
             author = author,
+            intro = intro,
+            customIntro = customIntro,
             customTag = customTag,
             coverUrl = coverUrl,
             customCoverUrl = customCoverUrl,

@@ -1173,6 +1173,11 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
                 if (wasApplied) {
                     ThemePackageManager.apply(this@ThemeManageActivity, entry, switchNightMode = false)
+                    if (entry.packageInfo.isNightTheme) {
+                        appliedNightThemeOverride = entry.packageInfo.name
+                    } else {
+                        appliedDayThemeOverride = entry.packageInfo.name
+                    }
                 }
                 entry
             }.onSuccess {

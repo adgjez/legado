@@ -131,7 +131,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var enableRefresh = true
     private var onlyUpdateRead = false
     private var bookTagFilter = ""
-    private val bookshelfMargin by lazy { AppConfig.bookshelfMargin }
+    private var bookshelfMargin by mutableIntStateOf(AppConfig.bookshelfMargin)
     private var itemCount = 0
     private var totalRows = 0
     private var topOverlaySpace by mutableStateOf(0)
@@ -844,6 +844,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             }
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
+            bookshelfMargin = AppConfig.bookshelfMargin
+            binding.rvBookshelf.invalidateItemDecorations()
             if (useComposeBookshelf) {
                 composeListItemStyle = AppConfig.bookshelfListItemStyle
                 updateComposeItems(shelfDisplays)
@@ -876,6 +878,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             originName = originName,
             name = name,
             author = author,
+            intro = intro,
+            customIntro = customIntro,
             customTag = customTag,
             coverUrl = coverUrl,
             customCoverUrl = customCoverUrl,

@@ -192,6 +192,7 @@ fun LegadoMiuixActionButton(
     insidePadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 ) {
     val resolvedCornerRadius = cornerRadius ?: palette.actionRadius ?: LocalContext.current.composeActionRadius()
+    val effectiveMinHeight = minHeight.coerceAtLeast(38.dp)
     val background = when {
         primary -> palette.accent
         danger -> palette.danger.copy(alpha = 0.13f)
@@ -208,7 +209,7 @@ fun LegadoMiuixActionButton(
             modifier = modifier,
             cornerRadius = resolvedCornerRadius,
             minWidth = minWidth,
-            minHeight = minHeight,
+            minHeight = effectiveMinHeight,
             insideMargin = insidePadding,
             colors = MiuixButtonDefaults.buttonColors(
                 color = background,
@@ -221,6 +222,7 @@ fun LegadoMiuixActionButton(
                 text = text,
                 color = content,
                 fontSize = 14.sp,
+                lineHeight = 18.sp,
                 fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -230,7 +232,7 @@ fun LegadoMiuixActionButton(
     }
     Surface(
         modifier = modifier
-            .defaultMinSize(minWidth = minWidth, minHeight = minHeight)
+            .defaultMinSize(minWidth = minWidth, minHeight = effectiveMinHeight)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(resolvedCornerRadius),
         color = background,
@@ -241,7 +243,7 @@ fun LegadoMiuixActionButton(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = minHeight)
+                .heightIn(min = effectiveMinHeight)
                 .padding(insidePadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
@@ -250,6 +252,7 @@ fun LegadoMiuixActionButton(
                 text = text,
                 color = content,
                 fontSize = 14.sp,
+                lineHeight = 18.sp,
                 fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -357,6 +360,17 @@ private fun LegadoSliderTrack(
     val latestSnapValue by rememberUpdatedState(snapValue)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
     val latestOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
+    var pressed by remember { mutableStateOf(false) }
+    val thumbScale by animateFloatAsState(
+        targetValue = if (pressed && enabled) 1.08f else 1f,
+        animationSpec = tween(durationMillis = 120),
+        label = "legadoSliderThumbScale"
+    )
+    val haloAlpha by animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.16f else 0f,
+        animationSpec = tween(durationMillis = 120),
+        label = "legadoSliderHaloAlpha"
+    )
 
     BoxWithConstraints(
         modifier = modifier
@@ -368,6 +382,7 @@ private fun LegadoSliderTrack(
                 }
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
                     val thumbRadius = with(density) { thumbSize.toPx() / 2f }
                     val trackStart = thumbRadius.coerceAtMost(size.width / 2f)
                     val trackEnd = (size.width - thumbRadius).coerceAtLeast(trackStart)
@@ -401,35 +416,39 @@ private fun LegadoSliderTrack(
                         }
                     }
 
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) break
-                        val delta = change.positionChange()
-                        totalX += delta.x
-                        totalY += delta.y
-                        if (!dragging && !cancelledByVerticalScroll) {
-                            when {
-                                abs(totalY) > touchSlop && abs(totalY) > abs(totalX) -> {
-                                    cancelledByVerticalScroll = true
-                                }
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            val delta = change.positionChange()
+                            totalX += delta.x
+                            totalY += delta.y
+                            if (!dragging && !cancelledByVerticalScroll) {
+                                when {
+                                    abs(totalY) > touchSlop && abs(totalY) > abs(totalX) -> {
+                                        cancelledByVerticalScroll = true
+                                    }
 
-                                abs(totalX) > touchSlop -> {
-                                    dragging = true
+                                    abs(totalX) > touchSlop -> {
+                                        dragging = true
+                                    }
                                 }
                             }
+                            if (dragging) {
+                                applyPosition(change.position.x)
+                                change.consume()
+                            }
                         }
-                        if (dragging) {
-                            applyPosition(change.position.x)
-                            change.consume()
-                        }
-                    }
 
-                    if (!dragging && !cancelledByVerticalScroll) {
-                        applyPosition(down.position.x)
-                    }
-                    if (didChange) {
-                        latestOnValueChangeFinished?.invoke()
+                        if (!dragging && !cancelledByVerticalScroll) {
+                            applyPosition(down.position.x)
+                        }
+                        if (didChange) {
+                            latestOnValueChangeFinished?.invoke()
+                        }
+                    } finally {
+                        pressed = false
                     }
                 }
             }
@@ -477,7 +496,12 @@ private fun LegadoSliderTrack(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .offset { IntOffset(thumbOffsetPx, 0) }
-                .size(thumbSize),
+                .size(thumbSize)
+                .graphicsLayer {
+                    scaleX = thumbScale
+                    scaleY = thumbScale
+                    shadowElevation = if (pressed && enabled) 5.dp.toPx() else 3.dp.toPx()
+                },
             shape = CircleShape,
             color = thumbColor,
             contentColor = palette.primaryText,
@@ -487,6 +511,10 @@ private fun LegadoSliderTrack(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(
+                        color = if (enabled) palette.accent.copy(alpha = haloAlpha) else Color.Transparent,
+                        shape = CircleShape
+                    )
                     .border(
                         width = 1.dp,
                         color = if (enabled) palette.accent.copy(alpha = 0.36f) else Color.Transparent,

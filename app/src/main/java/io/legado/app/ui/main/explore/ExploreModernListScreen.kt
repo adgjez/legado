@@ -434,7 +434,7 @@ private fun ExploreBookTextContent(
                 color = palette.secondaryText,
                 fontSize = 12.sp,
                 fontFamily = palette.bodyFontFamily,
-                maxLines = if (rounded) 2 else 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 4.dp)
             )

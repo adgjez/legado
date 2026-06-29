@@ -175,7 +175,7 @@ private fun ComposeFastScroller(
 
     Box(
         modifier = modifier
-            .width(64.dp)
+            .width(48.dp)
             .fillMaxHeight()
             .padding(top = 8.dp, end = 10.dp, bottom = 8.dp)
             .onSizeChanged { trackHeight = it.height }
@@ -204,7 +204,7 @@ private fun ComposeFastScroller(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .width(56.dp)
+                    .width(if (dragging) 40.dp else 32.dp)
                     .fillMaxHeight()
                     .pointerInput(totalItems, visibleItems, trackHeight, maxFirstIndex) {
                         detectDragGestures(
