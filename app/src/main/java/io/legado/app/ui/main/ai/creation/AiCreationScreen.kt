@@ -138,6 +138,8 @@ private class VideoGenState {
     var errorMsg by mutableStateOf<String?>(null)
     var progressText by mutableStateOf("")
     var videoProgress by mutableFloatStateOf(0f)
+    var cooldownUntil by mutableStateOf(0L)
+    var cooldownSeconds by mutableIntStateOf(0)
 }
 
 private val imageState = ImageGenState()
@@ -719,6 +721,17 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
 
     val context = LocalContext.current
 
+    // 冷却计时器：每秒更新倒计时
+    LaunchedEffect(videoState.cooldownUntil) {
+        while (videoState.cooldownUntil > 0) {
+            val remaining = ((videoState.cooldownUntil - System.currentTimeMillis()) / 1000).toInt()
+            if (remaining <= 0) break
+            videoState.cooldownSeconds = remaining
+            kotlinx.coroutines.delay(1000)
+        }
+        videoState.cooldownSeconds = 0
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri -> imageUri = uri }
@@ -937,11 +950,13 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                         videoState.progressText = ""
                     } finally {
                         videoState.generating = false
+                        videoState.cooldownUntil = System.currentTimeMillis() + 65_000
                     }
                 }
             },
             enabled = prompt.isNotBlank() && !videoState.generating &&
-                (mode == VideoMode.TEXT_TO_VIDEO || imageUri != null),
+                (mode == VideoMode.TEXT_TO_VIDEO || imageUri != null) &&
+                System.currentTimeMillis() > videoState.cooldownUntil,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
@@ -957,7 +972,11 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 Spacer(Modifier.width(8.dp))
             }
             Text(
-                if (videoState.generating) "生成中..." else "生成视频",
+                when {
+                    videoState.generating -> "生成中..."
+                    videoState.cooldownSeconds > 0 -> "冷却中 (${videoState.cooldownSeconds}s)"
+                    else -> "生成视频"
+                },
                 color = Color.White,
                 fontSize = 15.sp
             )
