@@ -73,6 +73,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -114,8 +116,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import io.legado.app.ui.widget.compose.LegadoMiuixPalette
-import io.legado.app.ui.widget.compose.LegadoMiuixSlider
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
@@ -4695,18 +4695,8 @@ private fun MinimalProgress(
     colors: PlayerColors,
     onProgressSeek: (Float) -> Unit
 ) {
+    val actionShape = LocalContext.current.composeActionShape()
     var draggingProgress by remember(state.chapterKey) { mutableStateOf<Float?>(null) }
-    val sliderPalette = remember(colors) {
-        LegadoMiuixPalette(
-            accent = colors.accent,
-            surface = colors.panelStrong,
-            surfaceVariant = colors.panel,
-            primaryText = colors.primaryText,
-            secondaryText = colors.subtleText,
-            danger = colors.accent,
-            onAccent = colors.accentText
-        )
-    }
     fun snapProgress(value: Float): Float {
         val maxIndex = state.paragraphCount - 1
         if (maxIndex <= 0) return 0f
@@ -4719,7 +4709,7 @@ private fun MinimalProgress(
             .fillMaxWidth()
             .height(32.dp)
     ) {
-        LegadoMiuixSlider(
+        Slider(
             value = progress.coerceIn(0f, 1f),
             onValueChange = { draggingProgress = snapProgress(it) },
             onValueChangeFinished = {
@@ -4727,14 +4717,18 @@ private fun MinimalProgress(
                 draggingProgress = null
             },
             enabled = state.paragraphCount > 1,
-            valueRange = 0f..1f,
-            palette = sliderPalette,
-            trackHeight = 5.dp,
-            thumbSize = 17.dp,
-            minHeight = 28.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(28.dp)
+                .clip(actionShape),
+            colors = SliderDefaults.colors(
+                thumbColor = colors.primaryText,
+                activeTrackColor = colors.primaryText,
+                inactiveTrackColor = colors.panel,
+                disabledThumbColor = colors.subtleText,
+                disabledActiveTrackColor = colors.panel,
+                disabledInactiveTrackColor = colors.panel
+            )
         )
         if (false) {
         Row(
