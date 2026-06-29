@@ -911,7 +911,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                             } else {
                                 val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
-                                val dataUri = compressImageToBase64(context, uri, maxDim = 512)
+                                val dataUri = compressImageToBase64(context, uri)
                                 AiCreationService.imageToVideo(
                                     prompt,
                                     dataUri,
