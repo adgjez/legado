@@ -292,6 +292,9 @@ dependencies {
     //Glide svg plugin
     implementation(libs.glide.svg)
 
+    //Coil
+    implementation(libs.coil.compose)
+
     //webServer
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
