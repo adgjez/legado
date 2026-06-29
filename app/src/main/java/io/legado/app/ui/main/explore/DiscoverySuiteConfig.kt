@@ -81,9 +81,8 @@ object DiscoverySuiteStore {
             return DiscoverySuiteConfig()
         }
         return runCatching {
-            GSON.fromJson(raw, DiscoverySuiteConfig::class.java)
+            GSON.fromJson(raw, DiscoverySuiteConfig::class.java)?.sanitize()
         }.getOrNull()
-            ?.sanitize()
             ?: DiscoverySuiteConfig()
     }
 
@@ -133,7 +132,7 @@ object DiscoverySuiteStore {
     }
 
     private fun DiscoverySuiteConfig.sanitize(): DiscoverySuiteConfig {
-        val suites = suites
+        val suites = suites.orEmpty()
             .asSequence()
             .filter { it.id.isNotBlank() }
             .distinctBy { it.id }
@@ -146,7 +145,7 @@ object DiscoverySuiteStore {
                     alias = suite.alias.cleanName(),
                     opacityMultiplier = suite.opacityMultiplier.coerceIn(1f, 4f),
                     order = index,
-                    widgets = suite.widgets
+                    widgets = suite.widgets.orEmpty()
                         .asSequence()
                         .filter { it.id.isNotBlank() }
                         .distinctBy { it.id }
@@ -159,9 +158,9 @@ object DiscoverySuiteStore {
                                 type = cleanType,
                                 title = widget.title.cleanTitle()
                                     .ifBlank { "Books ${widgetIndex + 1}" },
-                                targets = widget.targets.cleanTargets(),
-                                sourceUrls = widget.sourceUrls.cleanUrls(),
-                                tagUrls = widget.tagUrls.cleanUrls(),
+                                targets = widget.targets.orEmpty().cleanTargets(),
+                                sourceUrls = widget.sourceUrls.orEmpty().cleanUrls(),
+                                tagUrls = widget.tagUrls.orEmpty().cleanUrls(),
                                 displayLimit = when (cleanType) {
                                     DiscoverySuiteWidgetType.TagBar.value -> widget.displayLimit.coerceIn(1, 30)
                                     DiscoverySuiteWidgetType.RankButtons.value -> widget.displayLimit.coerceIn(3, 9)

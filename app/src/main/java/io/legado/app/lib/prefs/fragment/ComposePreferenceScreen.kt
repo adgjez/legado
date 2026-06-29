@@ -30,8 +30,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -39,7 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,10 +66,11 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
+import io.legado.app.ui.widget.compose.AppThemedStepperSlider
+import io.legado.app.ui.widget.compose.LegadoMiuixPalette
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
-import kotlin.math.roundToInt
 
 private val PanelHorizontalPadding = 12.dp
 
@@ -414,12 +413,25 @@ private fun SeekBarPreferenceRow(
 ) {
     val enabled = preference.isEnabled
     var sliderValue by remember(preference.key, preference.value) {
-        mutableFloatStateOf(preference.value.toFloat())
+        mutableIntStateOf(preference.value.coerceIn(preference.minValue, preference.maxValue))
+    }
+    val sliderPalette = remember(colors) {
+        LegadoMiuixPalette(
+            accent = colors.accent,
+            surface = Color(colors.row),
+            surfaceVariant = colors.secondaryText.copy(alpha = 0.12f),
+            primaryText = colors.primaryText,
+            secondaryText = colors.secondaryText,
+            danger = colors.danger,
+            onAccent = colors.onAccent
+        )
     }
     fun commitValue(value: Int) {
         val nextValue = value.coerceIn(preference.minValue, preference.maxValue)
-        sliderValue = nextValue.toFloat()
-        onSeekChange(preference, nextValue)
+        if (sliderValue != nextValue) {
+            sliderValue = nextValue
+            onSeekChange(preference, nextValue)
+        }
     }
     Column(
         modifier = modifier
@@ -444,78 +456,22 @@ private fun SeekBarPreferenceRow(
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = sliderValue.toInt().toString(),
+                text = sliderValue.toString(),
                 color = if (enabled) colors.accent else colors.disabledText,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
         }
-        Slider(
+        Spacer(modifier = Modifier.height(8.dp))
+        AppThemedStepperSlider(
             value = sliderValue,
+            range = preference.minValue..preference.maxValue,
             enabled = enabled,
-            valueRange = preference.minValue.toFloat()..preference.maxValue.toFloat(),
-            onValueChange = {
-                val nextValue = it.roundToInt().coerceIn(preference.minValue, preference.maxValue)
-                if (sliderValue.toInt() != nextValue) {
-                    commitValue(nextValue)
-                } else {
-                    sliderValue = it
-                }
-            },
-            onValueChangeFinished = {
-                commitValue(sliderValue.toInt())
-            },
-            colors = SliderDefaults.colors(
-                thumbColor = colors.accent,
-                activeTrackColor = colors.accent,
-                inactiveTrackColor = colors.secondaryText.copy(alpha = 0.22f),
-                disabledThumbColor = colors.disabledText,
-                disabledActiveTrackColor = colors.disabledText.copy(alpha = 0.32f),
-                disabledInactiveTrackColor = colors.disabledText.copy(alpha = 0.18f)
-            ),
+            onValueChange = { commitValue(it) },
+            palette = sliderPalette,
             modifier = Modifier.fillMaxWidth()
         )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            StepControlButton(
-                text = "-",
-                enabled = enabled && sliderValue.toInt() > preference.minValue,
-                colors = colors
-            ) {
-                commitValue(sliderValue.toInt() - 1)
-            }
-            StepControlButton(
-                text = "+",
-                enabled = enabled && sliderValue.toInt() < preference.maxValue,
-                colors = colors
-            ) {
-                commitValue(sliderValue.toInt() + 1)
-            }
-        }
     }
-}
-
-@Composable
-private fun StepControlButton(
-    text: String,
-    enabled: Boolean,
-    colors: AppSettingPalette,
-    onClick: () -> Unit
-) {
-    val actionRadius = LocalContext.current.composeActionRadius()
-    Text(
-        text = text,
-        color = if (enabled) colors.accent else colors.disabledText,
-        fontSize = 16.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .clip(RoundedCornerShape(actionRadius))
-            .background(colors.accent.copy(alpha = if (enabled) 0.10f else 0.04f))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 4.dp)
-    )
 }
 
 private fun PreferenceGroup.toComposeSections(): List<ComposePreferenceSection> {

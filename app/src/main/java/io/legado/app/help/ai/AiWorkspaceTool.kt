@@ -680,7 +680,7 @@ object AiWorkspaceTool {
         val timeoutMs = args.optLong("timeoutMs", 45_000L).coerceIn(10_000L, 90_000L)
         val logs = arrayListOf<String>()
         val finished = CompletableDeferred<Int>()
-        Debug.callback = object : Debug.Callback {
+        val callback = object : Debug.Callback {
             override fun printLog(state: Int, msg: String) {
                 logs += msg
                 if ((state == -1 || state == 1000) && !finished.isCompleted) {
@@ -688,9 +688,15 @@ object AiWorkspaceTool {
                 }
             }
         }
-        Debug.startDebug(this, source, key)
-        val state = withTimeoutOrNull(timeoutMs) { finished.await() }
-        Debug.cancelDebug(true)
+        val debugScope = this
+        val state = Debug.withDebugSource(source.bookSourceUrl, callback) {
+            try {
+                Debug.startDebug(debugScope, source, key)
+                withTimeoutOrNull(timeoutMs) { finished.await() }
+            } finally {
+                Debug.cancelDebug()
+            }
+        }
         ok()
             .put("sessionId", sessionId)
             .put("path", args.optString("path"))
@@ -1338,7 +1344,7 @@ object AiWorkspaceTool {
             .put("path", stringProp("Relative directory path. Defaults to workspace root."))
             .put("pattern", stringProp("Regex pattern to search in file contents."))
             .put("flags", stringProp("Regex flags: i=ignore case, m=multiline, s=dot matches newline, x=comments."))
-            .put("pathPattern", stringProp("Optional regex filter for relative file paths, e.g. \\\\.kt$ or book_sources/.*\\\\.json$.")) 
+            .put("pathPattern", stringProp("Optional regex filter for relative file paths, e.g. \\\\.kt$ or book_sources/.*\\\\.json$."))
             .put("contextLines", JSONObject().put("type", "integer").put("description", "Context lines around each match. Defaults to 1."))
             .put("maxFiles", JSONObject().put("type", "integer").put("description", "Maximum files to scan. Defaults to 200."))
             .put("maxMatches", JSONObject().put("type", "integer").put("description", "Maximum matches to return. Defaults to 100."))

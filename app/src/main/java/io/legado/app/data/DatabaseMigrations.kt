@@ -55,13 +55,6 @@ object DatabaseMigrations {
     }
 
     private fun repairAiAgentAndMemoryTables(db: SupportSQLiteDatabase) {
-        db.execSQL("DROP TABLE IF EXISTS `ai_memory_fragments_fts`")
-        db.execSQL("DROP TABLE IF EXISTS `ai_memory_items_fts`")
-        db.execSQL("DROP TABLE IF EXISTS `ai_memory_fragments`")
-        db.execSQL("DROP TABLE IF EXISTS `ai_memory_items`")
-        db.execSQL("DROP TABLE IF EXISTS `ai_agent_traces`")
-        db.execSQL("DROP TABLE IF EXISTS `ai_agent_jobs`")
-        db.execSQL("DROP TABLE IF EXISTS `ai_agent_sessions`")
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `ai_agent_sessions` (
@@ -81,6 +74,7 @@ object DatabaseMigrations {
             )
             """.trimIndent()
         )
+        ensureColumns(db, "ai_agent_sessions", aiAgentSessionColumns)
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_scope_updatedAt` ON `ai_agent_sessions` (`scope`, `updatedAt`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_status_updatedAt` ON `ai_agent_sessions` (`status`, `updatedAt`)")
         db.execSQL(
@@ -104,6 +98,7 @@ object DatabaseMigrations {
             )
             """.trimIndent()
         )
+        ensureColumns(db, "ai_agent_jobs", aiAgentJobColumns)
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_sessionId_createdAt` ON `ai_agent_jobs` (`sessionId`, `createdAt`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_status_updatedAt` ON `ai_agent_jobs` (`status`, `updatedAt`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_type_updatedAt` ON `ai_agent_jobs` (`type`, `updatedAt`)")
@@ -123,6 +118,7 @@ object DatabaseMigrations {
             )
             """.trimIndent()
         )
+        ensureColumns(db, "ai_agent_traces", aiAgentTraceColumns)
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_jobId_round_createdAt` ON `ai_agent_traces` (`jobId`, `round`, `createdAt`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_sessionId_createdAt` ON `ai_agent_traces` (`sessionId`, `createdAt`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_eventType_createdAt` ON `ai_agent_traces` (`eventType`, `createdAt`)")
@@ -148,6 +144,14 @@ object DatabaseMigrations {
                 `lastUsedAt` INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(`memoryId`)
             )
+            """.trimIndent()
+        )
+        ensureColumns(db, "ai_memory_items", aiMemoryItemColumns)
+        db.execSQL(
+            """
+            UPDATE `ai_memory_items`
+            SET `fingerprint` = 'legacy-memory-' || rowid
+            WHERE `fingerprint` = ''
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_scope_updatedAt` ON `ai_memory_items` (`scope`, `updatedAt`)")
@@ -178,10 +182,20 @@ object DatabaseMigrations {
             )
             """.trimIndent()
         )
+        ensureColumns(db, "ai_memory_fragments", aiMemoryFragmentColumns)
+        db.execSQL(
+            """
+            UPDATE `ai_memory_fragments`
+            SET `contentHash` = 'legacy-fragment-' || rowid
+            WHERE `contentHash` = ''
+            """.trimIndent()
+        )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_scope_updatedAt` ON `ai_memory_fragments` (`scope`, `updatedAt`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_bookKey_chapterIndex` ON `ai_memory_fragments` (`bookKey`, `chapterIndex`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_sessionId_updatedAt` ON `ai_memory_fragments` (`sessionId`, `updatedAt`)")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_fragments_contentHash` ON `ai_memory_fragments` (`contentHash`)")
+        db.execSQL("DROP TABLE IF EXISTS `ai_memory_items_fts`")
+        db.execSQL("DROP TABLE IF EXISTS `ai_memory_fragments_fts`")
         db.execSQL(
             """
             CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_items_fts`
@@ -194,7 +208,117 @@ object DatabaseMigrations {
             USING FTS4(`fragmentId` TEXT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `chapterTitle` TEXT NOT NULL)
             """.trimIndent()
         )
+        db.execSQL(
+            """
+            INSERT INTO `ai_memory_items_fts` (`memoryId`, `subject`, `predicate`, `objectValue`, `content`)
+            SELECT `memoryId`, `subject`, `predicate`, `objectValue`, `content`
+            FROM `ai_memory_items`
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            INSERT INTO `ai_memory_fragments_fts` (`fragmentId`, `title`, `content`, `chapterTitle`)
+            SELECT `fragmentId`, `title`, `content`, `chapterTitle`
+            FROM `ai_memory_fragments`
+            """.trimIndent()
+        )
     }
+
+    private fun ensureColumns(
+        db: SupportSQLiteDatabase,
+        tableName: String,
+        columns: List<Pair<String, String>>
+    ) {
+        val existingColumns = columnNames(db, tableName)
+        columns.forEach { (name, definition) ->
+            if (name !in existingColumns) {
+                db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$name` $definition")
+            }
+        }
+    }
+
+    private val aiAgentSessionColumns = listOf(
+        "sessionId" to "TEXT NOT NULL DEFAULT ''",
+        "scope" to "TEXT NOT NULL DEFAULT ''",
+        "status" to "TEXT NOT NULL DEFAULT ''",
+        "currentGoal" to "TEXT NOT NULL DEFAULT ''",
+        "currentTask" to "TEXT NOT NULL DEFAULT ''",
+        "currentStep" to "TEXT NOT NULL DEFAULT ''",
+        "contextJson" to "TEXT NOT NULL DEFAULT ''",
+        "pendingConfirmationsJson" to "TEXT NOT NULL DEFAULT ''",
+        "retryStateJson" to "TEXT NOT NULL DEFAULT ''",
+        "lastError" to "TEXT NOT NULL DEFAULT ''",
+        "createdAt" to "INTEGER NOT NULL DEFAULT 0",
+        "updatedAt" to "INTEGER NOT NULL DEFAULT 0"
+    )
+
+    private val aiAgentJobColumns = listOf(
+        "jobId" to "TEXT NOT NULL DEFAULT ''",
+        "sessionId" to "TEXT NOT NULL DEFAULT ''",
+        "type" to "TEXT NOT NULL DEFAULT ''",
+        "status" to "TEXT NOT NULL DEFAULT ''",
+        "inputJson" to "TEXT NOT NULL DEFAULT ''",
+        "checkpointJson" to "TEXT NOT NULL DEFAULT ''",
+        "outputJson" to "TEXT NOT NULL DEFAULT ''",
+        "error" to "TEXT NOT NULL DEFAULT ''",
+        "retryCount" to "INTEGER NOT NULL DEFAULT 0",
+        "maxRetry" to "INTEGER NOT NULL DEFAULT 2",
+        "nextRunAt" to "INTEGER NOT NULL DEFAULT 0",
+        "leaseUntil" to "INTEGER NOT NULL DEFAULT 0",
+        "createdAt" to "INTEGER NOT NULL DEFAULT 0",
+        "updatedAt" to "INTEGER NOT NULL DEFAULT 0"
+    )
+
+    private val aiAgentTraceColumns = listOf(
+        "traceId" to "TEXT NOT NULL DEFAULT ''",
+        "sessionId" to "TEXT NOT NULL DEFAULT ''",
+        "jobId" to "TEXT NOT NULL DEFAULT ''",
+        "round" to "INTEGER NOT NULL DEFAULT 0",
+        "eventType" to "TEXT NOT NULL DEFAULT ''",
+        "payloadJson" to "TEXT NOT NULL DEFAULT ''",
+        "usageJson" to "TEXT NOT NULL DEFAULT ''",
+        "success" to "INTEGER NOT NULL DEFAULT 1",
+        "createdAt" to "INTEGER NOT NULL DEFAULT 0"
+    )
+
+    private val aiMemoryItemColumns = listOf(
+        "memoryId" to "TEXT NOT NULL DEFAULT ''",
+        "scope" to "TEXT NOT NULL DEFAULT ''",
+        "bookKey" to "TEXT NOT NULL DEFAULT ''",
+        "sessionId" to "TEXT NOT NULL DEFAULT ''",
+        "type" to "TEXT NOT NULL DEFAULT ''",
+        "subject" to "TEXT NOT NULL DEFAULT ''",
+        "predicate" to "TEXT NOT NULL DEFAULT ''",
+        "objectValue" to "TEXT NOT NULL DEFAULT ''",
+        "content" to "TEXT NOT NULL DEFAULT ''",
+        "confidence" to "INTEGER NOT NULL DEFAULT 50",
+        "importance" to "INTEGER NOT NULL DEFAULT 50",
+        "sourceIds" to "TEXT NOT NULL DEFAULT ''",
+        "sourceChapterIndex" to "INTEGER NOT NULL DEFAULT -1",
+        "fingerprint" to "TEXT NOT NULL DEFAULT ''",
+        "createdAt" to "INTEGER NOT NULL DEFAULT 0",
+        "updatedAt" to "INTEGER NOT NULL DEFAULT 0",
+        "lastUsedAt" to "INTEGER NOT NULL DEFAULT 0"
+    )
+
+    private val aiMemoryFragmentColumns = listOf(
+        "fragmentId" to "TEXT NOT NULL DEFAULT ''",
+        "scope" to "TEXT NOT NULL DEFAULT ''",
+        "bookKey" to "TEXT NOT NULL DEFAULT ''",
+        "sessionId" to "TEXT NOT NULL DEFAULT ''",
+        "sourceType" to "TEXT NOT NULL DEFAULT ''",
+        "title" to "TEXT NOT NULL DEFAULT ''",
+        "content" to "TEXT NOT NULL DEFAULT ''",
+        "chapterIndex" to "INTEGER NOT NULL DEFAULT -1",
+        "chapterTitle" to "TEXT NOT NULL DEFAULT ''",
+        "paragraphStart" to "INTEGER NOT NULL DEFAULT -1",
+        "paragraphEnd" to "INTEGER NOT NULL DEFAULT -1",
+        "contentHash" to "TEXT NOT NULL DEFAULT ''",
+        "importance" to "INTEGER NOT NULL DEFAULT 50",
+        "createdAt" to "INTEGER NOT NULL DEFAULT 0",
+        "updatedAt" to "INTEGER NOT NULL DEFAULT 0",
+        "lastUsedAt" to "INTEGER NOT NULL DEFAULT 0"
+    )
 
     private val migration_105_106 = object : Migration(105, 106) {
         override fun migrate(db: SupportSQLiteDatabase) {

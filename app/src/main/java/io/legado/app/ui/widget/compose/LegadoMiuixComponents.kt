@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -31,8 +32,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -48,7 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -82,8 +83,6 @@ import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 import top.yukonga.miuix.kmp.basic.CardDefaults as MiuixCardDefaults
-import top.yukonga.miuix.kmp.basic.Slider as MiuixSlider
-import top.yukonga.miuix.kmp.basic.SliderDefaults as MiuixSliderDefaults
 import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
 import top.yukonga.miuix.kmp.basic.SwitchDefaults as MiuixSwitchDefaults
 
@@ -313,31 +312,12 @@ fun LegadoMiuixSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
     enabled: Boolean = true,
+    trackHeight: Dp = 8.dp,
+    thumbSize: Dp = 22.dp,
+    minHeight: Dp = 36.dp,
     onValueChangeFinished: (() -> Unit)? = null
 ) {
-    if (canUseRealMiuix()) {
-        MiuixSlider(
-            value = value,
-            onValueChange = onValueChange,
-            onValueChangeFinished = onValueChangeFinished,
-            modifier = modifier.fillMaxWidth(),
-            valueRange = valueRange,
-            steps = steps,
-            enabled = enabled,
-            colors = MiuixSliderDefaults.sliderColors(
-                foregroundColor = palette.accent,
-                disabledForegroundColor = palette.accent.copy(alpha = 0.28f),
-                backgroundColor = palette.surfaceVariant,
-                disabledBackgroundColor = palette.surfaceVariant.copy(alpha = 0.44f),
-                thumbColor = palette.onAccent,
-                disabledThumbColor = palette.onAccent.copy(alpha = 0.42f),
-                keyPointColor = palette.secondaryText.copy(alpha = 0.32f),
-                keyPointForegroundColor = palette.onAccent.copy(alpha = 0.68f)
-            )
-        )
-        return
-    }
-    Slider(
+    LegadoSliderTrack(
         value = value,
         onValueChange = onValueChange,
         onValueChangeFinished = onValueChangeFinished,
@@ -345,19 +325,176 @@ fun LegadoMiuixSlider(
         valueRange = valueRange,
         steps = steps,
         enabled = enabled,
-        colors = SliderDefaults.colors(
-            activeTrackColor = palette.accent,
-            inactiveTrackColor = palette.surfaceVariant,
-            thumbColor = palette.onAccent,
-            activeTickColor = palette.onAccent.copy(alpha = 0.72f),
-            inactiveTickColor = palette.secondaryText.copy(alpha = 0.32f),
-            disabledActiveTrackColor = palette.accent.copy(alpha = 0.28f),
-            disabledInactiveTrackColor = palette.surfaceVariant.copy(alpha = 0.44f),
-            disabledThumbColor = palette.onAccent.copy(alpha = 0.42f),
-            disabledActiveTickColor = palette.onAccent.copy(alpha = 0.34f),
-            disabledInactiveTickColor = palette.secondaryText.copy(alpha = 0.18f)
-        )
+        palette = palette,
+        trackHeight = trackHeight,
+        thumbSize = thumbSize,
+        minHeight = minHeight
     )
+}
+
+@Composable
+private fun LegadoSliderTrack(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    palette: LegadoMiuixPalette,
+    modifier: Modifier = Modifier,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int = 0,
+    enabled: Boolean = true,
+    trackHeight: Dp = 8.dp,
+    thumbSize: Dp = 22.dp,
+    minHeight: Dp = 36.dp,
+    snapValue: (Float) -> Float = { it },
+    onValueChangeFinished: (() -> Unit)? = null
+) {
+    val density = LocalDensity.current
+    val start = valueRange.start
+    val end = valueRange.endInclusive
+    val rangeSize = (end - start).takeIf { it > 0f } ?: 1f
+    val clampedValue = snapValue(value).coerceIn(start, end)
+    val fraction = ((clampedValue - start) / rangeSize).coerceIn(0f, 1f)
+    val latestValue by rememberUpdatedState(clampedValue)
+    val latestSnapValue by rememberUpdatedState(snapValue)
+    val latestOnValueChange by rememberUpdatedState(onValueChange)
+    val latestOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(minHeight)
+            .pointerInput(valueRange, steps, enabled) {
+                if (!enabled || end <= start) {
+                    return@pointerInput
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val thumbRadius = with(density) { thumbSize.toPx() / 2f }
+                    val trackStart = thumbRadius.coerceAtMost(size.width / 2f)
+                    val trackEnd = (size.width - thumbRadius).coerceAtLeast(trackStart)
+                    val trackWidth = (trackEnd - trackStart).coerceAtLeast(1f)
+                    val touchSlop = viewConfiguration.touchSlop
+                    var didChange = false
+                    var dragging = false
+                    var cancelledByVerticalScroll = false
+                    var totalX = 0f
+                    var totalY = 0f
+                    var lastValue = latestValue
+
+                    fun valueForPosition(x: Float): Float {
+                        val rawFraction = ((x.coerceIn(trackStart, trackEnd) - trackStart) / trackWidth)
+                            .coerceIn(0f, 1f)
+                        val snappedFraction = if (steps > 0) {
+                            val intervals = (steps + 1).coerceAtLeast(1)
+                            (rawFraction * intervals).roundToInt() / intervals.toFloat()
+                        } else {
+                            rawFraction
+                        }
+                        return latestSnapValue(start + snappedFraction * rangeSize).coerceIn(start, end)
+                    }
+
+                    fun applyPosition(x: Float) {
+                        val next = valueForPosition(x)
+                        if (next != lastValue) {
+                            lastValue = next
+                            didChange = true
+                            latestOnValueChange(next)
+                        }
+                    }
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
+                        val delta = change.positionChange()
+                        totalX += delta.x
+                        totalY += delta.y
+                        if (!dragging && !cancelledByVerticalScroll) {
+                            when {
+                                abs(totalY) > touchSlop && abs(totalY) > abs(totalX) -> {
+                                    cancelledByVerticalScroll = true
+                                }
+
+                                abs(totalX) > touchSlop -> {
+                                    dragging = true
+                                }
+                            }
+                        }
+                        if (dragging) {
+                            applyPosition(change.position.x)
+                            change.consume()
+                        }
+                    }
+
+                    if (!dragging && !cancelledByVerticalScroll) {
+                        applyPosition(down.position.x)
+                    }
+                    if (didChange) {
+                        latestOnValueChangeFinished?.invoke()
+                    }
+                }
+            }
+    ) {
+        val widthPx = with(density) { maxWidth.toPx() }
+        val thumbSizePx = with(density) { thumbSize.toPx() }
+        val thumbRadiusPx = thumbSizePx / 2f
+        val trackStartPx = thumbRadiusPx.coerceAtMost(widthPx / 2f)
+        val trackEndPx = (widthPx - thumbRadiusPx).coerceAtLeast(trackStartPx)
+        val trackWidthPx = (trackEndPx - trackStartPx).coerceAtLeast(1f)
+        val thumbOffsetPx = (trackStartPx + trackWidthPx * fraction - thumbRadiusPx).roundToInt()
+        val activeColor = if (enabled) palette.accent else palette.accent.copy(alpha = 0.28f)
+        val inactiveColor = if (enabled) {
+            palette.secondaryText.copy(alpha = 0.18f)
+        } else {
+            palette.secondaryText.copy(alpha = 0.10f)
+        }
+        val thumbColor = when {
+            !enabled -> palette.secondaryText.copy(alpha = 0.44f)
+            else -> palette.surface
+        }
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val centerY = size.height / 2f
+            val strokeWidth = with(density) { trackHeight.toPx() }
+            val startOffset = Offset(trackStartPx, centerY)
+            val endOffset = Offset(trackEndPx, centerY)
+            val activeEnd = Offset(trackStartPx + trackWidthPx * fraction, centerY)
+            drawLine(
+                color = inactiveColor,
+                start = startOffset,
+                end = endOffset,
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = activeColor,
+                start = startOffset,
+                end = activeEnd,
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+            )
+        }
+        Surface(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset { IntOffset(thumbOffsetPx, 0) }
+                .size(thumbSize),
+            shape = CircleShape,
+            color = thumbColor,
+            contentColor = palette.primaryText,
+            tonalElevation = 0.dp,
+            shadowElevation = if (enabled) 3.dp else 0.dp
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(
+                        width = 1.dp,
+                        color = if (enabled) palette.accent.copy(alpha = 0.36f) else Color.Transparent,
+                        shape = CircleShape
+                    )
+            )
+        }
+    }
 }
 
 @Composable
@@ -374,162 +511,71 @@ fun AppThemedStepperSlider(
     endpointWidth: Dp = 30.dp,
     onValueChangeFinished: (() -> Unit)? = null
 ) {
-    val density = LocalDensity.current
     val safeStep = step.coerceAtLeast(1)
     val clampedValue = value.coerceIn(range)
-    val rangeSize = (range.last - range.first).coerceAtLeast(1)
-    val fraction = ((clampedValue - range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
-    val latestValue by rememberUpdatedState(clampedValue)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
     val latestOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
-    val endpointWidthPx = with(density) { endpointWidth.toPx() }
+    val sliderRange = range.first.toFloat()..range.last.toFloat()
 
-    BoxWithConstraints(
+    fun steppedValue(rawValue: Float): Int {
+        if (rawValue <= range.first) return range.first
+        if (rawValue >= range.last) return range.last
+        val stepped = range.first + ((rawValue - range.first) / safeStep).roundToInt() * safeStep
+        return stepped.coerceIn(range)
+    }
+
+    fun commitValue(nextValue: Int) {
+        val next = nextValue.coerceIn(range)
+        if (next != clampedValue) {
+            latestOnValueChange(next)
+        }
+        latestOnValueChangeFinished?.invoke()
+    }
+
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(trackHeight)
+            .height(trackHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val widthPx = with(density) { maxWidth.toPx() }
-        val heightPx = with(density) { maxHeight.toPx() }
-        val thumbSizePx = with(density) { thumbSize.toPx() }
-        val centerStartPx = (heightPx / 2f).coerceAtMost(widthPx / 2f)
-        val centerEndPx = (widthPx - heightPx / 2f).coerceAtLeast(centerStartPx)
-        val usablePx = (centerEndPx - centerStartPx).coerceAtLeast(1f)
-        val thumbOffsetPx = (
-            centerStartPx + usablePx * fraction - thumbSizePx / 2f
-            ).roundToInt()
-
-        Surface(
+        StepperEndpointText(
+            text = "-",
+            enabled = enabled && clampedValue > range.first,
+            palette = palette,
             modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(range, safeStep, enabled) {
-                    if (!enabled) {
-                        return@pointerInput
-                    }
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val width = size.width.toFloat()
-                        val centerStart = (size.height / 2f).coerceAtMost(width / 2f)
-                        val centerEnd = (width - size.height / 2f).coerceAtLeast(centerStart)
-                        val usable = (centerEnd - centerStart).coerceAtLeast(1f)
-                        val touchSlop = viewConfiguration.touchSlop
-                        var currentValue = latestValue
-                        var didChange = false
-                        var totalX = 0f
-                        var totalY = 0f
-                        var dragging = false
-
-                        fun steppedValue(rawValue: Float, atStart: Boolean, atEnd: Boolean): Int {
-                            if (atStart) return range.first
-                            if (atEnd) return range.last
-                            val stepped = range.first + (
-                                (rawValue - range.first) / safeStep
-                                ).roundToInt() * safeStep
-                            return stepped.coerceIn(range)
-                        }
-
-                        fun valueForPosition(x: Float): Int {
-                            val clamped = x.coerceIn(centerStart, centerEnd)
-                            val atStart = clamped <= centerStart
-                            val atEnd = clamped >= centerEnd
-                            val rawValue = range.first + ((clamped - centerStart) / usable) *
-                                (range.last - range.first)
-                            return steppedValue(rawValue, atStart = atStart, atEnd = atEnd)
-                        }
-
-                        fun applyValue(value: Int) {
-                            val next = value.coerceIn(range)
-                            if (next != currentValue) {
-                                currentValue = next
-                                didChange = true
-                                latestOnValueChange(next)
-                            }
-                        }
-
-                        fun applyPosition(x: Float) {
-                            applyValue(valueForPosition(x))
-                        }
-
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) break
-                            val delta = change.positionChange()
-                            totalX += delta.x
-                            totalY += delta.y
-                            if (!dragging && abs(totalX) > touchSlop && abs(totalX) > abs(totalY)) {
-                                dragging = true
-                            }
-                            if (dragging) {
-                                applyPosition(change.position.x)
-                                change.consume()
-                            }
-                        }
-
-                        if (!dragging) {
-                            when {
-                                down.position.x <= endpointWidthPx -> {
-                                    applyValue((currentValue - safeStep).coerceIn(range))
-                                }
-
-                                down.position.x >= size.width - endpointWidthPx -> {
-                                    applyValue((currentValue + safeStep).coerceIn(range))
-                                }
-
-                                else -> applyPosition(down.position.x)
-                            }
-                        }
-
-                        if (didChange) {
-                            latestOnValueChangeFinished?.invoke()
-                        }
-                    }
-                },
-            shape = CircleShape,
-            color = if (enabled) {
-                palette.surfaceVariant
-            } else {
-                palette.surfaceVariant.copy(alpha = 0.46f)
-            },
-            contentColor = palette.primaryText,
-            tonalElevation = 0.dp,
-            shadowElevation = if (enabled) 1.dp else 0.dp
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    StepperEndpointText(
-                        text = "-",
-                        enabled = enabled && clampedValue > range.first,
-                        palette = palette,
-                        modifier = Modifier.width(endpointWidth)
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    StepperEndpointText(
-                        text = "+",
-                        enabled = enabled && clampedValue < range.last,
-                        palette = palette,
-                        modifier = Modifier.width(endpointWidth)
-                    )
-                }
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .offset { IntOffset(thumbOffsetPx, 0) }
-                        .size(thumbSize),
-                    shape = CircleShape,
-                    color = if (enabled) palette.surface else palette.surface.copy(alpha = 0.62f),
-                    contentColor = palette.primaryText,
-                    tonalElevation = 0.dp,
-                    shadowElevation = if (enabled) 3.dp else 0.dp
-                ) {}
-            }
-        }
+                .width(endpointWidth)
+                .height(trackHeight)
+                .clickable(
+                    enabled = enabled && clampedValue > range.first,
+                    onClick = { commitValue(clampedValue - safeStep) }
+                )
+        )
+        LegadoSliderTrack(
+            value = clampedValue.toFloat(),
+            valueRange = sliderRange,
+            onValueChange = { latestOnValueChange(it.roundToInt().coerceIn(range)) },
+            onValueChangeFinished = { latestOnValueChangeFinished?.invoke() },
+            palette = palette,
+            modifier = Modifier.weight(1f),
+            enabled = enabled,
+            trackHeight = 7.dp,
+            thumbSize = thumbSize,
+            minHeight = trackHeight,
+            snapValue = { steppedValue(it).toFloat() }
+        )
+        StepperEndpointText(
+            text = "+",
+            enabled = enabled && clampedValue < range.last,
+            palette = palette,
+            modifier = Modifier
+                .width(endpointWidth)
+                .height(trackHeight)
+                .clickable(
+                    enabled = enabled && clampedValue < range.last,
+                    onClick = { commitValue(clampedValue + safeStep) }
+                )
+        )
     }
 }
 
@@ -541,7 +587,10 @@ private fun StepperEndpointText(
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .clip(CircleShape)
+            .background(if (enabled) palette.surfaceVariant else palette.surfaceVariant.copy(alpha = 0.42f))
+            .fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Text(

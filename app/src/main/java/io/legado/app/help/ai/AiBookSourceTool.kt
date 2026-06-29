@@ -369,7 +369,7 @@ object AiBookSourceTool {
             .coerceIn(10_000L, 90_000L)
         val logs = arrayListOf<String>()
         val finished = CompletableDeferred<Int>()
-        Debug.callback = object : Debug.Callback {
+        val callback = object : Debug.Callback {
             override fun printLog(state: Int, msg: String) {
                 logs += msg
                 if ((state == -1 || state == 1000) && !finished.isCompleted) {
@@ -377,9 +377,15 @@ object AiBookSourceTool {
                 }
             }
         }
-        Debug.startDebug(this, source, key)
-        val state = withTimeoutOrNull(timeoutMs) { finished.await() }
-        Debug.cancelDebug(true)
+        val debugScope = this
+        val state = Debug.withDebugSource(source.bookSourceUrl, callback) {
+            try {
+                Debug.startDebug(debugScope, source, key)
+                withTimeoutOrNull(timeoutMs) { finished.await() }
+            } finally {
+                Debug.cancelDebug()
+            }
+        }
         ok().apply {
             put("bookSourceUrl", source.bookSourceUrl)
             put("key", key)
