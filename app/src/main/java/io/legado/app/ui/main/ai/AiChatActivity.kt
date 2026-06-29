@@ -59,6 +59,7 @@ import io.legado.app.data.entities.BookCharacter
 import io.legado.app.databinding.ActivityAiChatBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.ui.main.ai.creation.AiCreationActivity
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.config.AppConfig
@@ -114,6 +115,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onOpenHistory = ::openHistoryFromMenu,
                     onSelectModel = ::showModelSelectorDialog,
                     onOpenImageGallery = ::openImageGallery,
+                    onOpenCreationPlatform = ::openCreationPlatform,
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
                     onOpenWorldBooks = { showCompanionWorldBookDialog() },
                     onToggleAutoSpeak = ::toggleAutoSpeak,
@@ -279,6 +281,10 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
 
     private fun openImageGallery() {
         startActivity(android.content.Intent(this, AiImageGalleryActivity::class.java))
+    }
+
+    private fun openCreationPlatform() {
+        startActivity(android.content.Intent(this, AiCreationActivity::class.java))
     }
 
     private fun selectCompanion(companionId: String) {
