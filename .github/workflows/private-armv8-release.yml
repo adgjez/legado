@@ -90,7 +90,7 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --print-certs "$APK_PATH" | tee apk-cert.txt
-          grep -qi 'd6:44:1f:18:d3:41:3a:81:c0:e8:2e:51:f5:50:c5:58:c5:d7:92:13:e9:21:b0:2d:ec:30:bd:34:73:d4:f2:b6' apk-cert.txt
+          grep -Eqi 'd6:?44:?1f:?18:?d3:?41:?3a:?81:?c0:?e8:?2e:?51:?f5:?50:?c5:?58:?c5:?d7:?92:?13:?e9:?21:?b0:?2d:?ec:?30:?bd:?34:?73:?d4:?f2:?b6' apk-cert.txt
 
       - name: Save incremental build cache
         if: always()
