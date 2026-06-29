@@ -27,6 +27,8 @@ const JSON_HEADERS = {
   "cache-control": "no-store",
 };
 
+let cachedMetadata: { value: ReleaseMetadata; expiresAt: number } | null = null;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -108,13 +110,20 @@ async function handleDownload(request: Request, env: Env): Promise<Response> {
 }
 
 async function getReleaseMetadata(env: Env): Promise<ReleaseMetadata> {
+  const now = Date.now();
+  if (cachedMetadata && cachedMetadata.expiresAt > now) {
+    return cachedMetadata.value;
+  }
+
   const apkKey = env.R2_APK_KEY?.trim() || DEFAULT_APK_KEY;
   const metadataKey = env.R2_METADATA_KEY?.trim() || DEFAULT_METADATA_KEY;
   const metadataObject = await env.APK_BUCKET.get(metadataKey);
 
   if (metadataObject) {
     const metadata = (await metadataObject.json()) as ReleaseMetadata;
-    return normalizeMetadata(metadata, apkKey);
+    const normalized = normalizeMetadata(metadata, apkKey);
+    cachedMetadata = { value: normalized, expiresAt: now + 300_000 };
+    return normalized;
   }
 
   const apkObject = await env.APK_BUCKET.head(apkKey);
@@ -122,7 +131,7 @@ async function getReleaseMetadata(env: Env): Promise<ReleaseMetadata> {
     throw new Error(`R2 object not found: ${apkKey}`);
   }
 
-  return normalizeMetadata(
+  const normalized = normalizeMetadata(
     {
       fileName: apkKey.split("/").pop() || DEFAULT_APK_KEY,
       size: apkObject.size,
@@ -131,6 +140,8 @@ async function getReleaseMetadata(env: Env): Promise<ReleaseMetadata> {
     },
     apkKey,
   );
+  cachedMetadata = { value: normalized, expiresAt: now + 60_000 };
+  return normalized;
 }
 
 function normalizeMetadata(metadata: ReleaseMetadata, apkKey: string): ReleaseMetadata {

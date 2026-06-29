@@ -1179,12 +1179,15 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         appliedDayThemeOverride = entry.packageInfo.name
                     }
                 }
-                entry
+                entry to wasApplied
             }.onSuccess {
                 toastOnUi(getString(R.string.theme_saved_local))
                 loadThemes()
-                if (enqueueUploadIfNeeded(it)) {
+                if (enqueueUploadIfNeeded(it.first)) {
                     showThemeSyncTasks()
+                }
+                if (it.second) {
+                    binding.root.post { recreate() }
                 }
             }.onFailure {
                 if (it.isJobCancellation()) return@onFailure
@@ -1594,6 +1597,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
                 toastOnUi(getString(R.string.theme_applied))
                 loadThemes()
+                binding.root.post { recreate() }
             }
         }
     }

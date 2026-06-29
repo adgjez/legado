@@ -1,7 +1,5 @@
 package io.legado.app.ui.main.explore
 
-import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -21,14 +19,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -39,14 +34,11 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,11 +54,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import android.content.Context
@@ -80,16 +69,16 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
+import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
+import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private const val BOOK_COVER_ASPECT_RATIO = 0.75f
 private val DiscoverySuiteEmphasizedEasing = CubicBezierEasing(0.20f, 0.00f, 0.00f, 1.00f)
-private val DiscoverySuiteStandardEasing = CubicBezierEasing(0.20f, 0.00f, 0.20f, 1.00f)
 
 @Composable
 fun DiscoverySuiteHomeScreen(
@@ -142,9 +131,9 @@ fun DiscoverySuiteHomeScreen(
             }
         }
     }
-    var previewState by remember { mutableStateOf<DiscoverySuitePreviewState?>(null) }
+    var previewState by remember { mutableStateOf<SearchBookPreviewState?>(null) }
     val onBookPreview: (SearchBook, Rect?) -> Unit = { book, bounds ->
-        previewState = DiscoverySuitePreviewState(book, bounds)
+        previewState = SearchBookPreviewState(book, bounds)
     }
 
     BoxWithConstraints(
@@ -216,12 +205,9 @@ fun DiscoverySuiteHomeScreen(
                 }
             )
         }
-        DiscoverySuiteBookPreviewOverlay(
+        SearchBookPreviewOverlay(
             state = previewState,
-            rootWidth = maxWidth,
-            rootHeight = maxHeight,
-            renderConfig = renderConfig,
-            opacityMultiplier = opacityMultiplier,
+            renderConfig = baseRenderConfig,
             fragment = fragment,
             lifecycle = lifecycle,
             onDismissed = { previewState = null },
@@ -258,301 +244,6 @@ private fun DiscoverySuiteAnimatedWidgetContainer(
     ) {
         content()
     }
-}
-
-private data class DiscoverySuitePreviewState(
-    val book: SearchBook,
-    val originBounds: Rect?
-)
-
-@Composable
-private fun DiscoverySuiteBookPreviewOverlay(
-    state: DiscoverySuitePreviewState?,
-    rootWidth: Dp,
-    rootHeight: Dp,
-    renderConfig: BookshelfListRenderConfig,
-    opacityMultiplier: Float,
-    fragment: Fragment,
-    lifecycle: Lifecycle,
-    onDismissed: () -> Unit,
-    onOpen: (SearchBook) -> Unit
-) {
-    if (state == null) return
-    val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
-    val progress = remember(state.book.displayKey()) { Animatable(0f) }
-    var closing by remember(state.book.displayKey()) { mutableStateOf(false) }
-    LaunchedEffect(state.book.displayKey()) {
-        progress.snapTo(0f)
-        progress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 300, easing = DiscoverySuiteEmphasizedEasing)
-        )
-    }
-    fun dismiss() {
-        if (closing) return
-        closing = true
-        scope.launch {
-            progress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 210, easing = DiscoverySuiteStandardEasing)
-            )
-            onDismissed()
-        }
-    }
-    DiscoverySuitePreviewBackHandler(enabled = true, onBack = ::dismiss)
-
-    val rootWidthPx = with(density) { rootWidth.toPx() }
-    val rootHeightPx = with(density) { rootHeight.toPx() }
-    val minMarginPx = with(density) { 18.dp.toPx() }
-    val targetWidthPx = minOf(rootWidthPx - minMarginPx * 2f, with(density) { 420.dp.toPx() })
-        .coerceAtLeast(with(density) { 280.dp.toPx() })
-    val targetHeightPx = minOf(rootHeightPx - with(density) { 96.dp.toPx() }, with(density) { 322.dp.toPx() })
-        .coerceAtLeast(with(density) { 292.dp.toPx() })
-    val targetLeft = (rootWidthPx - targetWidthPx) / 2f
-    val targetTop = (rootHeightPx - targetHeightPx) / 2f
-    val fallbackOrigin = Rect(
-        left = rootWidthPx / 2f - with(density) { 44.dp.toPx() },
-        top = rootHeightPx / 2f - with(density) { 60.dp.toPx() },
-        right = rootWidthPx / 2f + with(density) { 44.dp.toPx() },
-        bottom = rootHeightPx / 2f + with(density) { 60.dp.toPx() }
-    )
-    val origin = state.originBounds
-        ?.takeIf { it.width > 8f && it.height > 8f }
-        ?: fallbackOrigin
-    val p = progress.value.coerceIn(0f, 1f)
-    val left = lerpFloat(origin.left, targetLeft, p)
-    val top = lerpFloat(origin.top, targetTop, p)
-    val width = lerpFloat(origin.width, targetWidthPx, p)
-    val height = lerpFloat(origin.height, targetHeightPx, p)
-    val radius = lerpFloat(6f, with(density) { renderConfig.palette.panelRadius.toPx() }, p)
-    val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
-    val scrimAlpha = 0.34f.withSuiteAlphaMultiplier(opacityMultiplier, maxAlpha = 0.52f)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(20f)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = scrimAlpha * p))
-                .clickable { dismiss() }
-        )
-        Box(
-            modifier = Modifier
-                .offset {
-                    IntOffset(
-                        left.roundToInt(),
-                        top.roundToInt()
-                    )
-                }
-                .width(with(density) { width.toDp() })
-                .height(with(density) { height.toDp() })
-                .shadow((12 * p).dp, RoundedCornerShape(with(density) { radius.toDp() }), clip = false)
-                .clip(RoundedCornerShape(with(density) { radius.toDp() }))
-                .appSettingPanelBackground(
-                    normalColor = renderConfig.palette.rowColor,
-                    panelImage = renderConfig.panelImage,
-                    borderColor = renderConfig.palette.borderColor,
-                    radiusPx = radius
-                )
-                .clickable { },
-            contentAlignment = Alignment.Center
-        ) {
-            DiscoverySuiteBookPreviewContent(
-                book = state.book,
-                renderConfig = renderConfig,
-                opacityMultiplier = opacityMultiplier,
-                fragment = fragment,
-                lifecycle = lifecycle,
-                contentAlpha = contentAlpha,
-                onClose = { dismiss() },
-                onOpen = {
-                    if (!closing) {
-                        closing = true
-                        onOpen(state.book)
-                    }
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun DiscoverySuiteBookPreviewContent(
-    book: SearchBook,
-    renderConfig: BookshelfListRenderConfig,
-    opacityMultiplier: Float,
-    fragment: Fragment,
-    lifecycle: Lifecycle,
-    contentAlpha: Float,
-    onClose: () -> Unit,
-    onOpen: () -> Unit
-) {
-    val context = LocalContext.current
-    val palette = renderConfig.palette
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer { alpha = contentAlpha }
-            .padding(18.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(15.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(96.dp)
-                    .aspectRatio(BOOK_COVER_ASPECT_RATIO)
-                    .shadow(6.dp, RoundedCornerShape(7.dp), clip = false)
-                    .clip(RoundedCornerShape(7.dp))
-            ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { viewContext ->
-                        CoverImageView(viewContext).apply {
-                            scaleType = ImageView.ScaleType.CENTER_CROP
-                        }
-                    },
-                    update = { view ->
-                        view.scaleType = ImageView.ScaleType.CENTER_CROP
-                        view.loadSuiteThumb(book, fragment, lifecycle)
-                    },
-                    onRelease = { it.releaseComposeImage() }
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                Text(
-                    text = book.name,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 21.sp,
-                    lineHeight = 25.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = palette.titleFontFamily,
-                    color = palette.primaryText
-                )
-                listOf(book.author, book.originName, book.latestChapterTitle.orEmpty())
-                    .filter { it.isNotBlank() }
-                    .take(3)
-                    .forEach { meta ->
-                        Text(
-                            text = meta,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontSize = 13.sp,
-                            fontFamily = palette.bodyFontFamily,
-                            color = palette.secondaryText
-                        )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = book.intro?.trim()?.takeIf { it.isNotBlank() }
-                ?: context.getString(R.string.intro_show_null),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 66.dp),
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            fontSize = 14.sp,
-            lineHeight = 21.sp,
-            fontFamily = palette.bodyFontFamily,
-            color = palette.primaryText.copy(alpha = 0.82f)
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            DiscoverySuitePreviewAction(
-                text = context.getString(R.string.close),
-                renderConfig = renderConfig,
-                opacityMultiplier = opacityMultiplier,
-                modifier = Modifier.weight(1f),
-                emphatic = false,
-                onClick = onClose
-            )
-            DiscoverySuitePreviewAction(
-                text = context.getString(R.string.read_record_open_book_info),
-                renderConfig = renderConfig,
-                opacityMultiplier = opacityMultiplier,
-                modifier = Modifier.weight(1f),
-                emphatic = true,
-                onClick = onOpen
-            )
-        }
-    }
-}
-
-@Composable
-private fun DiscoverySuitePreviewBackHandler(
-    enabled: Boolean,
-    onBack: () -> Unit
-) {
-    val activity = LocalContext.current as? AppCompatActivity ?: return
-    val currentOnBack by rememberUpdatedState(onBack)
-    DisposableEffect(activity, enabled) {
-        val callback = object : OnBackPressedCallback(enabled) {
-            override fun handleOnBackPressed() {
-                currentOnBack()
-            }
-        }
-        activity.onBackPressedDispatcher.addCallback(callback)
-        onDispose {
-            callback.remove()
-        }
-    }
-}
-
-@Composable
-private fun DiscoverySuitePreviewAction(
-    text: String,
-    renderConfig: BookshelfListRenderConfig,
-    opacityMultiplier: Float,
-    modifier: Modifier = Modifier,
-    emphatic: Boolean,
-    onClick: () -> Unit
-) {
-    val palette = renderConfig.palette
-    val backgroundAlpha = if (emphatic) {
-        0.16f.withSuiteAlphaMultiplier(opacityMultiplier, maxAlpha = 0.42f)
-    } else {
-        0.08f.withSuiteAlphaMultiplier(opacityMultiplier, maxAlpha = 0.28f)
-    }
-    Box(
-        modifier = modifier
-            .height(42.dp)
-            .clip(RoundedCornerShape(palette.actionRadius))
-            .background(
-                if (emphatic) palette.accent.copy(alpha = backgroundAlpha)
-                else palette.secondaryText.copy(alpha = backgroundAlpha)
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = palette.bodyFontFamily,
-            color = if (emphatic) palette.accent else palette.primaryText
-        )
-    }
-}
-
-private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {
-    return start + (stop - start) * fraction
 }
 
 @Composable

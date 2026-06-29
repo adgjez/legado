@@ -340,7 +340,7 @@ fun BookInfoComposeRoute(
         actions.onRefreshEnabledChanged(refreshAtTop)
     }
     val hasWebIntro = state.intro.startsWith("<useweb>", ignoreCase = true)
-    var webIntroExpandPages by remember(state.bookUrl, state.intro) { mutableStateOf(1) }
+    var webIntroExpandPages by remember(state.bookUrl, state.intro) { mutableStateOf(2) }
     val shouldExpandWebIntro by remember(hasWebIntro) {
         derivedStateOf {
             hasWebIntro &&
@@ -349,8 +349,8 @@ fun BookInfoComposeRoute(
         }
     }
     LaunchedEffect(shouldExpandWebIntro) {
-        if (shouldExpandWebIntro && webIntroExpandPages < 32) {
-            webIntroExpandPages += 1
+        if (shouldExpandWebIntro && webIntroExpandPages < 36) {
+            webIntroExpandPages += 2
         }
     }
     LaunchedEffect(metricPreviewVisible, metricPreview) {

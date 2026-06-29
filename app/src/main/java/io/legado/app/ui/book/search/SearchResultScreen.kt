@@ -24,10 +24,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +49,8 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfListPalette
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
+import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
+import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
 
@@ -69,6 +76,7 @@ fun SearchResultScreen(
         val palette = renderConfig.palette
         val rounded = AppConfig.bookshelfListItemStyle == BookshelfListItemStyle.RoundedCard
         val listState = rememberLazyListState()
+        var previewState by remember { mutableStateOf<SearchBookPreviewState?>(null) }
 
         val shouldLoadMore by remember(books, hasMore, isLoading) {
             derivedStateOf {
@@ -103,13 +111,28 @@ fun SearchResultScreen(
                         renderConfig = renderConfig,
                         palette = palette,
                         lifecycle = lifecycle,
-                        onClick = { onBookClick(book) }
+                        onClick = { onBookClick(book) },
+                        onPreview = { bounds ->
+                            previewState = SearchBookPreviewState(book, bounds)
+                        }
                     )
                 }
             }
             ComposeLazyListFastScroller(
                 state = listState,
                 modifier = Modifier.align(Alignment.CenterEnd)
+            )
+            SearchBookPreviewOverlay(
+                state = previewState,
+                renderConfig = renderConfig,
+                fragment = null,
+                lifecycle = lifecycle,
+                onDismissed = { previewState = null },
+                onOpen = { book ->
+                    previewState = null
+                    onBookClick(book)
+                },
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
@@ -127,20 +150,26 @@ private fun SearchResultItem(
     renderConfig: io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig,
     palette: BookshelfListPalette,
     lifecycle: Lifecycle,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onPreview: (Rect?) -> Unit
 ) {
+    var coverBounds by remember(searchResultItemKey(0, book)) { mutableStateOf<Rect?>(null) }
     BookListCardSurface(
         rounded = rounded,
         compact = false,
         renderConfig = renderConfig,
-        onClick = onClick
+        onClick = onClick,
+        onLongClick = { onPreview(coverBounds) }
     ) { metrics ->
         Box(modifier = Modifier.width(metrics.coverWidth)) {
             AndroidView(
                 modifier = Modifier
                     .width(metrics.coverWidth)
                     .aspectRatio(0.75f)
-                    .clip(RoundedCornerShape(metrics.cornerRadius)),
+                    .clip(RoundedCornerShape(metrics.cornerRadius))
+                    .onGloballyPositioned { coordinates ->
+                        coverBounds = coordinates.boundsInRoot()
+                    },
                 factory = { context -> CoverImageView(context) },
                 update = { view -> view.load(book, AppConfig.loadCoverOnlyWifi, null, lifecycle) },
                 onRelease = { it.releaseComposeImage() }
@@ -206,7 +235,7 @@ private fun SearchResultText(
                 }
             }
         }
-        Spacer(modifier = Modifier.size(4.dp))
+        Spacer(modifier = Modifier.size(3.dp))
         Text(
             text = context.getString(R.string.author_show, book.author),
             color = palette.secondaryText,
@@ -217,7 +246,7 @@ private fun SearchResultText(
         )
         val kinds = remember(book.kind) { book.getKindList() }
         if (rounded && kinds.isNotEmpty()) {
-            Spacer(modifier = Modifier.size(6.dp))
+            Spacer(modifier = Modifier.size(5.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -242,7 +271,7 @@ private fun SearchResultText(
         }
         val lasted = book.latestChapterTitle
         if (!lasted.isNullOrEmpty()) {
-            Spacer(modifier = Modifier.size(6.dp))
+            Spacer(modifier = Modifier.size(5.dp))
             Text(
                 text = context.getString(R.string.lasted_show, lasted),
                 color = palette.secondaryText,
@@ -254,13 +283,14 @@ private fun SearchResultText(
         }
         val intro = book.intro?.trim()
         if (!intro.isNullOrEmpty()) {
-            Spacer(modifier = Modifier.size(8.dp))
+            Spacer(modifier = Modifier.size(if (rounded) 8.dp else 5.dp))
             Text(
                 text = intro,
                 color = palette.primaryText,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontFamily = palette.bodyFontFamily,
-                maxLines = if (rounded) 2 else 1,
+                maxLines = if (rounded) 3 else 2,
                 overflow = TextOverflow.Ellipsis
             )
         }

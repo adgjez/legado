@@ -3,7 +3,10 @@ package io.legado.app.help.update
 import io.legado.app.constant.AppConst
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 
 object AppUpdate {
 
@@ -74,25 +77,36 @@ object AppUpdate {
             }.timeout(15000)
         }
 
-        private suspend fun checkNow(): UpdateInfo {
-            val officialResult = runCatching { checkOfficialNow() }
+        private suspend fun checkNow(): UpdateInfo = coroutineScope {
+            val officialDeferred = async {
+                withTimeoutOrNull(8_000) {
+                    runCatching { checkOfficialNow() }
+                } ?: Result.failure(NoStackTraceException("正式版更新检查超时"))
+            }
             if (!AppUpdateConfig.internalBetaConfigured) {
-                return officialResult.getOrThrow()
+                return@coroutineScope officialDeferred.await().getOrThrow()
             }
 
-            val internalBetaResult = runCatching { AppUpdateInternal.checkNow() }
+            val internalBetaDeferred = async {
+                withTimeoutOrNull(8_000) {
+                    runCatching { AppUpdateInternal.checkNow() }
+                } ?: Result.failure(NoStackTraceException("内测版更新检查超时"))
+            }
+
+            val officialResult = officialDeferred.await()
+            val internalBetaResult = internalBetaDeferred.await()
             val official = officialResult.getOrNull()
             val internalBeta = internalBetaResult.getOrNull()
 
             if (official != null && internalBeta != null) {
-                return if (compareVersion(official, internalBeta) >= 0) {
+                return@coroutineScope if (compareVersion(official, internalBeta) >= 0) {
                     official
                 } else {
                     internalBeta
                 }
             }
-            official?.let { return it }
-            internalBeta?.let { return it }
+            official?.let { return@coroutineScope it }
+            internalBeta?.let { return@coroutineScope it }
 
             val officialError = officialResult.exceptionOrNull()
             val internalBetaError = internalBetaResult.exceptionOrNull()

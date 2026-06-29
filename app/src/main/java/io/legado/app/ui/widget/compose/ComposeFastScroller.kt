@@ -1,6 +1,11 @@
 package io.legado.app.ui.widget.compose
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -129,6 +134,7 @@ private fun ComposeFastScroller(
         )
     }
     val palette = rememberAppManagementPalette()
+    val active = dragging || isScrollInProgress || thumbVisible
     // 视觉滑块：停止滚动后较快淡出，避免长期遮挡内容
     LaunchedEffect(isScrollInProgress, dragging) {
         if (isScrollInProgress || dragging) {
@@ -148,20 +154,56 @@ private fun ComposeFastScroller(
         }
     }
     val visible by animateFloatAsState(
-        targetValue = if (dragging || isScrollInProgress || thumbVisible) 1f else 0f,
+        targetValue = if (active) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (active) 140 else 220,
+            easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+        ),
         label = "composeFastScrollerAlpha"
     )
     val thumbWidth by animateFloatAsState(
         targetValue = if (dragging) 8f else 6f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
         label = "composeFastScrollerThumbWidth"
     )
     val thumbAlpha by animateFloatAsState(
         targetValue = if (dragging) 0.80f else 0.52f,
+        animationSpec = tween(
+            durationMillis = 160,
+            easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+        ),
         label = "composeFastScrollerThumbAlpha"
     )
     val trackAlpha by animateFloatAsState(
         targetValue = if (dragging) 0.10f else 0f,
+        animationSpec = tween(
+            durationMillis = 180,
+            easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+        ),
         label = "composeFastScrollerTrackAlpha"
+    )
+    val thumbOffsetX by animateFloatAsState(
+        targetValue = when {
+            dragging -> 0f
+            active -> 2f
+            else -> 14f
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "composeFastScrollerThumbOffset"
+    )
+    val hotzoneWidth by animateDpAsState(
+        targetValue = if (dragging) 40.dp else 32.dp,
+        animationSpec = tween(
+            durationMillis = 120,
+            easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+        ),
+        label = "composeFastScrollerHotzoneWidth"
     )
     val hotzoneVisible = dragging || isScrollInProgress || hotzoneAlive
 
@@ -195,6 +237,7 @@ private fun ComposeFastScroller(
                 thumbTop = thumbTop,
                 thumbHeight = metrics.thumbHeight,
                 thumbWidthDp = thumbWidth,
+                thumbOffsetXDp = thumbOffsetX,
                 thumbAlpha = thumbAlpha,
                 trackAlpha = trackAlpha,
                 color = palette.settings.secondaryText
@@ -204,7 +247,7 @@ private fun ComposeFastScroller(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .width(if (dragging) 40.dp else 32.dp)
+                    .width(hotzoneWidth)
                     .fillMaxHeight()
                     .pointerInput(totalItems, visibleItems, trackHeight, maxFirstIndex) {
                         detectDragGestures(
@@ -286,6 +329,7 @@ private fun DrawScope.drawFastScroller(
     thumbTop: Float,
     thumbHeight: Float,
     thumbWidthDp: Float,
+    thumbOffsetXDp: Float,
     thumbAlpha: Float,
     trackAlpha: Float,
     color: Color
@@ -293,7 +337,8 @@ private fun DrawScope.drawFastScroller(
     if (alpha <= 0.01f) return
     val trackWidth = 2.dp.toPx()
     val thumbWidth = thumbWidthDp.dp.toPx()
-    val centerX = size.width - thumbWidth / 2f
+    val thumbOffsetX = thumbOffsetXDp.dp.toPx()
+    val centerX = size.width - thumbWidth / 2f + thumbOffsetX
     if (trackAlpha > 0f) {
         drawRoundRect(
             color = color.copy(alpha = trackAlpha * alpha),

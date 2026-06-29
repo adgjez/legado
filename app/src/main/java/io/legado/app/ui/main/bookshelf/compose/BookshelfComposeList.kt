@@ -219,7 +219,7 @@ private fun BookshelfClassicListItem(
             modifier = Modifier.weight(1f),
             showIntro = true,
             showTags = false,
-            introMaxLines = 1
+            introMaxLines = if (compact) 1 else 2
         )
         BookshelfListStatus(item = item, palette = palette)
     }
@@ -262,7 +262,7 @@ private fun BookshelfRoundedCardListItem(
             modifier = Modifier.weight(1f),
             showIntro = true,
             showTags = true,
-            introMaxLines = if (compact) 1 else 2
+            introMaxLines = if (compact) 2 else 3
         )
         BookshelfListStatus(item = item, palette = palette)
     }
@@ -423,10 +423,11 @@ private fun BookshelfBookMeta(
                 text = intro,
                 color = palette.secondaryText,
                 fontSize = 12.sp,
+                lineHeight = 17.sp,
                 fontFamily = palette.bodyFontFamily,
                 maxLines = introMaxLines,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = if (compact) 3.dp else 4.dp)
             )
         }
     }

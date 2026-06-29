@@ -66,6 +66,11 @@ object ThemeConfig {
 
     private var needClearImg = true
 
+    private fun clearUsableBgImageCache() {
+        usableBgImageCacheKey = null
+        usableBgImageCacheValue = false
+    }
+
     fun getTheme() = when {
         AppConfig.isEInkMode -> Theme.EInk
         AppConfig.isNightTheme -> Theme.Dark
@@ -77,6 +82,7 @@ object ThemeConfig {
     }
 
     fun applyDayNight(context: Context) {
+        clearUsableBgImageCache()
         applyTheme(context)
         initNightMode()
         BookCover.upDefaultCover()
@@ -278,6 +284,7 @@ object ThemeConfig {
         notify: Boolean = true
     ) {
         try {
+            clearUsableBgImageCache()
             if (needClearImg) {
                 needClearImg = false
                 clearBg(context)
