@@ -337,7 +337,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
     var customWidth by remember { mutableStateOf("1024") }
     var customHeight by remember { mutableStateOf("768") }
     var is4K by remember { mutableStateOf(false) }
-    val currentSizeValue get() = if (is4K && selectedSize.value.isNotBlank()) {
+    fun currentSizeValue(): String = if (is4K && selectedSize.value.isNotBlank()) {
         val parts = selectedSize.value.split("x").map { it.toIntOrNull() ?: 1024 }
         "${parts[0] * 2}x${parts[1] * 2}"
     } else {
@@ -539,12 +539,12 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                     try {
                         val result = withContext(Dispatchers.IO) {
                             if (mode == ImageMode.TEXT_TO_IMAGE) {
-                                AiCreationService.textToImage(prompt, currentSizeValue)
+                                AiCreationService.textToImage(prompt, currentSizeValue())
                             } else {
                                 val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
                                 val dataUri = compressImageToBase64(context, uri)
-                                AiCreationService.imageToImage(prompt, dataUri, currentSizeValue)
+                                AiCreationService.imageToImage(prompt, dataUri, currentSizeValue())
                             }
                         }
                         resultUrl = result.url
