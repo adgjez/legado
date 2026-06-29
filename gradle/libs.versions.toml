@@ -192,6 +192,7 @@ colorpicker = { module = "com.jaredrummler:colorpicker", version.ref = "colorpic
 commons-text = { module = "org.apache.commons:commons-text", version.ref = "commonsText" }
 desugar = { group = "com.android.tools", name = "desugar_jdk_libs_nio", version.ref = "desugar" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+coil-video = { module = "io.coil-kt:coil-video", version.ref = "coil" }
 
 flexbox = { module = "com.google.android.flexbox:flexbox", version.ref = "flexbox" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }

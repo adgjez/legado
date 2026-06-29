@@ -3,14 +3,19 @@ package io.legado.app.ui.main.ai.creation
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Offset
 import android.net.Uri
 import android.util.Base64
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.net.URL
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -24,7 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,11 +50,13 @@ import io.legado.app.help.ai.AiCreationService
 import io.legado.app.help.gsyVideo.VideoPlayer
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
+import io.legado.app.ui.video.VideoPlayerActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import splitties.init.appCtx
 
 // ── 数据模型 ──
 
@@ -261,6 +272,7 @@ private fun AiCreationScreen(
     onBack: () -> Unit
 ) {
     var tab by remember { mutableStateOf(CreationTab.IMAGE) }
+    var prompt by remember { mutableStateOf("") }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -322,8 +334,8 @@ private fun AiCreationScreen(
         Spacer(Modifier.height(12.dp))
         // 内容区
         when (tab) {
-            CreationTab.IMAGE -> ImageCreationPanel(style)
-            CreationTab.VIDEO -> VideoCreationPanel(style)
+            CreationTab.IMAGE -> ImageCreationPanel(style, prompt, { prompt = it })
+            CreationTab.VIDEO -> VideoCreationPanel(style, prompt, { prompt = it })
         }
     }
 }
@@ -331,9 +343,8 @@ private fun AiCreationScreen(
 // ── 图片生成面板 ──
 
 @Composable
-private fun ImageCreationPanel(style: AiComposeStyle) {
+private fun ImageCreationPanel(style: AiComposeStyle, prompt: String, onPromptChange: (String) -> Unit) {
     var mode by remember { mutableStateOf(ImageMode.TEXT_TO_IMAGE) }
-    var prompt by remember { mutableStateOf("") }
     var selectedSize by remember { mutableStateOf(imageSizes[0]) }
     var customWidth by remember { mutableStateOf("1024") }
     var customHeight by remember { mutableStateOf("768") }
@@ -430,7 +441,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
         ) {
             BasicTextField(
                 value = prompt,
-                onValueChange = { prompt = it },
+                onValueChange = onPromptChange,
                 textStyle = TextStyle(
                     color = style.colors.primaryText,
                     fontSize = 14.sp,
@@ -661,9 +672,11 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                     }
                 }
             }
-            // 大图弹窗
+            // 大图弹窗（支持缩放）
             if (showFull) {
                 Dialog(onDismissRequest = { showFull = false }) {
+                    var scale by remember { mutableFloatStateOf(1f) }
+                    var offset by remember { mutableStateOf(Offset.Zero) }
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color.Black,
@@ -683,13 +696,29 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                             AsyncImage(
                                 model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .pointerInput(Unit) {
+                                        detectTransformGestures { _, pan, zoom, _ ->
+                                            scale = (scale * zoom).coerceIn(1f, 5f)
+                                            offset = if (scale <= 1f) Offset.Zero else offset + pan
+                                        }
+                                    }
+                                    .graphicsLayer {
+                                        scaleX = scale; scaleY = scale
+                                        translationX = offset.x; translationY = offset.y
+                                    }
                             )
                             Spacer(Modifier.height(12.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.End
                             ) {
+                                if (scale > 1f) {
+                                    TextButton(onClick = { scale = 1f; offset = Offset.Zero }) {
+                                        Text("复位", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                                    }
+                                }
                                 TextButton(onClick = {
                                     val intent = Intent(Intent.ACTION_VIEW).apply { data = Uri.parse(url) }
                                     context.startActivity(intent)
@@ -711,9 +740,8 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
 // ── 视频生成面板 ──
 
 @Composable
-private fun VideoCreationPanel(style: AiComposeStyle) {
+private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptChange: (String) -> Unit) {
     var mode by remember { mutableStateOf(VideoMode.TEXT_TO_VIDEO) }
-    var prompt by remember { mutableStateOf("") }
     var selectedPreset by remember { mutableStateOf(videoPresets[0]) }
     var selectedResolution by remember { mutableStateOf(VideoResolution.SD) }
     var selectedAspectRatio by remember { mutableStateOf(videoAspectRatios[1]) } // 默认16:9
@@ -833,7 +861,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
         ) {
             BasicTextField(
                 value = prompt,
-                onValueChange = { prompt = it },
+                onValueChange = onPromptChange,
                 textStyle = TextStyle(
                     color = style.colors.primaryText,
                     fontSize = 14.sp,
@@ -1017,6 +1045,10 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
             }
         }
         videoState.resultUrl?.let { url ->
+            var cachedPath by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(url) {
+                cachedPath = withContext(Dispatchers.IO) { cacheVideo(url) }
+            }
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
                 color = style.colors.cardSurface,
@@ -1025,53 +1057,51 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("视频已生成", color = style.colors.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
-                    // 内嵌视频播放器
+                    // 自适应播放器
                     AndroidView(
                         factory = { ctx ->
                             VideoPlayer(ctx).apply {
                                 layoutParams = ViewGroup.LayoutParams(
                                     ViewGroup.LayoutParams.MATCH_PARENT,
-                                    (ctx.resources.displayMetrics.widthPixels * 9 / 16)
+                                    ViewGroup.LayoutParams.WRAP_CONTENT
                                 )
-                                setUp(url, false, null, "")
+                                setUp(cachedPath ?: url, false, null, "")
                                 startPlayLogic()
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
+                            .heightIn(min = 200.dp, max = 360.dp)
                             .clip(RoundedCornerShape(style.metrics.chipRadius))
                     )
                     Spacer(Modifier.height(8.dp))
-                    // 系统播放器按钮
-                    OutlinedButton(
-                        onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(Uri.parse(url), "video/*")
-                            })
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = style.colors.accent),
-                        shape = RoundedCornerShape(style.metrics.chipRadius)
-                    ) {
-                        Text("用系统播放器打开", fontSize = 13.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(context, VideoPlayerActivity::class.java).apply {
+                                    putExtra("videoUrl", url)
+                                    putExtra("videoTitle", prompt.take(30))
+                                }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = style.colors.accent),
+                            shape = RoundedCornerShape(style.metrics.chipRadius)
+                        ) { Text("内置播放器", fontSize = 13.sp) }
+                        OutlinedButton(
+                            onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(Uri.parse(url), "video/*")
+                                })
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = style.colors.accent),
+                            shape = RoundedCornerShape(style.metrics.chipRadius)
+                        ) { Text("系统播放器", fontSize = 13.sp) }
                     }
-                    Spacer(Modifier.height(4.dp))
-                    // 下载按钮
-                    OutlinedButton(
-                        onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                data = Uri.parse(url)
-                            })
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = style.colors.accent),
-                        shape = RoundedCornerShape(style.metrics.chipRadius)
-                    ) {
-                        Text("下载视频", fontSize = 13.sp)
+                    if (cachedPath != null) {
+                        Text("已缓存", color = style.colors.secondaryText, fontSize = 11.sp)
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Text(url, color = style.colors.secondaryText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -1086,6 +1116,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
 @Composable
 private fun ImageHistorySection(style: AiComposeStyle) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var images by remember { mutableStateOf(AiCreationHistory.getImages()) }
     val refresh = { images = AiCreationHistory.getImages() }
     if (images.isEmpty()) return
@@ -1093,6 +1124,7 @@ private fun ImageHistorySection(style: AiComposeStyle) {
     SectionLabel("历史图片", style)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         images.forEach { record ->
+            var showFull by remember { mutableStateOf(false) }
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
                 color = style.colors.cardSurface,
@@ -1109,6 +1141,12 @@ private fun ImageHistorySection(style: AiComposeStyle) {
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = {
+                            clipboard.setText(AnnotatedString(record.prompt))
+                            Toast.makeText(context, "已复制提示词", Toast.LENGTH_SHORT).show()
+                        }, modifier = Modifier.size(32.dp)) {
+                            Text("📋", fontSize = 14.sp)
+                        }
+                        IconButton(onClick = {
                             AiCreationHistory.deleteImage(record.url)
                             refresh()
                         }, modifier = Modifier.size(32.dp)) {
@@ -1120,9 +1158,47 @@ private fun ImageHistorySection(style: AiComposeStyle) {
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
+                            .heightIn(max = 300.dp)
                             .clip(RoundedCornerShape(style.metrics.chipRadius))
+                            .clickable { showFull = true }
                     )
+                    // 缩放弹窗
+                    if (showFull) {
+                        var scale by remember { mutableFloatStateOf(1f) }
+                        var offset by remember { mutableStateOf(Offset.Zero) }
+                        Dialog(onDismissRequest = { showFull = false }) {
+                            Surface(shape = RoundedCornerShape(12.dp), color = Color.Black, modifier = Modifier.fillMaxWidth()) {
+                                Column {
+                                    Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("查看大图", color = Color.White, fontSize = 14.sp)
+                                        TextButton(onClick = { showFull = false }) {
+                                            Text("关闭", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                                        }
+                                    }
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context).data(record.url).crossfade(true).build(),
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .pointerInput(Unit) {
+                                                detectTransformGestures { _, pan, zoom, _ ->
+                                                    scale = (scale * zoom).coerceIn(1f, 5f)
+                                                    offset = if (scale <= 1f) Offset.Zero else offset + pan
+                                                }
+                                            }
+                                            .graphicsLayer {
+                                                scaleX = scale; scaleY = scale
+                                                translationX = offset.x; translationY = offset.y
+                                            }
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
+                                        if (scale > 1f) TextButton(onClick = { scale = 1f; offset = Offset.Zero }) { Text("复位", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1132,6 +1208,7 @@ private fun ImageHistorySection(style: AiComposeStyle) {
 @Composable
 private fun VideoHistorySection(style: AiComposeStyle) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var videos by remember { mutableStateOf(AiCreationHistory.getVideos()) }
     val refresh = { videos = AiCreationHistory.getVideos() }
     if (videos.isEmpty()) return
@@ -1155,28 +1232,85 @@ private fun VideoHistorySection(style: AiComposeStyle) {
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = {
+                            clipboard.setText(AnnotatedString(record.prompt))
+                            Toast.makeText(context, "已复制提示词", Toast.LENGTH_SHORT).show()
+                        }, modifier = Modifier.size(32.dp)) {
+                            Text("📋", fontSize = 14.sp)
+                        }
+                        IconButton(onClick = {
                             AiCreationHistory.deleteVideo(record.url)
                             refresh()
                         }, modifier = Modifier.size(32.dp)) {
                             Text("×", color = style.colors.danger, fontSize = 16.sp)
                         }
                     }
-                    TextButton(
-                        onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(Uri.parse(record.url), "video/*")
-                            })
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.textButtonColors(contentColor = style.colors.accent),
-                        shape = RoundedCornerShape(style.metrics.chipRadius)
+                    // 视频预览缩略图
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .clip(RoundedCornerShape(style.metrics.chipRadius))
+                            .background(style.colors.cardSurface.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("播放视频", fontSize = 13.sp)
+                        AsyncImage(
+                            model = ImageRequest.Builder(context).data(record.url).crossfade(true).build(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.Black.copy(alpha = 0.5f),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Text("▶", color = Color.White, fontSize = 20.sp, modifier = Modifier.wrapContentSize(), textAlign = TextAlign.Center)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(context, VideoPlayerActivity::class.java).apply {
+                                    putExtra("videoUrl", record.url)
+                                    putExtra("videoTitle", record.prompt.take(30))
+                                }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.textButtonColors(contentColor = style.colors.accent),
+                            shape = RoundedCornerShape(style.metrics.chipRadius)
+                        ) { Text("内置播放", fontSize = 13.sp) }
+                        TextButton(
+                            onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(Uri.parse(record.url), "video/*")
+                                })
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.textButtonColors(contentColor = style.colors.accent),
+                            shape = RoundedCornerShape(style.metrics.chipRadius)
+                        ) { Text("系统播放", fontSize = 13.sp) }
                     }
                 }
             }
         }
     }
+}
+
+// ── 视频缓存 ──
+
+private fun cacheVideo(url: String): String? {
+    return try {
+        val dir = File(appCtx.cacheDir, "ai_video")
+        dir.mkdirs()
+        val name = "video_${url.hashCode()}.mp4"
+        val file = File(dir, name)
+        if (file.exists()) return file.absolutePath
+        URL(url).openStream().use { input ->
+            file.outputStream().use { output -> input.copyTo(output) }
+        }
+        file.absolutePath
+    } catch (_: Exception) { null }
 }
 
 @Composable
