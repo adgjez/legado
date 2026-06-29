@@ -7,7 +7,6 @@ jobs:
     resource_class: large
     environment:
       GRADLE_OPTS: -Dorg.gradle.daemon=true -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
-      WRANGLER_SEND_METRICS: false
     steps:
       - checkout
 
@@ -100,16 +99,107 @@ jobs:
           name: Publish latest APK to Cloudflare R2
           command: |
             source "$BASH_ENV"
-            if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] || [ -z "${R2_BUCKET:-}" ]; then
-              echo "Skipping R2 upload: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID or R2_BUCKET is missing."
+            if [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_ACCESS_KEY:-}" ] || [ -z "${R2_ENDPOINT:-}" ] || [ -z "${R2_BUCKET:-}" ]; then
+              echo "Skipping R2 upload: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT or R2_BUCKET is missing."
               exit 0
             fi
             APK_PATH=$(find release-apks -type f -name '*.apk' | head -n 1)
             test -n "$APK_PATH"
             R2_APK_KEY="${R2_APK_KEY:-legado-arm64-v8a.apk}"
-            npx --yes wrangler@latest r2 object put "${R2_BUCKET}/${R2_APK_KEY}" \
-              --file "$APK_PATH" \
-              --content-type "application/vnd.android.package-archive"
+            export APK_PATH R2_APK_KEY
+            python3 - \<<'PY'
+            import datetime
+            import hashlib
+            import hmac
+            import os
+            import sys
+            import urllib.parse
+            import urllib.request
+
+            access_key = os.environ["R2_ACCESS_KEY_ID"]
+            secret_key = os.environ["R2_SECRET_ACCESS_KEY"]
+            endpoint = os.environ["R2_ENDPOINT"].rstrip("/")
+            bucket = os.environ["R2_BUCKET"]
+            key = os.environ["R2_APK_KEY"]
+            apk_path = os.environ["APK_PATH"]
+            region = "auto"
+            service = "s3"
+            content_type = "application/vnd.android.package-archive"
+
+            parsed = urllib.parse.urlparse(endpoint)
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise SystemExit("R2_ENDPOINT must be an https URL")
+
+            with open(apk_path, "rb") as fp:
+                body = fp.read()
+
+            def sha256_hex(data: bytes) -> str:
+                return hashlib.sha256(data).hexdigest()
+
+            def sign(key_bytes: bytes, msg: str) -> bytes:
+                return hmac.new(key_bytes, msg.encode("utf-8"), hashlib.sha256).digest()
+
+            now = datetime.datetime.utcnow()
+            amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+            date_stamp = now.strftime("%Y%m%d")
+            canonical_uri = "/" + "/".join(
+                urllib.parse.quote(part, safe="")
+                for part in f"{bucket}/{key}".split("/")
+            )
+            payload_hash = sha256_hex(body)
+            headers = {
+                "content-type": content_type,
+                "host": parsed.netloc,
+                "x-amz-content-sha256": payload_hash,
+                "x-amz-date": amz_date,
+            }
+            signed_headers = ";".join(sorted(headers))
+            canonical_headers = "".join(f"{name}:{headers[name]}\n" for name in sorted(headers))
+            canonical_request = "\n".join([
+                "PUT",
+                canonical_uri,
+                "",
+                canonical_headers,
+                signed_headers,
+                payload_hash,
+            ])
+            credential_scope = f"{date_stamp}/{region}/{service}/aws4_request"
+            string_to_sign = "\n".join([
+                "AWS4-HMAC-SHA256",
+                amz_date,
+                credential_scope,
+                sha256_hex(canonical_request.encode("utf-8")),
+            ])
+            signing_key = sign(
+                sign(
+                    sign(
+                        sign(("AWS4" + secret_key).encode("utf-8"), date_stamp),
+                        region,
+                    ),
+                    service,
+                ),
+                "aws4_request",
+            )
+            signature = hmac.new(signing_key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+            headers["Authorization"] = (
+                "AWS4-HMAC-SHA256 "
+                f"Credential={access_key}/{credential_scope}, "
+                f"SignedHeaders={signed_headers}, Signature={signature}"
+            )
+
+            url = endpoint + canonical_uri
+            request = urllib.request.Request(url, data=body, method="PUT", headers=headers)
+            try:
+                with urllib.request.urlopen(request, timeout=300) as response:
+                    status = response.status
+            except Exception as exc:
+                print(f"R2 upload failed: {exc}", file=sys.stderr)
+                raise
+
+            if status < 200 or status >= 300:
+                raise SystemExit(f"R2 upload failed with HTTP {status}")
+            print(f"Uploaded {os.path.basename(apk_path)} to R2 object {bucket}/{key}")
+            PY
             echo "Uploaded latest APK to R2: ${R2_BUCKET}/${R2_APK_KEY}"
 
       - run:
