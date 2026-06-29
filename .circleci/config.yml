@@ -47,7 +47,7 @@ jobs:
               echo "export TAG_NAME=${TAG_NAME}"
               echo "export RELEASE_NAME=\"${RELEASE_NAME}\""
             } >> "$BASH_ENV"
-            cat > release-notes.md <<'EOF'
+            cat > release-notes.md \<<'EOF'
             CircleCI arm64-v8a release build.
             EOF
 
@@ -100,7 +100,7 @@ jobs:
           command: |
             source "$BASH_ENV"
             test -n "$GITHUB_TOKEN"
-            python3 - <<'PY'
+            python3 - \<<'PY'
             import json
             import mimetypes
             import os
