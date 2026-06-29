@@ -204,7 +204,8 @@ object AiCreationService {
                 )
             }
             val root = JSONObject(payload)
-            return root.optString("id").takeIf { it.isNotBlank() }
+            return root.optString("task_id").takeIf { it.isNotBlank() }
+                ?: root.optString("id").takeIf { it.isNotBlank() }
                 ?: throw AiCreationException("视频任务创建失败: 未获取到任务ID", payload)
         }
     }
@@ -267,9 +268,13 @@ object AiCreationService {
                 onProgress?.invoke(GenerationProgress(percent, statusText, elapsed))
 
                 when (lastStatus) {
-                    "succeeded" -> {
+                    "succeeded", "completed" -> {
                         val data = root.optJSONArray("data")
                         val url = data?.optJSONObject(0)?.optString("url")
+                            ?.takeIf { it.isNotBlank() }
+                            ?: root.optString("remixed_from_video_id")
+                            ?: root.optString("video_url")
+                            ?.takeIf { it.isNotBlank() }
                         if (!url.isNullOrBlank()) return VideoResult(videoUrl = url)
                         throw AiCreationException("视频生成完成但未获取到URL，任务ID: $taskId", payload)
                     }
