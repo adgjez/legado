@@ -226,17 +226,36 @@ def verify_gitee_release(tag_name):
 def main():
     parser = argparse.ArgumentParser(description="Sync GitHub release APKs to Gitee locally.")
     parser.add_argument("--tag", help="GitHub release tag. Empty means latest GitHub release.")
+    parser.add_argument("--apk", action="append", help="Local APK path to upload instead of downloading from GitHub.")
+    parser.add_argument("--release-name", help="Release name for local APK upload mode.")
+    parser.add_argument("--body-file", help="Release notes file for local APK upload mode.")
     parser.add_argument("--skip-channel", action="store_true", help="Do not sync latest-arm64-release.")
     args = parser.parse_args()
 
-    release = github_release(args.tag)
-    tag_name = release["tag_name"]
-    release_name = release.get("name") or tag_name
-    body = release.get("body") or ""
-    log(f"GitHub release: {tag_name} / {release_name}")
+    local_apks = [Path(path) for path in args.apk or []]
+    if local_apks:
+        if not args.tag:
+            raise RuntimeError("--tag is required when --apk is used.")
+        missing = [str(path) for path in local_apks if not path.is_file()]
+        if missing:
+            raise RuntimeError(f"Local APK does not exist: {missing}")
+        tag_name = args.tag
+        release_name = args.release_name or tag_name
+        body = Path(args.body_file).read_text(encoding="utf-8") if args.body_file else ""
+        apks = local_apks
+        run_git(["tag", "-f", tag_name])
+        log(f"Local APK release: {tag_name} / {release_name}")
+    else:
+        release = github_release(args.tag)
+        tag_name = release["tag_name"]
+        release_name = release.get("name") or tag_name
+        body = release.get("body") or ""
+        apks = None
+        log(f"GitHub release: {tag_name} / {release_name}")
 
     with tempfile.TemporaryDirectory(prefix="legado-gitee-sync-") as tmp:
-        apks = download_github_apks(release, Path(tmp))
+        if apks is None:
+            apks = download_github_apks(release, Path(tmp))
         ensure_gitee_tag(tag_name)
         versioned_id = upsert_gitee_release(tag_name, release_name, body)
         upload_apks(versioned_id, apks)

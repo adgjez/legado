@@ -1,0 +1,112 @@
+version: 2.1
+
+jobs:
+  build-arm64-gitee-release:
+    docker:
+      - image: cimg/android:2024.11
+    resource_class: large
+    environment:
+      GRADLE_OPTS: -Dorg.gradle.daemon=true -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - gradle-v2-{{ arch }}-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}-{{ checksum "gradle/libs.versions.toml" }}
+            - gradle-v2-{{ arch }}-
+
+      - run:
+          name: Install Android SDK 36
+          command: |
+            yes | sdkmanager --licenses >/dev/null || true
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - run:
+          name: Configure CI debug signing
+          command: |
+            test -n "$CI_DEBUG_STORE_PASSWORD"
+            test -n "$CI_DEBUG_KEY_PASSWORD"
+            {
+              echo
+              echo "RELEASE_KEY_ALIAS=legado-ci-debug"
+              echo "RELEASE_KEY_PASSWORD=$CI_DEBUG_KEY_PASSWORD"
+              echo "RELEASE_STORE_PASSWORD=$CI_DEBUG_STORE_PASSWORD"
+              echo "RELEASE_STORE_FILE=./ci-debug.keystore"
+            } >> gradle.properties
+
+      - run:
+          name: Prepare release metadata
+          command: |
+            VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H%M)"
+            VERSION_CODE=$(($(date -u +%s) / 60))
+            TAG_NAME="circleci-arm64-${VERSION_NAME}"
+            RELEASE_NAME="Legado arm64-v8a ${VERSION_NAME}"
+            {
+              echo "export VERSION_NAME=${VERSION_NAME}"
+              echo "export VERSION_CODE=${VERSION_CODE}"
+              echo "export TAG_NAME=${TAG_NAME}"
+              echo "export RELEASE_NAME=\"${RELEASE_NAME}\""
+            } >> "$BASH_ENV"
+            cat > release-notes.md <<'EOF'
+            CircleCI arm64-v8a release build.
+            EOF
+
+      - run:
+          name: Build arm64-v8a release APK
+          command: |
+            source "$BASH_ENV"
+            chmod +x gradlew
+            rm -rf release-apks app/build/outputs/apk/app/release
+            mkdir -p release-apks
+            ./gradlew :app:assembleAppRelease \
+              -Pabi=arm64-v8a \
+              -PVERSION_NAME="$VERSION_NAME" \
+              -PVERSION_CODE="$VERSION_CODE" \
+              --build-cache \
+              --parallel \
+              --daemon \
+              --stacktrace
+            APK_PATH=$(find app/build/outputs/apk/app/release -type f -name '*.apk' | head -n 1)
+            test -n "$APK_PATH"
+            cp "$APK_PATH" "release-apks/legado-arm64-v8a_app_${VERSION_NAME}_${VERSION_CODE}.apk"
+
+      - run:
+          name: Verify APK signing certificate
+          command: |
+            APK_PATH=$(find release-apks -type f -name '*.apk' | head -n 1)
+            APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+            test -n "$APKSIGNER"
+            "$APKSIGNER" verify --print-certs "$APK_PATH" | tee apk-cert.txt
+            grep -qi 'd6:44:1f:18:d3:41:3a:81:c0:e8:2e:51:f5:50:c5:58:c5:d7:92:13:e9:21:b0:2d:ec:30:bd:34:73:d4:f2:b6' apk-cert.txt
+
+      - save_cache:
+          key: gradle-v2-{{ arch }}-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}-{{ checksum "gradle/libs.versions.toml" }}-{{ epoch }}
+          paths:
+            - ~/.gradle/caches
+            - ~/.gradle/wrapper
+            - .gradle
+            - .kotlin
+            - build
+            - app/build
+            - modules/book/build
+            - modules/rhino/build
+
+      - store_artifacts:
+          path: release-apks
+          destination: release-apks
+
+      - run:
+          name: Upload APK to Gitee
+          command: |
+            source "$BASH_ENV"
+            test -n "$GITEE_TOKEN"
+            python3 tools/sync_gitee_release.py \
+              --tag "$TAG_NAME" \
+              --release-name "$RELEASE_NAME" \
+              --body-file release-notes.md \
+              --apk "release-apks/legado-arm64-v8a_app_${VERSION_NAME}_${VERSION_CODE}.apk"
+
+workflows:
+  arm64-gitee-release:
+    jobs:
+      - build-arm64-gitee-release
