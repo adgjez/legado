@@ -138,37 +138,34 @@ object AiCreationService {
         prompt: String,
         numFrames: Int = 121,
         onProgress: ((GenerationProgress) -> Unit)? = null
-    ): VideoResult = createAndPollVideo(prompt, numFrames, mode = "ti2vid", onProgress = onProgress)
+    ): VideoResult = createAndPollVideo(prompt, numFrames, onProgress = onProgress)
 
     suspend fun imageToVideo(
         prompt: String,
         imageUrl: String,
         numFrames: Int = 121,
         onProgress: ((GenerationProgress) -> Unit)? = null
-    ): VideoResult = createAndPollVideo(prompt, numFrames, imageUrl = imageUrl, mode = "ti2vid", onProgress = onProgress)
+    ): VideoResult = createAndPollVideo(prompt, numFrames, imageUrl = imageUrl, onProgress = onProgress)
 
     private suspend fun createAndPollVideo(
         prompt: String,
         numFrames: Int,
         imageUrl: String? = null,
-        mode: String = "ti2vid",
         onProgress: ((GenerationProgress) -> Unit)? = null
     ): VideoResult {
         requireApiKey()
-        val taskId = createVideoTask(prompt, numFrames, imageUrl, mode)
+        val taskId = createVideoTask(prompt, numFrames, imageUrl)
         return pollVideoResult(taskId, onProgress)
     }
 
     private suspend fun createVideoTask(
         prompt: String,
         numFrames: Int,
-        imageUrl: String?,
-        mode: String
+        imageUrl: String?
     ): String {
         val body = JSONObject().apply {
             put("model", VIDEO_MODEL)
             put("prompt", prompt)
-            put("mode", mode)
             put("num_frames", numFrames)
             put("width", DEFAULT_VIDEO_WIDTH)
             put("height", DEFAULT_VIDEO_HEIGHT)

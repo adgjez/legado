@@ -1,10 +1,13 @@
 package io.legado.app.ui.main.ai.creation
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
+import java.io.ByteArrayOutputStream
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -72,6 +75,32 @@ private val videoPresets = listOf(
     VideoPreset("10秒", 241),
     VideoPreset("18秒", 441),
 )
+
+// ── 图片压缩 ──
+
+/** 将本地图片压缩为 JPEG (base64 data URI)，最大边长 1024，质量 80% */
+private fun compressImageToBase64(context: android.content.Context, uri: Uri): String {
+    // 先读取尺寸
+    val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, boundsOptions)
+    }
+    val maxDim = 1024
+    val scaleFactor = maxOf(
+        (boundsOptions.outWidth + maxDim - 1) / maxDim,
+        (boundsOptions.outHeight + maxDim - 1) / maxDim,
+        1
+    )
+    val decodeOpts = BitmapFactory.Options().apply { inSampleSize = scaleFactor }
+    val bitmap = context.contentResolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, decodeOpts)
+    } ?: throw AiCreationException("无法读取图片文件")
+    val outputStream = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+    bitmap.recycle()
+    val b64 = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+    return "data:image/jpeg;base64,$b64"
+}
 
 // ── 持久化生成状态（离开页面不中断） ──
 
@@ -463,13 +492,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                             } else {
                                 val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
-                                val dataUri = context.contentResolver.run {
-                                    val inputStream = openInputStream(uri) ?: throw AiCreationException("无法读取图片文件")
-                                    val bytes = inputStream.use { it.readBytes() }
-                                    val mimeType = getType(uri) ?: "image/png"
-                                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                                    "data:$mimeType;base64,$b64"
-                                }
+                                val dataUri = compressImageToBase64(context, uri)
                                 AiCreationService.imageToImage(prompt, dataUri, currentSizeValue)
                             }
                         }
@@ -796,13 +819,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                             } else {
                                 val uri = imageUri
                                     ?: throw AiCreationException("请先选择图片")
-                                val dataUri = context.contentResolver.run {
-                                    val inputStream = openInputStream(uri) ?: throw AiCreationException("无法读取图片文件")
-                                    val bytes = inputStream.use { it.readBytes() }
-                                    val mimeType = getType(uri) ?: "image/png"
-                                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                                    "data:$mimeType;base64,$b64"
-                                }
+                                val dataUri = compressImageToBase64(context, uri)
                                 AiCreationService.imageToVideo(
                                     prompt,
                                     dataUri,
