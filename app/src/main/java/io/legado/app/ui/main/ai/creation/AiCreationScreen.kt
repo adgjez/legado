@@ -344,10 +344,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
         selectedSize.value.takeIf { it.isNotBlank() } ?: "${customWidth}x${customHeight}"
     }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var generating get() = imageState.generating; set(v) { imageState.generating = v }
-    var resultUrl get() = imageState.resultUrl; set(v) { imageState.resultUrl = v }
-    var errorMsg get() = imageState.errorMsg; set(v) { imageState.errorMsg = v }
-    var progressText get() = imageState.progressText; set(v) { imageState.progressText = v }
+
     val context = LocalContext.current
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -365,7 +362,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
             ImageMode.entries.forEach { m ->
                 val sel = mode == m
                 Surface(
-                    onClick = { mode = m; resultUrl = null; errorMsg = null },
+                    onClick = { mode = m; imageState.resultUrl = null; imageState.errorMsg = null },
                     shape = RoundedCornerShape(style.metrics.chipRadius),
                     color = if (sel) style.colors.accent.copy(alpha = 0.14f)
                     else style.colors.cardSurface
@@ -532,9 +529,9 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
         // 生成按钮
         Button(
             onClick = {
-                generating = true
-                errorMsg = null
-                resultUrl = null
+                imageState.generating = true
+                imageState.errorMsg = null
+                imageState.resultUrl = null
                 generationScope.launch {
                     try {
                         val result = withContext(Dispatchers.IO) {
@@ -547,7 +544,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                                 AiCreationService.imageToImage(prompt, dataUri, currentSizeValue())
                             }
                         }
-                        resultUrl = result.url
+                        imageState.resultUrl = result.url
                         result.url?.let { url ->
                             AiCreationHistory.addImage(
                                 AiCreationHistory.ImageRecord(
@@ -558,13 +555,13 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                             )
                         }
                     } catch (e: Exception) {
-                        errorMsg = e.message
+                        imageState.errorMsg = e.message
                     } finally {
-                        generating = false
+                        imageState.generating = false
                     }
                 }
             },
-            enabled = prompt.isNotBlank() && !generating &&
+            enabled = prompt.isNotBlank() && !imageState.generating &&
                 (mode == ImageMode.TEXT_TO_IMAGE || imageUri != null),
             modifier = Modifier
                 .fillMaxWidth()
@@ -572,7 +569,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
             colors = ButtonDefaults.buttonColors(containerColor = style.colors.accent),
             shape = RoundedCornerShape(style.metrics.chipRadius)
         ) {
-            if (generating) {
+            if (imageState.generating) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(22.dp),
                     color = Color.White,
@@ -581,7 +578,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                 Spacer(Modifier.width(8.dp))
             }
             Text(
-                if (generating) "生成中..." else "生成图片",
+                if (imageState.generating) "生成中..." else "生成图片",
                 color = Color.White,
                 fontSize = 15.sp
             )
@@ -589,7 +586,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
         Spacer(Modifier.height(16.dp))
 
         // 进度条
-        if (generating) {
+        if (imageState.generating) {
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -600,7 +597,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                progressText.ifBlank { "生成中..." },
+                imageState.progressText.ifBlank { "生成中..." },
                 color = style.colors.secondaryText,
                 fontSize = 12.sp
             )
@@ -608,7 +605,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
         }
 
         // 结果
-        errorMsg?.let { msg ->
+        imageState.errorMsg?.let { msg ->
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
                 color = style.colors.danger.copy(alpha = 0.1f),
@@ -622,7 +619,7 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                 )
             }
         }
-        resultUrl?.let { url ->
+        imageState.resultUrl?.let { url ->
             var showFull by remember { mutableStateOf(false) }
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
@@ -720,11 +717,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
     var selectedResolution by remember { mutableStateOf(VideoResolution.SD) }
     var selectedAspectRatio by remember { mutableStateOf(videoAspectRatios[1]) } // 默认16:9
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var generating get() = videoState.generating; set(v) { videoState.generating = v }
-    var resultUrl get() = videoState.resultUrl; set(v) { videoState.resultUrl = v }
-    var errorMsg get() = videoState.errorMsg; set(v) { videoState.errorMsg = v }
-    var progressText get() = videoState.progressText; set(v) { videoState.progressText = v }
-    var videoProgress get() = videoState.videoProgress; set(v) { videoState.videoProgress = v }
+
     val context = LocalContext.current
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -741,7 +734,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
             VideoMode.entries.forEach { m ->
                 val sel = mode == m
                 Surface(
-                    onClick = { mode = m; resultUrl = null; errorMsg = null },
+                    onClick = { mode = m; videoState.resultUrl = null; videoState.errorMsg = null },
                     shape = RoundedCornerShape(style.metrics.chipRadius),
                     color = if (sel) style.colors.accent.copy(alpha = 0.14f)
                     else style.colors.cardSurface
@@ -894,16 +887,16 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
 
         Button(
             onClick = {
-                generating = true
-                errorMsg = null
-                resultUrl = null
-                progressText = "创建视频任务..."
-                videoProgress = 0f
+                videoState.generating = true
+                videoState.errorMsg = null
+                videoState.resultUrl = null
+                videoState.progressText = "创建视频任务..."
+                videoState.videoProgress = 0f
                 generationScope.launch {
                     try {
                         val onProgress: (AiCreationService.GenerationProgress) -> Unit = { p ->
-                            progressText = "${p.statusText} ${p.percent}% (${p.elapsedSeconds}秒)"
-                            videoProgress = p.percent / 100f
+                            videoState.progressText = "${p.statusText} ${p.percent}% (${p.elapsedSeconds}秒)"
+                            videoState.videoProgress = p.percent / 100f
                         }
                         val videoW = (selectedResolution.baseHeight * selectedAspectRatio.ratioW / selectedAspectRatio.ratioH)
                             val videoH = selectedResolution.baseHeight
@@ -930,9 +923,9 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                                 )
                             }
                         }
-                        resultUrl = result.videoUrl
-                        progressText = ""
-                        videoProgress = 1f
+                        videoState.resultUrl = result.videoUrl
+                        videoState.progressText = ""
+                        videoState.videoProgress = 1f
                         AiCreationHistory.addVideo(
                             AiCreationHistory.VideoRecord(
                                 url = result.videoUrl,
@@ -941,14 +934,14 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                             )
                         )
                     } catch (e: Exception) {
-                        errorMsg = e.message
-                        progressText = ""
+                        videoState.errorMsg = e.message
+                        videoState.progressText = ""
                     } finally {
-                        generating = false
+                        videoState.generating = false
                     }
                 }
             },
-            enabled = prompt.isNotBlank() && !generating &&
+            enabled = prompt.isNotBlank() && !videoState.generating &&
                 (mode == VideoMode.TEXT_TO_VIDEO || imageUri != null),
             modifier = Modifier
                 .fillMaxWidth()
@@ -956,7 +949,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
             colors = ButtonDefaults.buttonColors(containerColor = style.colors.accent),
             shape = RoundedCornerShape(style.metrics.chipRadius)
         ) {
-            if (generating) {
+            if (videoState.generating) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(22.dp),
                     color = Color.White,
@@ -965,16 +958,16 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 Spacer(Modifier.width(8.dp))
             }
             Text(
-                if (generating) "生成中..." else "生成视频",
+                if (videoState.generating) "生成中..." else "生成视频",
                 color = Color.White,
                 fontSize = 15.sp
             )
         }
         Spacer(Modifier.height(8.dp))
 
-        if (generating) {
+        if (videoState.generating) {
             LinearProgressIndicator(
-                progress = { videoProgress },
+                progress = { videoState.videoProgress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp)
@@ -984,14 +977,14 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                progressText.ifBlank { "生成中..." },
+                videoState.progressText.ifBlank { "生成中..." },
                 color = style.colors.secondaryText,
                 fontSize = 12.sp
             )
             Spacer(Modifier.height(8.dp))
         }
 
-        errorMsg?.let { msg ->
+        videoState.errorMsg?.let { msg ->
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
                 color = style.colors.danger.copy(alpha = 0.1f),
@@ -1005,7 +998,7 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 )
             }
         }
-        resultUrl?.let { url ->
+        videoState.resultUrl?.let { url ->
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
                 color = style.colors.cardSurface,
