@@ -23,6 +23,22 @@ jobs:
           java-version: 17
           cache: gradle
 
+      - name: Restore incremental build cache
+        id: incremental-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .gradle
+            .kotlin
+            build
+            app/build
+            modules/book/build
+            modules/rhino/build
+          key: android-incremental-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            android-incremental-${{ runner.os }}-${{ github.ref_name }}-
+            android-incremental-${{ runner.os }}-
+
       - name: Grant gradlew permission
         run: chmod +x gradlew
 
@@ -59,14 +75,28 @@ jobs:
         run: |
           rm -rf release-apks app/build/outputs/apk/app/release
           mkdir -p release-apks
-          ./gradlew :app:clean :app:assembleAppRelease \
+          ./gradlew :app:assembleAppRelease \
             -Pabi=arm64-v8a \
             -PVERSION_NAME="${{ steps.version.outputs.name }}" \
             -PVERSION_CODE="${{ steps.version.outputs.code }}" \
+            --build-cache \
             --stacktrace
           APK_PATH=$(find app/build/outputs/apk/app/release -type f -name '*.apk' | head -n 1)
           test -n "$APK_PATH"
           cp "$APK_PATH" "release-apks/legado-arm64-v8a_app_${{ steps.version.outputs.name }}_${{ steps.version.outputs.code }}.apk"
+
+      - name: Save incremental build cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .gradle
+            .kotlin
+            build
+            app/build
+            modules/book/build
+            modules/rhino/build
+          key: android-incremental-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
