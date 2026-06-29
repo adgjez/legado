@@ -43,7 +43,6 @@ import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.MainBottomNavConfig
-import io.legado.app.help.config.MainLayoutPresetConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.dialogs.alert
@@ -94,10 +93,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var activeDirNameState by mutableStateOf(NavigationBarIconConfig.DEFAULT_DIR_NAME)
     private var summaryTextState by mutableStateOf("")
     private var isNightMode by mutableStateOf(false)
-    private var floatingSearchHiddenState by mutableStateOf(AppConfig.floatingBottomBarHideSearch)
-    private var floatingSearchToggleVisibleState by mutableStateOf(
-        MainLayoutPresetConfig.defaultBottomLayoutMode() == "floating"
-    )
     private var bottomNavItemsState by mutableStateOf(MainBottomNavConfig.items())
     private var editingEntry: NavigationBarIconConfig.Entry? = null
     private var editingDialog: LinearLayout? = null
@@ -257,8 +252,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     activeDirName = activeDirNameState,
                     isNightMode = isNightMode,
                     summaryText = summaryTextState,
-                    floatingSearchHidden = floatingSearchHiddenState,
-                    searchToggleVisible = floatingSearchToggleVisibleState,
                     bottomNavSummary = bottomNavSummary(bottomNavItemsState),
                     onSwitchDayNight = { night ->
                         if (night != isNightMode) {
@@ -268,7 +261,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     },
                     onAdd = ::showAddDialog,
                     onManageBottomNavItems = ::showBottomNavItemsDialog,
-                    onToggleFloatingSearch = ::toggleFloatingSearch,
                     onApply = ::applyPackage,
                     onEdit = { entry -> showEditDialog(entry) },
                     entryInfo = ::entryInfo,
@@ -433,17 +425,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
                 entriesState = it
                 activeDirNameState = NavigationBarIconConfig.activeDirName(isNightMode)
-                val activeEntry = it.firstOrNull { entry ->
-                    entry.dirName == activeDirNameState
-                }
-                floatingSearchHiddenState = if (activeEntry == null || activeEntry.config.layoutMode == "floating") {
-                    activeEntry?.config?.hideSearchInFloatingStyle ?: AppConfig.floatingBottomBarHideSearch
-                } else {
-                    false
-                }
-                // 隐藏搜索开关只对悬浮底栏有意义，其它布局下隐藏卡片，避免哑开关。
-                floatingSearchToggleVisibleState =
-                    (activeEntry?.config?.layoutMode ?: MainLayoutPresetConfig.defaultBottomLayoutMode()) == "floating"
                 summaryTextState = if (it.size <= 1) {
                     getString(R.string.navigation_bar_package_empty)
                 } else {
@@ -453,43 +434,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
                 summaryTextState = it.localizedMessage.orEmpty()
             }
-        }
-    }
-
-    private fun toggleFloatingSearch() {
-        val current = entriesState.firstOrNull { it.dirName == activeDirNameState }
-        val activeLayoutMode = current?.config?.layoutMode ?: MainLayoutPresetConfig.defaultBottomLayoutMode()
-        if (activeLayoutMode != "floating") {
-            toastOnUi(getString(R.string.bottom_bar_layout_floating))
-            return
-        }
-        val hidden = !floatingSearchHiddenState
-        floatingSearchHiddenState = hidden
-        if (current != null && current.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME && current.source != NavigationBarIconConfig.Source.REMOTE) {
-            lifecycleScope.launch {
-                kotlin.runCatching {
-                    withContext(Dispatchers.IO) {
-                        NavigationBarIconConfig.addOrUpdate(
-                            current.config.copy(hideSearchInFloatingStyle = hidden),
-                            current
-                        )
-                    }
-                }.onSuccess {
-                    if (activeDirNameState == it.dirName) {
-                        NavigationBarIconConfig.apply(it)
-                        postEvent(EventBus.NAVIGATION_BAR_CHANGED, it.config.isNightMode)
-                        postEvent(EventBus.NOTIFY_MAIN, false)
-                    }
-                    loadPackages()
-                }.onFailure {
-                    floatingSearchHiddenState = current.config.hideSearchInFloatingStyle
-                    toastOnUi(it.localizedMessage ?: getString(R.string.error))
-                }
-            }
-        } else {
-            AppConfig.floatingBottomBarHideSearch = hidden
-            postEvent(EventBus.NAVIGATION_BAR_CHANGED, AppConfig.isNightTheme)
-            postEvent(EventBus.NOTIFY_MAIN, false)
         }
     }
 
@@ -1235,13 +1179,10 @@ private fun NavigationBarPackageManageScreen(
     activeDirName: String,
     isNightMode: Boolean,
     summaryText: String,
-    floatingSearchHidden: Boolean,
-    searchToggleVisible: Boolean,
     bottomNavSummary: String,
     onSwitchDayNight: (Boolean) -> Unit,
     onAdd: () -> Unit,
     onManageBottomNavItems: () -> Unit,
-    onToggleFloatingSearch: () -> Unit,
     onApply: (NavigationBarIconConfig.Entry) -> Unit,
     onEdit: (NavigationBarIconConfig.Entry) -> Unit,
     entryInfo: (NavigationBarIconConfig.Entry) -> String,
@@ -1265,17 +1206,6 @@ private fun NavigationBarPackageManageScreen(
                     palette = palette,
                     onClick = onManageBottomNavItems
                 )
-            }
-            if (searchToggleVisible) {
-                item(key = "floating_bottom_bar_search") {
-                    AppPackageManageSettingCard(
-                        title = stringResource(R.string.search),
-                        info = stringResource(R.string.bottom_bar_layout_floating),
-                        valueText = if (floatingSearchHidden) "Off" else "On",
-                        palette = palette,
-                        onClick = onToggleFloatingSearch
-                    )
-                }
             }
         }
     ) { palette ->

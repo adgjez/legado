@@ -2178,6 +2178,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val needReload = values.any { it == 5 || it == 6 || it == 8 || it == 10 }
         val needInvalidate = values.contains(9)
         val needSubmitRender = values.contains(11)
+        var textRenderInvalidated = false
         if (needSystemUi) {
             upSystemUiVisibility()
         }
@@ -2199,14 +2200,19 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         if (needStyle) {
             readView.upStyle()
+            if (!needReload) {
+                readView.invalidateTextPage()
+                readView.submitRenderTask()
+                textRenderInvalidated = true
+            }
         }
         if (needReload && isInitFinish) {
             ReadBook.relayoutCurrentContent("read-config")
         } else {
-            if (needInvalidate) {
+            if (needInvalidate && !textRenderInvalidated) {
                 readView.invalidateTextPage()
             }
-            if (needSubmitRender) {
+            if (needSubmitRender && !textRenderInvalidated) {
                 readView.submitRenderTask()
             }
         }
@@ -3694,18 +3700,15 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onNightThemeChanged() = binding.run {
         ThemeConfig.applyTheme(this@ReadBookActivity)
-        if (epubReadView.width > 0 && epubReadView.height > 0) {
-            ReadBookConfig.upBg(epubReadView.width, epubReadView.height)
-        } else if (readView.width > 0 && readView.height > 0) {
-            ReadBookConfig.upBg(readView.width, readView.height)
-        }
         readMenu.reset()
         if (epubCoreActive) {
+            if (epubReadView.width > 0 && epubReadView.height > 0) {
+                ReadBookConfig.upBg(epubReadView.width, epubReadView.height)
+            }
             epubReadView.clearSelection()
             applyEpubRendererStyleOnly()
         } else {
-            readView.upBg()
-            readView.upStyle()
+            readView.refreshVisualStyle()
         }
         upSystemUiVisibility()
     }

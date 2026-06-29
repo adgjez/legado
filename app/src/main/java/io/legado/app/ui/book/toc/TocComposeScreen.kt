@@ -117,7 +117,7 @@ fun TocComposeScreen(
         var chapterList by remember { mutableStateOf<List<BookChapter>>(emptyList()) }
         var visibleChapters by remember { mutableStateOf<List<BookChapter>>(emptyList()) }
         var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
-        var displayTitles by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+        var titleContext by remember { mutableStateOf<TocTitleContext?>(null) }
         var cacheFileNames by remember { mutableStateOf<Set<String>>(emptySet()) }
         var chapterCacheMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
         var collapsedVolumeIndexes by remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -151,6 +151,24 @@ fun TocComposeScreen(
             book?.let(onBookLoaded)
         }
 
+        LaunchedEffect(book, refreshTick, contentRefreshTick) {
+            val currentBook = book
+            titleContext = if (currentBook == null) {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    TocTitleContext(
+                        replaceRules = ContentProcessor.get(
+                            currentBook.name,
+                            currentBook.origin
+                        ).getTitleReplaceRules(),
+                        useReplace = AppConfig.tocUiUseReplace && currentBook.getUseReplaceRule(),
+                        replaceBook = currentBook.toReplaceBook()
+                    )
+                }
+            }
+        }
+
         LaunchedEffect(book, searchQuery, refreshTick, contentRefreshTick) {
             val currentBook = book ?: return@LaunchedEffect
             chaptersLoaded = false
@@ -162,17 +180,23 @@ fun TocComposeScreen(
                     appDb.bookChapterDao.search(currentBook.bookUrl, searchQuery, 0, end)
                 }
             }
+            val collapsedIndexes = if (searchQuery.isBlank()) {
+                withContext(Dispatchers.Default) {
+                    collapsedVolumeIndexesFor(
+                        chapters = chapters,
+                        durChapterIndex = currentBook.durChapterIndex
+                    )
+                }
+            } else {
+                collapsedVolumeIndexes
+            }
             if (searchQuery.isBlank()) {
                 chapterList = chapters
-                collapsedVolumeIndexes = collapsedVolumeIndexesFor(
-                    chapters = chapters,
-                    durChapterIndex = currentBook.durChapterIndex
-                )
+                collapsedVolumeIndexes = collapsedIndexes
             }
-            displayTitles = withContext(Dispatchers.Default) {
-                buildChapterDisplayTitles(currentBook, chapters)
+            visibleChapters = withContext(Dispatchers.Default) {
+                visibleChapters(chapters, searchQuery, collapsedIndexes)
             }
-            visibleChapters = visibleChapters(chapters, searchQuery, collapsedVolumeIndexes)
             chaptersLoaded = true
             if (selectedPage == TocPage.Chapters && visibleChapters.isNotEmpty()) {
                 if (searchQuery.isBlank()) {
@@ -287,23 +311,28 @@ fun TocComposeScreen(
                                 TocChapterList(
                                     book = book,
                                     chapters = visibleChapters,
-                                    displayTitles = displayTitles,
+                                    titleContext = titleContext,
                                     collapsedVolumeIndexes = collapsedVolumeIndexes,
                                     chapterCacheMap = chapterCacheMap,
                                     countWords = countWords,
                                     listState = chapterListState,
                                     onToggleVolume = { chapter ->
                                         if (!chapter.isVolume || searchQuery.isNotBlank()) return@TocChapterList
-                                        collapsedVolumeIndexes = if (chapter.index in collapsedVolumeIndexes) {
+                                        val nextCollapsedVolumeIndexes = if (chapter.index in collapsedVolumeIndexes) {
                                             collapsedVolumeIndexes - chapter.index
                                         } else {
                                             collapsedVolumeIndexes + chapter.index
                                         }
-                                        visibleChapters = visibleChapters(
-                                            chapterList,
-                                            searchQuery,
-                                            collapsedVolumeIndexes
-                                        )
+                                        collapsedVolumeIndexes = nextCollapsedVolumeIndexes
+                                        scope.launch {
+                                            visibleChapters = withContext(Dispatchers.Default) {
+                                                visibleChapters(
+                                                    chapterList,
+                                                    searchQuery,
+                                                    nextCollapsedVolumeIndexes
+                                                )
+                                            }
+                                        }
                                     },
                                     onOpenChapter = { chapter ->
                                         book?.let { onOpenChapter(it, chapterList, chapter) }
@@ -583,7 +612,7 @@ private fun TocTabButton(
 private fun TocChapterList(
     book: Book?,
     chapters: List<BookChapter>,
-    displayTitles: Map<String, String>,
+    titleContext: TocTitleContext?,
     collapsedVolumeIndexes: Set<Int>,
     chapterCacheMap: Map<String, Boolean>,
     countWords: Boolean,
@@ -607,7 +636,7 @@ private fun TocChapterList(
                     stickyHeader(key = key, contentType = "volume") {
                         TocVolumeHeaderRow(
                             palette = palette,
-                            title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                            title = rememberTocDisplayTitle(chapter, titleContext),
                             collapsed = collapsedVolumeIndexes.contains(chapter.index),
                             onClick = { onToggleVolume(chapter) }
                         )
@@ -618,7 +647,7 @@ private fun TocChapterList(
                             palette = palette,
                             book = book,
                             chapter = chapter,
-                            title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                            title = rememberTocDisplayTitle(chapter, titleContext),
                             cached = chapterCacheMap[chapter.primaryStr()] ?: true,
                             countWords = countWords,
                             indented = hasVolumes,
@@ -999,6 +1028,30 @@ private data class TocChapterActionLabels(
     val log: String
 )
 
+private data class TocTitleContext(
+    val replaceRules: List<io.legado.app.data.entities.ReplaceRule>,
+    val useReplace: Boolean,
+    val replaceBook: io.legado.app.data.entities.ReplaceBook?
+)
+
+@Composable
+private fun rememberTocDisplayTitle(
+    chapter: BookChapter,
+    titleContext: TocTitleContext?
+): String {
+    return remember(chapter.primaryStr(), chapter.title, titleContext) {
+        if (titleContext == null) {
+            chapter.title
+        } else {
+            chapter.getDisplayTitle(
+                replaceRules = titleContext.replaceRules,
+                useReplace = titleContext.useReplace,
+                replaceBook = titleContext.replaceBook
+            )
+        }
+    }
+}
+
 private fun collapsedVolumeIndexesFor(
     chapters: List<BookChapter>,
     durChapterIndex: Int
@@ -1036,22 +1089,6 @@ private fun visiblePositionOf(chapters: List<BookChapter>, chapterIndex: Int): I
     val exact = chapters.indexOfFirst { it.index == chapterIndex }
     if (exact >= 0) return exact
     return chapters.indexOfLast { it.index < chapterIndex }.coerceAtLeast(0)
-}
-
-private fun buildChapterDisplayTitles(
-    book: Book,
-    chapters: List<BookChapter>
-): Map<String, String> {
-    val replaceRules = ContentProcessor.get(book.name, book.origin).getTitleReplaceRules()
-    val replaceBook = book.toReplaceBook()
-    val useReplace = AppConfig.tocUiUseReplace && book.getUseReplaceRule()
-    return chapters.associate { chapter ->
-        chapter.primaryStr() to chapter.getDisplayTitle(
-            replaceRules = replaceRules,
-            useReplace = useReplace,
-            replaceBook = replaceBook
-        )
-    }
 }
 
 private fun isChapterCached(

@@ -679,6 +679,13 @@ class ReadView(context: Context, attrs: AttributeSet) :
         nextPage.upBgAlpha()
     }
 
+    fun refreshVisualStyle() {
+        upBg()
+        upStyle()
+        invalidateTextPage()
+        submitRenderTask()
+    }
+
     /**
      * 更新时间信息
      */
