@@ -148,6 +148,10 @@
             android:name=".ui.main.explore.DiscoverySuiteManageActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.main.ai.creation.AiCreationActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.book.read.ReadBookActivity"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:exported="true"
