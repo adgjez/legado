@@ -30,12 +30,12 @@ jobs:
         run: |
           {
             echo
-            echo "RELEASE_KEY_ALIAS=${{ secrets.PRIVATE_RELEASE_KEY_ALIAS }}"
-            echo "RELEASE_KEY_PASSWORD=${{ secrets.PRIVATE_RELEASE_KEY_PASSWORD }}"
-            echo "RELEASE_STORE_PASSWORD=${{ secrets.PRIVATE_RELEASE_STORE_PASSWORD }}"
+            echo "RELEASE_KEY_ALIAS=${{ secrets.CI_DEBUG_KEY_ALIAS }}"
+            echo "RELEASE_KEY_PASSWORD=${{ secrets.CI_DEBUG_KEY_PASSWORD }}"
+            echo "RELEASE_STORE_PASSWORD=${{ secrets.CI_DEBUG_STORE_PASSWORD }}"
             echo "RELEASE_STORE_FILE=./key.jks"
           } >> gradle.properties
-          echo "${{ secrets.PRIVATE_RELEASE_STORE_B64 }}" | base64 --decode > "$GITHUB_WORKSPACE/app/key.jks"
+          echo "${{ secrets.CI_DEBUG_KEY_STORE_B64 }}" | base64 --decode > "$GITHUB_WORKSPACE/app/key.jks"
 
       - name: Prepare release version
         id: version
