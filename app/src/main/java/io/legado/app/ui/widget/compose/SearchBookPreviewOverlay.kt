@@ -59,6 +59,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.BookIntroUtils
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -250,9 +251,12 @@ private fun SearchBookPreviewContent(
             }
         }
         Spacer(modifier = Modifier.height(13.dp))
+        val intro = remember(book.intro) {
+            BookIntroUtils.listIntro(book.intro)
+                ?: context.getString(R.string.intro_show_null)
+        }
         Text(
-            text = book.intro?.trim()?.takeIf { it.isNotBlank() }
-                ?: context.getString(R.string.intro_show_null),
+            text = intro,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 84.dp),
@@ -365,4 +369,3 @@ private fun SearchBook.previewKey(): String {
 private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {
     return start + (stop - start) * fraction
 }
-

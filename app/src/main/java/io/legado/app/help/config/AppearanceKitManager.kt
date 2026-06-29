@@ -188,7 +188,7 @@ object AppearanceKitManager {
         kit
     }
 
-    suspend fun saveImportedKit(kit: StoredAppearanceKit): Boolean = withContext(IO) {
+    suspend fun saveImportedKit(kit: StoredAppearanceKit, context: Context = appCtx): Boolean = withContext(IO) {
         val nextName = kit.name.trim().ifBlank { return@withContext false }
         val kits = loadIndex()
         if (kits.any { it.id != kit.id && it.name == nextName }) {
@@ -203,6 +203,7 @@ object AppearanceKitManager {
         )
         saveIndex(kits.map { if (it.id == target.id) next else it })
         if (appCtx.getPrefString(PreferKey.currentAppearanceKitId, "") == target.id) {
+            applyBinding(context, next.binding)
             postEvent(EventBus.MAIN_APPEARANCE_KIT_CHANGED, true)
             postEvent(EventBus.RECREATE, "")
         }

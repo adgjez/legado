@@ -2209,7 +2209,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         observeEvent<Boolean>(EventBus.MAIN_THEME_BACKGROUND_CHANGED) {
             if (it == AppConfig.isNightTheme) {
                 binding.root.post {
-                    upBackgroundImage()
+                    syncLiquidGlassSampleBackground()
+                    scheduleLiquidGlassWarmup()
                 }
             }
         }

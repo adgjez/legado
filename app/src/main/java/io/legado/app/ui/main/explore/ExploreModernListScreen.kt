@@ -66,6 +66,7 @@ import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.BookIntroUtils
 
 @Composable
 fun ExploreModernListScreen(
@@ -577,6 +578,6 @@ private fun ExploreTagChips(
 }
 
 private fun SearchBook.trimIntroOrNull(context: android.content.Context): String? {
-    val introText = intro?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val introText = BookIntroUtils.listIntro(intro) ?: return null
     return context.getString(R.string.intro_show, introText)
 }

@@ -103,7 +103,7 @@ class AppearanceKitEditActivity : BaseActivity<ActivityThemeManageBinding>() {
         val kit = kitState ?: return
         lifecycleScope.launch {
             runCatching {
-                AppearanceKitManager.saveImportedKit(kit)
+                AppearanceKitManager.saveImportedKit(kit, this@AppearanceKitEditActivity)
             }.onSuccess {
                 toastOnUi(if (it) R.string.success else R.string.error)
                 if (it) finish()

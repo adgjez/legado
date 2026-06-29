@@ -53,6 +53,7 @@ import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.BookIntroUtils
 
 /**
  * 搜索结果列表的 Compose 实现，复用与发现页一致的 [BookListCardSurface] 卡片骨架与
@@ -281,7 +282,7 @@ private fun SearchResultText(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        val intro = book.intro?.trim()
+        val intro = remember(book.intro) { BookIntroUtils.listIntro(book.intro) }
         if (!intro.isNullOrEmpty()) {
             Spacer(modifier = Modifier.size(if (rounded) 8.dp else 5.dp))
             Text(

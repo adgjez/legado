@@ -1186,9 +1186,6 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (enqueueUploadIfNeeded(it.first)) {
                     showThemeSyncTasks()
                 }
-                if (it.second) {
-                    binding.root.post { recreate() }
-                }
             }.onFailure {
                 if (it.isJobCancellation()) return@onFailure
                 toastOnUi(getString(R.string.theme_save_failed, it.localizedMessage))
@@ -1597,7 +1594,6 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
                 toastOnUi(getString(R.string.theme_applied))
                 loadThemes()
-                binding.root.post { recreate() }
             }
         }
     }

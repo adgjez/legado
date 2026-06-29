@@ -50,6 +50,7 @@ import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.utils.BookIntroUtils
 
 object BookshelfListItemStyle {
     const val Classic = 0
@@ -418,7 +419,7 @@ private fun BookshelfBookMeta(
         palette = palette
     )
     if (showIntro) {
-        book.getDisplayIntro()?.trim()?.takeIf { it.isNotBlank() }?.let { intro ->
+        BookIntroUtils.listIntro(book.getDisplayIntro())?.let { intro ->
             Text(
                 text = intro,
                 color = palette.secondaryText,
