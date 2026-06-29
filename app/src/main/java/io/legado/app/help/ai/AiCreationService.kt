@@ -130,6 +130,8 @@ object AiCreationService {
 
     data class VideoResult(val videoUrl: String)
 
+    private data class VideoTaskInfo(val taskId: String, val videoId: String?)
+
     /**
      * @param numFrames 视频总帧数 (24fps: 3秒=81帧, 5秒=121帧, 10秒=241帧, 15秒=361帧)
      * @param onProgress 进度回调，每次轮询后调用
@@ -160,8 +162,8 @@ object AiCreationService {
         onProgress: ((GenerationProgress) -> Unit)? = null
     ): VideoResult {
         requireApiKey()
-        val taskId = createVideoTask(prompt, numFrames, width, height, imageUrl)
-        return pollVideoResult(taskId, onProgress)
+        val info = createVideoTask(prompt, numFrames, width, height, imageUrl)
+        return pollVideoResult(info.taskId, info.videoId, onProgress)
     }
 
     private suspend fun createVideoTask(
@@ -170,7 +172,7 @@ object AiCreationService {
         width: Int,
         height: Int,
         imageUrl: String?
-    ): String {
+    ): VideoTaskInfo {
         val body = JSONObject().apply {
             put("model", VIDEO_MODEL)
             put("prompt", prompt)
@@ -205,14 +207,17 @@ object AiCreationService {
                 )
             }
             val root = JSONObject(payload)
-            return root.optString("task_id").takeIf { it.isNotBlank() }
+            val taskId = root.optString("task_id").takeIf { it.isNotBlank() }
                 ?: root.optString("id").takeIf { it.isNotBlank() }
                 ?: throw AiCreationException("视频任务创建失败: 未获取到任务ID", payload)
+            val videoId = root.optString("video_id").takeIf { it.isNotBlank() }
+            return VideoTaskInfo(taskId, videoId)
         }
     }
 
     private suspend fun pollVideoResult(
         taskId: String,
+        videoId: String? = null,
         onProgress: ((GenerationProgress) -> Unit)? = null
     ): VideoResult {
         val startTime = System.currentTimeMillis()
@@ -222,7 +227,11 @@ object AiCreationService {
             val elapsed = (System.currentTimeMillis() - startTime) / 1000
             val response = try {
                 client.newCallResponse {
-                    url("$BASE_URL/v1/videos/$taskId")
+                    if (videoId != null) {
+                        url("$BASE_URL/agnesapi?video_id=$videoId")
+                    } else {
+                        url("$BASE_URL/v1/videos/$taskId")
+                    }
                     addHeader("Authorization", "Bearer $apiKey")
                 }
             } catch (e: SocketTimeoutException) {
@@ -234,7 +243,13 @@ object AiCreationService {
                 }
                 return@repeat
             } catch (e: UnknownHostException) {
-                throw AiCreationException("视频查询失败: 无法解析主机，已等待 ${elapsed}秒，任务ID: $taskId", e)
+                if (attempt > 3) {
+                    throw AiCreationException(
+                        "视频查询失败: 连续无法解析主机（已轮询 ${attempt + 1} 次 / ${elapsed}秒），" +
+                        "上次状态: $lastStatus，任务ID: $taskId", e
+                    )
+                }
+                return@repeat
             } catch (e: IOException) {
                 if (attempt > 3) {
                     throw AiCreationException(
