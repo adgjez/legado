@@ -1,7 +1,7 @@
 version: 2.1
 
 jobs:
-  build-arm64-gitee-release:
+  build-arm64-github-release:
     docker:
       - image: cimg/android:2024.11
     resource_class: large
@@ -39,8 +39,8 @@ jobs:
           command: |
             VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H%M)"
             VERSION_CODE=$(($(date -u +%s) / 60))
-            TAG_NAME="circleci-arm64-${VERSION_NAME}"
-            RELEASE_NAME="Legado arm64-v8a ${VERSION_NAME}"
+            TAG_NAME="private-armv8-${VERSION_NAME}"
+            RELEASE_NAME="Legado private arm64-v8a ${VERSION_NAME}"
             {
               echo "export VERSION_NAME=${VERSION_NAME}"
               echo "export VERSION_CODE=${VERSION_CODE}"
@@ -96,17 +96,76 @@ jobs:
           destination: release-apks
 
       - run:
-          name: Upload APK to Gitee
+          name: Publish APK to GitHub release
           command: |
             source "$BASH_ENV"
-            test -n "$GITEE_TOKEN"
-            python3 tools/sync_gitee_release.py \
-              --tag "$TAG_NAME" \
-              --release-name "$RELEASE_NAME" \
-              --body-file release-notes.md \
-              --apk "release-apks/legado-arm64-v8a_app_${VERSION_NAME}_${VERSION_CODE}.apk"
+            test -n "$GITHUB_TOKEN"
+            python3 - <<'PY'
+            import json
+            import mimetypes
+            import os
+            import urllib.error
+            import urllib.parse
+            import urllib.request
+            from pathlib import Path
+
+            token = os.environ["GITHUB_TOKEN"]
+            owner = os.environ.get("CIRCLE_PROJECT_USERNAME") or "Rimchars"
+            repo = os.environ.get("CIRCLE_PROJECT_REPONAME") or "legado-private-armv8-release"
+            tag = os.environ["TAG_NAME"]
+            name = os.environ["RELEASE_NAME"]
+            sha = os.environ.get("CIRCLE_SHA1") or "main"
+            apk = next(Path("release-apks").glob("*.apk"))
+            body = Path("release-notes.md").read_text(encoding="utf-8")
+            api = f"https://api.github.com/repos/{owner}/{repo}"
+
+            def request(method, url, data=None, headers=None):
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {token}",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "User-Agent": "legado-circleci-release",
+                    **(headers or {}),
+                }
+                raw = None
+                if data is not None:
+                    raw = data if isinstance(data, bytes) else json.dumps(data).encode("utf-8")
+                    headers.setdefault("Content-Type", "application/json")
+                req = urllib.request.Request(url, data=raw, headers=headers, method=method)
+                try:
+                    with urllib.request.urlopen(req, timeout=300) as res:
+                        payload = res.read()
+                except urllib.error.HTTPError as err:
+                    detail = err.read().decode("utf-8", errors="replace")
+                    raise RuntimeError(f"{method} {url} failed: {err.code} {detail}") from err
+                return json.loads(payload.decode("utf-8")) if payload else None
+
+            try:
+                release = request("GET", f"{api}/releases/tags/{urllib.parse.quote(tag)}")
+                for asset in release.get("assets") or []:
+                    if str(asset.get("name", "")).endswith(".apk"):
+                        request("DELETE", f"{api}/releases/assets/{asset['id']}")
+            except RuntimeError as err:
+                if "failed: 404" not in str(err):
+                    raise
+                release = request("POST", f"{api}/releases", {
+                    "tag_name": tag,
+                    "target_commitish": sha,
+                    "name": name,
+                    "body": body,
+                    "draft": False,
+                    "prerelease": False,
+                    "make_latest": "true",
+                })
+
+            upload_url = release["upload_url"].split("{", 1)[0]
+            params = urllib.parse.urlencode({"name": apk.name})
+            mime = mimetypes.guess_type(apk.name)[0] or "application/octet-stream"
+            request("POST", f"{upload_url}?{params}", apk.read_bytes(), {"Content-Type": mime})
+            print(f"Published GitHub release {tag}: {apk.name}")
+            PY
 
 workflows:
-  arm64-gitee-release:
+  arm64-github-release:
     jobs:
-      - build-arm64-gitee-release
+      - build-arm64-github-release
