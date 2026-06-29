@@ -55,8 +55,14 @@ private enum class ImageMode { TEXT_TO_IMAGE, IMAGE_TO_IMAGE }
 
 private enum class VideoMode { TEXT_TO_VIDEO, IMAGE_TO_VIDEO }
 
+private enum class VideoResolution(val label: String, val baseHeight: Int) {
+    SD("SD", 720),
+    HD("HD", 1080)
+}
+
 private data class ImageSize(val label: String, val value: String)
 private data class VideoPreset(val label: String, val numFrames: Int)
+private data class VideoAspectRatio(val label: String, val ratioW: Int, val ratioH: Int)
 
 // ── 预设 ──
 
@@ -64,8 +70,11 @@ private val imageSizes = listOf(
     ImageSize("1:1", "1024x1024"),
     ImageSize("4:3", "1024x768"),
     ImageSize("3:4", "768x1024"),
-    ImageSize("16:9", "1152x768"),
+    ImageSize("16:9", "1360x768"),
     ImageSize("9:16", "768x1360"),
+    ImageSize("3:2", "1152x768"),
+    ImageSize("2:3", "768x1152"),
+    ImageSize("21:9", "1792x768"),
     ImageSize("自定义", ""),
 )
 
@@ -73,7 +82,18 @@ private val videoPresets = listOf(
     VideoPreset("3秒", 81),
     VideoPreset("5秒", 121),
     VideoPreset("10秒", 241),
-    VideoPreset("18秒", 441),
+    VideoPreset("15秒", 361),
+)
+
+private val videoAspectRatios = listOf(
+    VideoAspectRatio("9:16", 9, 16),
+    VideoAspectRatio("16:9", 16, 9),
+    VideoAspectRatio("1:1", 1, 1),
+    VideoAspectRatio("4:3", 4, 3),
+    VideoAspectRatio("3:4", 3, 4),
+    VideoAspectRatio("3:2", 3, 2),
+    VideoAspectRatio("2:3", 2, 3),
+    VideoAspectRatio("21:9", 21, 9),
 )
 
 // ── 图片压缩 ──
@@ -316,7 +336,13 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
     var selectedSize by remember { mutableStateOf(imageSizes[0]) }
     var customWidth by remember { mutableStateOf("1024") }
     var customHeight by remember { mutableStateOf("768") }
-    val currentSizeValue get() = selectedSize.value.takeIf { it.isNotBlank() } ?: "${customWidth}x${customHeight}"
+    var is4K by remember { mutableStateOf(false) }
+    val currentSizeValue get() = if (is4K && selectedSize.value.isNotBlank()) {
+        val parts = selectedSize.value.split("x").map { it.toIntOrNull() ?: 1024 }
+        "${parts[0] * 2}x${parts[1] * 2}"
+    } else {
+        selectedSize.value.takeIf { it.isNotBlank() } ?: "${customWidth}x${customHeight}"
+    }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var generating get() = imageState.generating; set(v) { imageState.generating = v }
     var resultUrl get() = imageState.resultUrl; set(v) { imageState.resultUrl = v }
@@ -475,6 +501,31 @@ private fun ImageCreationPanel(style: AiComposeStyle) {
                         .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
             }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // 4K 切换
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "4K 超清",
+                color = if (is4K) style.colors.accent else style.colors.secondaryText,
+                fontSize = 13.sp,
+                fontWeight = if (is4K) FontWeight.SemiBold else FontWeight.Normal
+            )
+            Spacer(Modifier.weight(1f))
+            Switch(
+                checked = is4K,
+                onCheckedChange = { is4K = it },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = style.colors.accent,
+                    uncheckedThumbColor = Color.White,
+                    uncheckedTrackColor = style.colors.secondaryText.copy(alpha = 0.3f)
+                )
+            )
         }
         Spacer(Modifier.height(20.dp))
 
@@ -666,6 +717,8 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
     var mode by remember { mutableStateOf(VideoMode.TEXT_TO_VIDEO) }
     var prompt by remember { mutableStateOf("") }
     var selectedPreset by remember { mutableStateOf(videoPresets[0]) }
+    var selectedResolution by remember { mutableStateOf(VideoResolution.SD) }
+    var selectedAspectRatio by remember { mutableStateOf(videoAspectRatios[1]) } // 默认16:9
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var generating get() = videoState.generating; set(v) { videoState.generating = v }
     var resultUrl get() = videoState.resultUrl; set(v) { videoState.resultUrl = v }
@@ -695,6 +748,28 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 ) {
                     Text(
                         text = if (m == VideoMode.TEXT_TO_VIDEO) "文生视频" else "图生视频",
+                        color = if (sel) style.colors.accent else style.colors.secondaryText,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // 分辨率
+        SectionLabel("分辨率", style)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            VideoResolution.entries.forEach { res ->
+                val sel = selectedResolution == res
+                Surface(
+                    onClick = { selectedResolution = res },
+                    shape = RoundedCornerShape(style.metrics.chipRadius),
+                    color = if (sel) style.colors.accent.copy(alpha = 0.14f)
+                    else style.colors.cardSurface
+                ) {
+                    Text(
+                        text = res.label,
                         color = if (sel) style.colors.accent else style.colors.secondaryText,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -794,6 +869,27 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                 }
             }
         }
+        Spacer(Modifier.height(12.dp))
+
+        // 比例
+        SectionLabel("比例", style)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(videoAspectRatios) { ratio ->
+                Surface(
+                    onClick = { selectedAspectRatio = ratio },
+                    shape = RoundedCornerShape(style.metrics.chipRadius),
+                    color = if (ratio == selectedAspectRatio) style.colors.accent.copy(alpha = 0.14f)
+                    else style.colors.cardSurface
+                ) {
+                    Text(
+                        text = ratio.label,
+                        color = if (ratio == selectedAspectRatio) style.colors.accent else style.colors.secondaryText,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(20.dp))
 
         Button(
@@ -809,11 +905,15 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                             progressText = "${p.statusText} ${p.percent}% (${p.elapsedSeconds}秒)"
                             videoProgress = p.percent / 100f
                         }
-                        val result = withContext(Dispatchers.IO) {
+                        val videoW = (selectedResolution.baseHeight * selectedAspectRatio.ratioW / selectedAspectRatio.ratioH)
+                            val videoH = selectedResolution.baseHeight
+                            val result = withContext(Dispatchers.IO) {
                             if (mode == VideoMode.TEXT_TO_VIDEO) {
                                 AiCreationService.textToVideo(
                                     prompt,
                                     numFrames = selectedPreset.numFrames,
+                                    width = videoW,
+                                    height = videoH,
                                     onProgress = onProgress
                                 )
                             } else {
@@ -824,6 +924,8 @@ private fun VideoCreationPanel(style: AiComposeStyle) {
                                     prompt,
                                     dataUri,
                                     numFrames = selectedPreset.numFrames,
+                                    width = videoW,
+                                    height = videoH,
                                     onProgress = onProgress
                                 )
                             }

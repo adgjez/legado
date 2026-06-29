@@ -131,44 +131,52 @@ object AiCreationService {
     data class VideoResult(val videoUrl: String)
 
     /**
-     * @param numFrames 视频总帧数 (24fps: 3秒=81帧, 5秒=121帧, 10秒=241帧, 18秒=441帧)
+     * @param numFrames 视频总帧数 (24fps: 3秒=81帧, 5秒=121帧, 10秒=241帧, 15秒=361帧)
      * @param onProgress 进度回调，每次轮询后调用
      */
     suspend fun textToVideo(
         prompt: String,
         numFrames: Int = 121,
+        width: Int = DEFAULT_VIDEO_WIDTH,
+        height: Int = DEFAULT_VIDEO_HEIGHT,
         onProgress: ((GenerationProgress) -> Unit)? = null
-    ): VideoResult = createAndPollVideo(prompt, numFrames, onProgress = onProgress)
+    ): VideoResult = createAndPollVideo(prompt, numFrames, width, height, onProgress = onProgress)
 
     suspend fun imageToVideo(
         prompt: String,
         imageUrl: String,
         numFrames: Int = 121,
+        width: Int = DEFAULT_VIDEO_WIDTH,
+        height: Int = DEFAULT_VIDEO_HEIGHT,
         onProgress: ((GenerationProgress) -> Unit)? = null
-    ): VideoResult = createAndPollVideo(prompt, numFrames, imageUrl = imageUrl, onProgress = onProgress)
+    ): VideoResult = createAndPollVideo(prompt, numFrames, width, height, imageUrl = imageUrl, onProgress = onProgress)
 
     private suspend fun createAndPollVideo(
         prompt: String,
         numFrames: Int,
+        width: Int,
+        height: Int,
         imageUrl: String? = null,
         onProgress: ((GenerationProgress) -> Unit)? = null
     ): VideoResult {
         requireApiKey()
-        val taskId = createVideoTask(prompt, numFrames, imageUrl)
+        val taskId = createVideoTask(prompt, numFrames, width, height, imageUrl)
         return pollVideoResult(taskId, onProgress)
     }
 
     private suspend fun createVideoTask(
         prompt: String,
         numFrames: Int,
+        width: Int,
+        height: Int,
         imageUrl: String?
     ): String {
         val body = JSONObject().apply {
             put("model", VIDEO_MODEL)
             put("prompt", prompt)
             put("num_frames", numFrames)
-            put("width", DEFAULT_VIDEO_WIDTH)
-            put("height", DEFAULT_VIDEO_HEIGHT)
+            put("width", width)
+            put("height", height)
             if (imageUrl != null) {
                 put("image", imageUrl)
             }
