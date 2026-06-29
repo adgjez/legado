@@ -297,9 +297,15 @@ object AiCreationService {
                     }
                     "failed", "cancelled" -> {
                         val err = root.optJSONObject("error")
+                        val code = err?.optString("code", "")
+                        val hint = when {
+                            code == "500" || err?.optString("message")?.contains("Internal", ignoreCase = true) == true ->
+                                "（服务端故障，建议稍后重试）"
+                            else -> ""
+                        }
                         throw AiCreationException(
                             "视频生成失败: ${err?.optString("message") ?: "未知错误"}，" +
-                            "状态: $lastStatus，任务ID: $taskId", payload
+                            "状态: $lastStatus，任务ID: $taskId $hint", payload
                         )
                     }
                 }
