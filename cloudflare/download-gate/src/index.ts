@@ -1,41 +1,31 @@
 interface Env {
   DOWNLOAD_KEY: string;
-  GITHUB_TOKEN: string;
-  GITHUB_OWNER: string;
-  GITHUB_REPO: string;
-  RELEASE_TAG?: string;
-  ASSET_REGEX?: string;
+  APK_BUCKET: R2Bucket;
+  R2_APK_KEY?: string;
+  R2_METADATA_KEY?: string;
   APP_TITLE?: string;
 }
 
-interface GitHubAsset {
-  name: string;
-  size: number;
-  url: string;
-  browser_download_url: string;
-  content_type: string;
+interface ReleaseMetadata {
+  tagName?: string;
+  versionName?: string;
+  versionCode?: number;
+  updateLog?: string;
+  downloadUrl?: string;
+  fileName?: string;
+  size?: number;
+  sha256?: string;
+  contentType?: string;
+  updatedAt?: string;
 }
 
-interface GitHubRelease {
-  tag_name: string;
-  name: string | null;
-  assets: GitHubAsset[];
-}
-
-interface SelectedAsset {
-  releaseTag: string;
-  name: string;
-  size: number;
-  apiUrl: string;
-  contentType: string;
-}
-
+const DEFAULT_APK_KEY = "legado-arm64-v8a.apk";
+const DEFAULT_METADATA_KEY = "latest.json";
+const APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
 };
-
-let cachedAsset: { value: SelectedAsset; expiresAt: number } | null = null;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -64,135 +54,97 @@ export default {
   },
 };
 
-async function handleDownload(request: Request, env: Env): Promise<Response> {
-  if (!env.DOWNLOAD_KEY || !env.GITHUB_TOKEN) {
-    return jsonResponse(
-      { error: "Worker secrets DOWNLOAD_KEY and GITHUB_TOKEN are required." },
-      500,
-    );
-  }
-
-  if (!(await verifyDownloadKey(request, env))) {
-    return htmlResponse(renderHome(env, "下载密钥不正确。"), 401);
-  }
-
-  try {
-    const asset = await getSelectedAsset(env);
-    const githubResponse = await fetch(asset.apiUrl, {
-      headers: githubHeaders(env.GITHUB_TOKEN, "application/octet-stream"),
-      redirect: "manual",
-    });
-
-    if (isRedirect(githubResponse.status)) {
-      const location = githubResponse.headers.get("location");
-      if (!location) {
-        return htmlResponse(renderHome(env, "GitHub 没有返回下载地址。"), 502);
-      }
-      return streamDownload(await fetch(location), asset);
-    }
-
-    return streamDownload(githubResponse, asset);
-  } catch (error) {
-    console.error(error);
-    return htmlResponse(renderHome(env, "暂时无法获取 Release 文件，请稍后重试。"), 502);
-  }
-}
-
 async function handleLatest(request: Request, env: Env): Promise<Response> {
-  if (!env.DOWNLOAD_KEY || !env.GITHUB_TOKEN) {
-    return jsonResponse(
-      { error: "Worker secrets DOWNLOAD_KEY and GITHUB_TOKEN are required." },
-      500,
-    );
+  if (!env.DOWNLOAD_KEY) {
+    return jsonResponse({ error: "Worker secret DOWNLOAD_KEY is required." }, 500);
   }
 
   if (!(await verifyDownloadKey(request, env))) {
     return jsonResponse({ error: "Invalid download key." }, 401);
   }
 
-  try {
-    const asset = await getSelectedAsset(env);
-    const publicUrl = new URL(request.url);
-    publicUrl.pathname = "/download";
-    publicUrl.search = "";
-    return jsonResponse({
-      tagName: asset.releaseTag,
-      versionName: versionNameFromFileName(asset.name) ?? asset.releaseTag,
-      versionCode: versionCodeFromFileName(asset.name),
-      updateLog: `内测版 ${asset.releaseTag}`,
-      downloadUrl: publicUrl.toString(),
-      fileName: asset.name,
-      size: asset.size,
-    });
-  } catch (error) {
-    console.error(error);
-    return jsonResponse({ error: "Release lookup failed." }, 502);
-  }
-}
+  const metadata = await getReleaseMetadata(env);
+  const downloadUrl = new URL(request.url);
+  downloadUrl.pathname = "/download";
+  downloadUrl.search = "";
 
-async function getSelectedAsset(env: Env): Promise<SelectedAsset> {
-  const now = Date.now();
-  if (cachedAsset && cachedAsset.expiresAt > now) {
-    return cachedAsset.value;
-  }
-
-  const owner = requiredVar(env.GITHUB_OWNER, "GITHUB_OWNER");
-  const repo = requiredVar(env.GITHUB_REPO, "GITHUB_REPO");
-  const releaseTag = env.RELEASE_TAG?.trim();
-  const releasePath = releaseTag
-    ? `releases/tags/${encodeURIComponent(releaseTag)}`
-    : "releases/latest";
-  const releaseUrl = `https://api.github.com/repos/${owner}/${repo}/${releasePath}`;
-
-  const response = await fetch(releaseUrl, {
-    headers: githubHeaders(env.GITHUB_TOKEN, "application/vnd.github+json"),
+  return jsonResponse({
+    ...metadata,
+    downloadUrl: downloadUrl.toString(),
   });
-  if (!response.ok) {
-    throw new Error(`GitHub release lookup failed: ${response.status}`);
-  }
-
-  const release = (await response.json()) as GitHubRelease;
-  const assetRegex = new RegExp(env.ASSET_REGEX || "arm64-v8a.*\\.apk$", "i");
-  const asset = release.assets.find((item) => assetRegex.test(item.name));
-  if (!asset) {
-    throw new Error(`No release asset matched ${assetRegex.source}`);
-  }
-
-  const selected: SelectedAsset = {
-    releaseTag: release.tag_name,
-    name: asset.name,
-    size: asset.size,
-    apiUrl: asset.url,
-    contentType: asset.content_type || "application/vnd.android.package-archive",
-  };
-  cachedAsset = { value: selected, expiresAt: now + 60_000 };
-  return selected;
 }
 
-async function streamDownload(response: Response, asset: SelectedAsset): Promise<Response> {
-  if (!response.ok || !response.body) {
-    return jsonResponse({ error: `GitHub asset download failed: ${response.status}` }, 502);
+async function handleDownload(request: Request, env: Env): Promise<Response> {
+  if (!env.DOWNLOAD_KEY) {
+    return jsonResponse({ error: "Worker secret DOWNLOAD_KEY is required." }, 500);
   }
 
-  return new Response(response.body, {
+  if (!(await verifyDownloadKey(request, env))) {
+    return htmlResponse(renderHome(env, "Invalid download key."), 401);
+  }
+
+  const apkKey = env.R2_APK_KEY?.trim() || DEFAULT_APK_KEY;
+  const object = await env.APK_BUCKET.get(apkKey);
+  if (!object?.body) {
+    return jsonResponse({ error: "APK object not found." }, 404);
+  }
+
+  const metadata = await getReleaseMetadata(env).catch(() => undefined);
+  const fileName = sanitizeFilename(metadata?.fileName || apkKey.split("/").pop() || DEFAULT_APK_KEY);
+  const size = metadata?.size || object.size;
+
+  return new Response(object.body, {
     status: 200,
     headers: {
-      "content-type": asset.contentType,
-      "content-disposition": `attachment; filename="${sanitizeFilename(asset.name)}"`,
+      "content-type": metadata?.contentType || object.httpMetadata?.contentType || APK_CONTENT_TYPE,
+      "content-disposition": `attachment; filename="${fileName}"`,
       "cache-control": "private, no-store",
-      "x-release-tag": asset.releaseTag,
       "x-content-type-options": "nosniff",
-      ...(asset.size > 0 ? { "content-length": String(asset.size) } : {}),
+      ...(metadata?.tagName ? { "x-release-tag": metadata.tagName } : {}),
+      ...(metadata?.sha256 ? { "x-sha256": metadata.sha256 } : {}),
+      ...(size > 0 ? { "content-length": String(size) } : {}),
     },
   });
 }
 
-function githubHeaders(token: string, accept: string): HeadersInit {
+async function getReleaseMetadata(env: Env): Promise<ReleaseMetadata> {
+  const apkKey = env.R2_APK_KEY?.trim() || DEFAULT_APK_KEY;
+  const metadataKey = env.R2_METADATA_KEY?.trim() || DEFAULT_METADATA_KEY;
+  const metadataObject = await env.APK_BUCKET.get(metadataKey);
+
+  if (metadataObject) {
+    const metadata = (await metadataObject.json()) as ReleaseMetadata;
+    return normalizeMetadata(metadata, apkKey);
+  }
+
+  const apkObject = await env.APK_BUCKET.head(apkKey);
+  if (!apkObject) {
+    throw new Error(`R2 object not found: ${apkKey}`);
+  }
+
+  return normalizeMetadata(
+    {
+      fileName: apkKey.split("/").pop() || DEFAULT_APK_KEY,
+      size: apkObject.size,
+      contentType: apkObject.httpMetadata?.contentType || APK_CONTENT_TYPE,
+      updatedAt: apkObject.uploaded?.toISOString(),
+    },
+    apkKey,
+  );
+}
+
+function normalizeMetadata(metadata: ReleaseMetadata, apkKey: string): ReleaseMetadata {
+  const fileName = metadata.fileName || apkKey.split("/").pop() || DEFAULT_APK_KEY;
   return {
-    accept,
-    authorization: `Bearer ${token}`,
-    "user-agent": "legado-download-gate",
-    "x-github-api-version": "2022-11-28",
+    tagName: metadata.tagName || "",
+    versionName: metadata.versionName || versionNameFromFileName(fileName) || "",
+    versionCode: Number.isFinite(metadata.versionCode) ? metadata.versionCode : versionCodeFromFileName(fileName),
+    updateLog: metadata.updateLog || (metadata.tagName ? `Private release ${metadata.tagName}` : "Private release"),
+    fileName,
+    size: metadata.size || 0,
+    sha256: metadata.sha256 || "",
+    contentType: metadata.contentType || APK_CONTENT_TYPE,
+    updatedAt: metadata.updatedAt || "",
   };
 }
 
@@ -229,17 +181,6 @@ function versionCodeFromFileName(name: string): number {
   return raw ? Number.parseInt(raw, 10) || 0 : 0;
 }
 
-function requiredVar(value: string | undefined, name: string): string {
-  if (!value?.trim()) {
-    throw new Error(`${name} is required`);
-  }
-  return value.trim();
-}
-
-function isRedirect(status: number): boolean {
-  return status >= 300 && status < 400;
-}
-
 function sanitizeFilename(name: string): string {
   return name.replace(/["\\\r\n]/g, "_");
 }
@@ -265,9 +206,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function renderHome(env: Env, error?: string): string {
   const title = escapeHtml(env.APP_TITLE || "Private APK Download");
-  const owner = escapeHtml(env.GITHUB_OWNER || "");
-  const repo = escapeHtml(env.GITHUB_REPO || "");
-  const tag = escapeHtml(env.RELEASE_TAG?.trim() || "latest");
+  const apkKey = escapeHtml(env.R2_APK_KEY?.trim() || DEFAULT_APK_KEY);
   const errorHtml = error ? `<p class="error">${escapeHtml(error)}</p>` : "";
 
   return `<!doctype html>
@@ -377,12 +316,12 @@ function renderHome(env: Env, error?: string): string {
   <body>
     <main>
       <h1>${title}</h1>
-      <p class="meta">${owner}/${repo} · ${tag}</p>
+      <p class="meta">R2 object: ${apkKey}</p>
       ${errorHtml}
       <form method="post" action="/download">
-        <label for="key">下载密钥</label>
+        <label for="key">Download key</label>
         <input id="key" name="key" type="password" autocomplete="current-password" required autofocus>
-        <button type="submit">下载 ARM64 APK</button>
+        <button type="submit">Download ARM64 APK</button>
       </form>
     </main>
   </body>
