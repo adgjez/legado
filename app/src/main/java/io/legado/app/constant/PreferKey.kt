@@ -119,6 +119,7 @@ object PreferKey {
     const val aiAgentMaxToolRounds = "aiAgentMaxToolRounds"
     const val aiAgentToolMaxAttempts = "aiAgentToolMaxAttempts"
     const val aiAgentToolRetryBackoffMillis = "aiAgentToolRetryBackoffMillis"
+    const val aiAgnesApiKey = "aiAgnesApiKey"
     const val aiTavilyEnabled = "aiTavilyEnabled"
     const val aiTavilyApiKey = "aiTavilyApiKey"
     const val aiTavilyBaseUrl = "aiTavilyBaseUrl"

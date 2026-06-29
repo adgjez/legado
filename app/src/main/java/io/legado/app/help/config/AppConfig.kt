@@ -1342,6 +1342,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefInt(PreferKey.aiTavilyMaxResults, 5).coerceIn(1, 10)
         set(value) = appCtx.putPrefInt(PreferKey.aiTavilyMaxResults, value.coerceIn(1, 10))
 
+    var aiAgnesApiKey: String
+        get() = appCtx.getPrefString(PreferKey.aiAgnesApiKey).orEmpty()
+        set(value) {
+            val key = value.trim()
+            if (key.isBlank()) appCtx.removePref(PreferKey.aiAgnesApiKey)
+            else appCtx.putPrefString(PreferKey.aiAgnesApiKey, key)
+        }
+
     val aiEnabledSkills: List<AiSkillConfig>
         get() = aiSkillList.filter { it.enabled }
 
