@@ -23,7 +23,7 @@ object AiCreationService {
 
     private const val BASE_URL = "https://apihub.agnes-ai.com"
     private const val IMAGE_MODEL = "agnes-image-2.1-flash"
-    private const val VIDEO_MODEL = "agnes-video-v2.0"
+    private const val VIDEO_MODEL = "agnes-video-v2.0-preview"
     private const val DEFAULT_SIZE = "1024x768"
     private const val DEFAULT_VIDEO_WIDTH = 1152
     private const val DEFAULT_VIDEO_HEIGHT = 768
