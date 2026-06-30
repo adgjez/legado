@@ -703,8 +703,8 @@ object ThemePackageManager {
                 throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
             }
             val navigationBars = listOfNotNull(
-                importRedNavigationPack(unzipDir, redTheme.light, false),
-                importRedNavigationPack(unzipDir, redTheme.dark, true)
+                importRedNavigationPack(unzipDir, redTheme.name, redTheme.light, redTheme.dark, false),
+                importRedNavigationPack(unzipDir, redTheme.name, redTheme.dark, redTheme.light, true)
             )
             val coverCollections = listOfNotNull(
                 importRedCoverGallery(unzipDir, redTheme.light, false),
@@ -746,52 +746,26 @@ object ThemePackageManager {
 
     private fun importRedNavigationPack(
         root: File,
+        fallbackName: String,
         colors: RedThemeColors?,
+        fallbackColors: RedThemeColors?,
         isNightTheme: Boolean
     ): NavigationBarIconConfig.Entry? {
-        val packId = colors?.navbarPackId?.takeIf { it.isNotBlank() } ?: return null
-        val sourceDir = File(root, "navbar_pack/$packId").takeIf { it.isDirectory } ?: return null
-        val meta = File(sourceDir, "meta.json")
-            .takeIf { it.isFile }
-            ?.let { GSON.fromJsonObject<RedNameMeta>(it.readText()).getOrNull() }
-        val packageDir = tempDir.getFile("red_nav_${System.currentTimeMillis()}").apply {
-            if (exists()) FileUtils.delete(this, deleteRootDir = true)
-            mkdirs()
-        }
-        val zipFile = tempDir.getFile("red_nav_${System.currentTimeMillis()}.zip")
-        try {
-            val icons = linkedMapOf<String, String>()
-            val itemMap = mapOf(
-                "home" to "discovery",
-                "bookshelf" to "bookshelf",
-                "notes" to "rss",
-                "statistics" to "readRecord",
-                "settings" to "my"
-            )
-            itemMap.forEach { (redKey, targetKey) ->
-                val source = File(sourceDir, "${redKey}_normal.png")
-                if (source.isFile) {
-                    val name = "${targetKey}_normal.png"
-                    source.copyTo(File(packageDir, name), overwrite = true)
-                    icons["${targetKey}_normal"] = name
-                }
-            }
-            if (icons.isEmpty()) return null
-            val config = NavigationBarIconConfig.Config(
-                name = meta?.name?.ifBlank { null } ?: "RED Navigation",
-                isNightMode = isNightTheme,
-                layoutMode = "floating",
-                effectMode = "glass",
-                opacity = colors.cardColor.alphaPercentOrNull() ?: 72,
-                icons = icons
-            )
-            File(packageDir, "navigation.json").writeText(GSON.toJson(config))
-            ZipUtils.zipFile(packageDir, zipFile)
-            return NavigationBarIconConfig.importZip(zipFile)
-        } finally {
-            zipFile.delete()
-            FileUtils.delete(packageDir, deleteRootDir = true)
-        }
+        val navigationColors = colors?.takeIf { it.navbarPackId.isNotBlank() }
+            ?: fallbackColors?.takeIf { it.navbarPackId.isNotBlank() }
+            ?: return null
+        val navbarRoot = File(root, "navbar_pack").takeIf { it.isDirectory } ?: return null
+        val packId = navigationColors.navbarPackId
+        val sourceDir = File(navbarRoot, packId).takeIf { it.isDirectory }
+            ?: navbarRoot.takeIf { dir -> dir.listFiles()?.any { it.isFile } == true }
+            ?: navbarRoot.listFiles()?.firstOrNull { it.isDirectory }
+            ?: return null
+        return NavigationBarIconConfig.importRedNavigationDirectory(
+            sourceDir = sourceDir,
+            fallbackName = fallbackName,
+            isNightMode = isNightTheme,
+            opacity = navigationColors.cardColor.alphaPercentOrNull() ?: 72
+        )
     }
 
     private suspend fun importRedCoverGallery(

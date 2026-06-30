@@ -64,6 +64,7 @@ object NavigationBarIconConfig {
     private const val legacyMigratedDayKey = "navigationBarLegacyMigratedDay"
     private const val legacyMigratedNightKey = "navigationBarLegacyMigratedNight"
     private const val maxIconBitmapCacheSize = 24
+    private const val redImportIconSize = 192
 
     private var currentDayEntryCache: CachedEntry? = null
     private var currentNightEntryCache: CachedEntry? = null
@@ -373,6 +374,60 @@ object NavigationBarIconConfig {
             }
         } finally {
             zipFile.delete()
+        }
+    }
+
+    fun importRedNavigationDirectory(
+        sourceDir: File,
+        fallbackName: String,
+        isNightMode: Boolean,
+        opacity: Int = 72
+    ): Entry? {
+        if (!sourceDir.isDirectory) return null
+        val files = sourceDir.walkTopDown()
+            .filter { it.isFile && !it.name.isRedNavigationMetaName() }
+            .toList()
+        if (files.isEmpty()) return null
+        val packageDir = tempDir.getFile("red_nav_package_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        val packageZip = tempDir.getFile("red_nav_package_${UUID.randomUUID()}.zip")
+        return try {
+            val icons = linkedMapOf<String, String>()
+            redNavigationTargets.forEach { target ->
+                val normal = findRedNavigationIcon(files, target.aliases, STATE_NORMAL)
+                    ?: findRedNavigationIcon(files, target.aliases, null)
+                val selected = findRedNavigationIcon(files, target.aliases, STATE_SELECTED)
+                    ?: normal
+                    ?: findRedNavigationIcon(files, target.aliases, null)
+                normal?.let {
+                    writeRedNavigationIcon(packageDir, icons, it, target.key, STATE_NORMAL)
+                }
+                selected?.let {
+                    writeRedNavigationIcon(packageDir, icons, it, target.key, STATE_SELECTED)
+                }
+            }
+            if (icons.isEmpty()) return null
+            val name = readRedNavigationName(sourceDir)
+                .ifBlank { fallbackName }
+                .ifBlank { "RED Navigation" }
+            val config = Config(
+                name = name,
+                isNightMode = isNightMode,
+                layoutMode = "floating",
+                effectMode = "glass",
+                opacity = opacity.coerceIn(0, 100),
+                icons = icons
+            )
+            File(packageDir, packageFileName).writeText(GSON.toJson(config))
+            if (!ZipUtils.zipFile(packageDir, packageZip) || !packageZip.isFile || packageZip.length() <= 0L) {
+                return null
+            }
+            importZipInternal(packageZip)
+        } finally {
+            packageZip.delete()
+            FileUtils.delete(packageDir, deleteRootDir = true)
         }
     }
 
@@ -769,77 +824,221 @@ object NavigationBarIconConfig {
             if (exists()) FileUtils.delete(this, deleteRootDir = true)
             mkdirs()
         }
-        val packageDir = tempDir.getFile("red_nav_package_${System.currentTimeMillis()}").apply {
-            if (exists()) FileUtils.delete(this, deleteRootDir = true)
-            mkdirs()
-        }
-        val packageZip = tempDir.getFile("red_nav_package_${UUID.randomUUID()}.zip")
         return try {
             RedAssetPackage.unzipSecure(zipFile, unzipDir)
             unzipDir.walkTopDown().firstOrNull { it.isFile && it.name == packageFileName }?.let {
                 return importZipInternal(zipFile)
             }
-            val icons = linkedMapOf<String, String>()
-            val itemMap = mapOf(
-                "home" to "discovery",
-                "bookshelf" to "bookshelf",
-                "notes" to "rss",
-                "statistics" to "readRecord",
-                "settings" to "my"
-            )
-            itemMap.forEach { (redKey, targetKey) ->
-                copyRedNavigationIcon(unzipDir, packageDir, icons, redKey, targetKey, STATE_NORMAL)
-                copyRedNavigationIcon(unzipDir, packageDir, icons, redKey, targetKey, STATE_SELECTED)
-            }
-            if (icons.isEmpty()) {
-                throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
-            }
-            val name = readRedNavigationName(unzipDir).ifBlank { fallbackName }
-                .ifBlank { "RED Navigation" }
-            val config = Config(
-                name = name,
-                isNightMode = AppConfig.isNightTheme,
-                layoutMode = "floating",
-                effectMode = "glass",
-                opacity = 72,
-                icons = icons
-            )
-            File(packageDir, packageFileName).writeText(GSON.toJson(config))
-            if (!ZipUtils.zipFile(packageDir, packageZip) || !packageZip.isFile || packageZip.length() <= 0L) {
-                throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
-            }
-            importZipInternal(packageZip)
+            importRedNavigationDirectory(
+                sourceDir = unzipDir,
+                fallbackName = fallbackName,
+                isNightMode = AppConfig.isNightTheme
+            ) ?: throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
         } finally {
-            packageZip.delete()
             FileUtils.delete(unzipDir, deleteRootDir = true)
-            FileUtils.delete(packageDir, deleteRootDir = true)
         }
     }
 
-    private fun copyRedNavigationIcon(
-        sourceDir: File,
+    private fun writeRedNavigationIcon(
         targetDir: File,
         icons: MutableMap<String, String>,
-        redKey: String,
+        source: File,
         targetKey: String,
         state: String
     ) {
-        val source = sourceDir.walkTopDown().firstOrNull {
-            it.isFile && it.name.equals("${redKey}_$state.png", ignoreCase = true)
-        } ?: return
         val fileName = "${targetKey}_$state.png"
-        source.copyTo(File(targetDir, fileName), overwrite = true)
+        val bitmap = decodeRedNavigationIcon(source, redImportIconSize) ?: run {
+            AppLog.put("跳过无法识别的 RED 底栏图标: ${source.name}")
+            return
+        }
+        val output = drawCenteredIcon(bitmap, redImportIconSize)
+        if (bitmap !== output && !bitmap.isRecycled) bitmap.recycle()
+        FileOutputStream(File(targetDir, fileName)).use {
+            output.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+        if (!output.isRecycled) output.recycle()
         icons[iconKey(targetKey, state)] = fileName
     }
 
     private fun readRedNavigationName(root: File): String {
         val metaFile = root.walkTopDown().firstOrNull {
-            it.isFile && it.name.equals("reeden_bottom_navbar_pack.json", ignoreCase = true)
+            it.isFile && it.name.isRedNavigationMetaName()
         } ?: return ""
         val text = runCatching { metaFile.readText() }.getOrDefault("")
         if (text.isBlank()) return ""
         return GSON.fromJsonObject<RedNameMeta>(text).getOrNull()?.name.orEmpty()
     }
+
+    private fun String.isRedNavigationMetaName(): Boolean {
+        return equals("meta.json", ignoreCase = true) ||
+            equals("package.json", ignoreCase = true) ||
+            equals("manifest.json", ignoreCase = true) ||
+            equals("reeden_bottom_navbar_pack.json", ignoreCase = true)
+    }
+
+    private fun findRedNavigationIcon(
+        files: List<File>,
+        aliases: List<String>,
+        state: String?
+    ): File? {
+        return files
+            .mapNotNull { file -> scoreRedNavigationIcon(file, aliases, state)?.let { it to file } }
+            .maxWithOrNull(
+                compareBy<Pair<Int, File>> { it.first }
+                    .thenByDescending { it.second.name.length }
+                    .thenBy { it.second.name }
+            )
+            ?.second
+    }
+
+    private fun scoreRedNavigationIcon(
+        file: File,
+        aliases: List<String>,
+        state: String?
+    ): Int? {
+        val semantic = RedNavigationFileSemantic.from(file.nameWithoutExtension)
+        val aliasScore = aliases.mapIndexedNotNull { index, alias ->
+            semantic.scoreAlias(alias)?.minus(index)
+        }.maxOrNull() ?: return null
+        val fileState = semantic.state()
+        val stateScore = when (state) {
+            STATE_NORMAL -> when (fileState) {
+                STATE_NORMAL -> 40
+                null -> 8
+                else -> return null
+            }
+            STATE_SELECTED -> when (fileState) {
+                STATE_SELECTED -> 40
+                null -> 8
+                else -> return null
+            }
+            else -> when (fileState) {
+                null -> 16
+                STATE_NORMAL -> 8
+                STATE_SELECTED -> 6
+                else -> 0
+            }
+        }
+        return aliasScore + stateScore
+    }
+
+    private fun decodeRedNavigationIcon(file: File, targetSize: Int): Bitmap? {
+        if (!file.isFile) return null
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return null
+        if (bytes.isIcoHeader()) {
+            decodeIcoPng(bytes)?.let { return it }
+        }
+        if (file.extension.equals("svg", ignoreCase = true) || bytes.looksLikeSvg()) {
+            SvgUtils.createBitmap(file.absolutePath, targetSize, targetSize)?.let { return it }
+        }
+        BitmapFactory.decodeFile(file.absolutePath)?.let { return it }
+        if (!file.extension.equals("svg", ignoreCase = true)) {
+            SvgUtils.createBitmap(file.absolutePath, targetSize, targetSize)?.let { return it }
+        }
+        return null
+    }
+
+    private fun ByteArray.isIcoHeader(): Boolean {
+        return size >= 4 && this[0] == 0.toByte() && this[1] == 0.toByte() &&
+            this[2] == 1.toByte() && this[3] == 0.toByte()
+    }
+
+    private fun ByteArray.looksLikeSvg(): Boolean {
+        val limit = minOf(size, 4096)
+        if (limit <= 0) return false
+        val head = String(this, 0, limit, Charsets.UTF_8).lowercase(Locale.ROOT)
+        return "<svg" in head || "<!doctype svg" in head
+    }
+
+    private data class RedNavigationTarget(
+        val key: String,
+        val aliases: List<String>
+    )
+
+    private data class RedNavigationFileSemantic(
+        val tokens: Set<String>,
+        val compact: String
+    ) {
+        fun scoreAlias(alias: String): Int? {
+            val normalized = normalize(alias)
+            if (normalized.isBlank()) return null
+            if (normalized in tokens) return 120
+            if (compact == normalized) return 110
+            if (normalized.length <= 2) return null
+            return when {
+                compact.startsWith(normalized) -> 80
+                compact.endsWith(normalized) -> 76
+                compact.contains(normalized) -> 64
+                else -> null
+            }
+        }
+
+        fun state(): String? {
+            val normalHit = normalStateAliases.any { normalize(it) in tokens }
+            val selectedHit = selectedStateAliases.any { normalize(it) in tokens }
+            return when {
+                normalHit -> "normal"
+                selectedHit -> "selected"
+                normalStateAliases.any { compact.endsWith(normalize(it)) } -> "normal"
+                selectedStateAliases.any { compact.endsWith(normalize(it)) } -> "selected"
+                else -> null
+            }
+        }
+
+        companion object {
+            private val normalStateAliases = setOf(
+                "normal",
+                "default",
+                "off",
+                "inactive",
+                "unselected",
+                "outline",
+                "regular",
+                "idle"
+            )
+
+            private val selectedStateAliases = setOf(
+                "selected",
+                "active",
+                "on",
+                "current",
+                "checked",
+                "fill",
+                "filled",
+                "focus",
+                "focused",
+                "select"
+            )
+
+            fun from(name: String): RedNavigationFileSemantic {
+                val separated = name.replace(Regex("([a-z])([A-Z])"), "$1_$2")
+                    .lowercase(Locale.ROOT)
+                val tokens = separated
+                    .split(Regex("[^a-z0-9]+"))
+                    .filter { it.isNotBlank() }
+                    .map { normalize(it) }
+                    .toSet()
+                return RedNavigationFileSemantic(
+                    tokens = tokens,
+                    compact = normalize(separated)
+                )
+            }
+
+            private fun normalize(value: String): String {
+                return value.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]+"), "")
+            }
+        }
+    }
+
+    private val redNavigationTargets = listOf(
+        RedNavigationTarget("bookshelf", listOf("bookshelf", "bookcase", "shelf", "books", "book")),
+        RedNavigationTarget("discovery", listOf("feature", "discovery", "explore", "find", "home")),
+        RedNavigationTarget("rss", listOf("notes", "rss", "subscribe", "subscription", "feed")),
+        RedNavigationTarget("readRecord", listOf("statistics", "stats", "readRecord", "record", "history")),
+        RedNavigationTarget("my", listOf("settings", "my", "mine", "profile", "user", "config")),
+        RedNavigationTarget("ai", listOf("ai", "assistant", "gpt")),
+        RedNavigationTarget(EXTRA_SEARCH, listOf("search", "findSearch"))
+    )
 
     private fun createMenuDrawable(context: Context, entry: Entry, item: NavItem): Drawable {
         val defaultColor = defaultIconColor(context)

@@ -1782,6 +1782,7 @@ private fun BookInfoImage(
                 imageView.tag = tag
                 if (target == null) {
                     ImageLoader.load(context, R.drawable.image_cover_default)
+                        .centerCrop()
                         .into(imageView)
                 } else {
                     val request = ImageLoader.load(context, target)
@@ -1792,7 +1793,7 @@ private fun BookInfoImage(
                     } else {
                         request.placeholder(R.drawable.image_cover_default)
                     }
-                    request.into(imageView)
+                    request.centerCrop().into(imageView)
                 }
             }
         },
@@ -1814,7 +1815,7 @@ private fun BookInfoPreviewImage(
         modifier = modifier.background(style.colors.surfaceVariant.copy(alpha = 0.72f)),
         factory = {
             ImageView(it).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
+                scaleType = ImageView.ScaleType.CENTER_CROP
                 adjustViewBounds = false
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
             }
@@ -1834,7 +1835,7 @@ private fun BookInfoPreviewImage(
                         .placeholder(R.drawable.image_cover_default)
                 }
                 request
-                    .dontTransform()
+                    .centerCrop()
                     .override(width, height)
                     .into(imageView)
             }
