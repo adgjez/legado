@@ -236,7 +236,7 @@ private fun SearchResultText(
                 }
             }
         }
-        Spacer(modifier = Modifier.size(3.dp))
+        Spacer(modifier = Modifier.size(2.dp))
         Text(
             text = context.getString(R.string.author_show, book.author),
             color = palette.secondaryText,
@@ -246,18 +246,18 @@ private fun SearchResultText(
             overflow = TextOverflow.Ellipsis
         )
         val kinds = remember(book.kind) { book.getKindList() }
-        if (rounded && kinds.isNotEmpty()) {
-            Spacer(modifier = Modifier.size(5.dp))
+        if (kinds.isNotEmpty()) {
+            Spacer(modifier = Modifier.size(if (rounded) 3.dp else 2.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(if (rounded) 4.dp else 2.dp)
             ) {
-                kinds.take(4).forEach { kind ->
+                kinds.take(if (rounded) 4 else 3).forEach { kind ->
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(palette.accent.copy(alpha = 0.10f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .padding(horizontal = 6.dp, vertical = if (rounded) 2.dp else 1.dp)
                     ) {
                         Text(
                             text = kind,
@@ -284,14 +284,14 @@ private fun SearchResultText(
         }
         val intro = remember(book.intro) { BookIntroUtils.listIntro(book.intro) }
         if (!intro.isNullOrEmpty()) {
-            Spacer(modifier = Modifier.size(if (rounded) 8.dp else 5.dp))
+            Spacer(modifier = Modifier.size(if (rounded) 8.dp else 3.dp))
             Text(
                 text = intro,
                 color = palette.primaryText,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
                 fontFamily = palette.bodyFontFamily,
-                maxLines = if (rounded) 3 else 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
         }

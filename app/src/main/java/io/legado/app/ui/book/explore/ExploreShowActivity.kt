@@ -2,42 +2,44 @@ package io.legado.app.ui.book.explore
 
 import android.os.Bundle
 import android.view.MenuItem
-import android.view.ViewGroup
 import androidx.activity.viewModels
-import androidx.core.os.bundleOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
-import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.ui.book.SearchBookOpenHelper
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.number.NumberPickerDialog
-import io.legado.app.ui.widget.recycler.LoadMoreView
-import io.legado.app.ui.widget.recycler.VerticalDivider
-import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * 发现列表
- */
-class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreShowViewModel>(),
-    ExploreShowAdapter.CallBack {
+class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreShowViewModel>() {
+
     override val binding by viewBinding(ActivityExploreShowBinding::inflate)
     override val viewModel by viewModels<ExploreShowViewModel>()
 
-    private lateinit var adapter: RecyclerAdapter<SearchBook, *>
-    private val loadMoreView by lazy { LoadMoreView(this) }
-    private val loadMoreViewTop by lazy { LoadMoreView(this) }
+    private val composeBooks = mutableStateListOf<SearchBook>()
+    private val composeBottomLoading = mutableStateOf(false)
+    private val composeTopLoading = mutableStateOf(false)
+    private val composeHasMore = mutableStateOf(true)
+    private val composeHasPrevious = mutableStateOf(false)
+    private val composeBottomError = mutableStateOf<String?>(null)
+    private val composeTopError = mutableStateOf<String?>(null)
+    private val composeScrollToTopSignal = mutableIntStateOf(0)
+    private val composeKeepPositionAfterPrependSignal = mutableIntStateOf(0)
+    private val composePrependedItemCount = mutableIntStateOf(0)
+    private val bookshelfTick = mutableIntStateOf(0)
     private var oldPage = -1
     private var isClearAll = false
+
     private val menuPage by lazy {
         binding.titleBar.menu.add(getString(R.string.menu_page, 1)).apply {
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
@@ -48,26 +50,18 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                     .setMaxValue(999)
                     .setMinValue(1)
                     .setValue(page)
-                    .show {
-                        if (page != it) {
-                            if (oldPage == -1 && it != 1) { //初次添加头
-                                adapter.addHeaderView {
-                                    ViewLoadMoreBinding.bind(loadMoreViewTop)
-                                }
-                            } else if (it != 1) { //把头显示出来
-                                val layoutParams = loadMoreViewTop.layoutParams
-                                if (layoutParams?.height == 0) {
-                                    layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                                    loadMoreViewTop.layoutParams = layoutParams
-                                }
-                            }
-                            oldPage = it
-                            viewModel.skipPage(it)
+                    .show { targetPage ->
+                        if (page != targetPage) {
+                            oldPage = targetPage
+                            viewModel.skipPage(targetPage)
                             isClearAll = true
-                            adapter.clearItems() //清空，然后会自动触发scrollToBottom
-                            if (!loadMoreView.hasMore) { //强制触发
-                                scrollToBottom(true)
-                            }
+                            composeBooks.clear()
+                            composeHasMore.value = true
+                            composeHasPrevious.value = targetPage > 1
+                            composeBottomError.value = null
+                            composeTopError.value = null
+                            composeTopLoading.value = false
+                            scrollToBottom(forceLoad = true)
                         }
                     }
                 true
@@ -77,121 +71,124 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = intent.getStringExtra("exploreName")
-        initRecyclerView()
+        initComposeList()
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }
-        viewModel.initData(intent)
         viewModel.errorLiveData.observe(this) {
-            loadMoreView.error(it)
+            composeBottomLoading.value = false
+            composeBottomError.value = it
         }
         viewModel.errorTopLiveData.observe(this) {
-            loadMoreViewTop.error(it)
+            composeTopLoading.value = false
+            composeTopError.value = it
+            composeHasPrevious.value = oldPage > 1
         }
         viewModel.upAdapterLiveData.observe(this) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
+            bookshelfTick.intValue++
         }
         viewModel.pageLiveData.observe(this) {
             menuPage.title = getString(R.string.menu_page, it)
         }
+        viewModel.initData(intent)
     }
 
-    private fun initRecyclerView() {
-        binding.recyclerView.addItemDecoration(VerticalDivider(this))
-        adapter = ExploreShowAdapter(this, this)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.applyNavigationBarPadding()
-        adapter.addFooterView {
-            ViewLoadMoreBinding.bind(loadMoreView)
-        }
-        loadMoreView.startLoad()
-        loadMoreView.setOnClickListener {
-            if (!loadMoreView.isLoading) {
-                scrollToBottom(true)
+    private fun initComposeList() {
+        composeBottomLoading.value = true
+        binding.composeList.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeList.setContent {
+            LegadoComposeTheme {
+                ExploreShowComposeScreen(
+                    books = composeBooks,
+                    isLoading = composeBottomLoading.value,
+                    isLoadingPrevious = composeTopLoading.value,
+                    hasMore = composeHasMore.value,
+                    hasPrevious = composeHasPrevious.value,
+                    errorMessage = composeBottomError.value,
+                    previousErrorMessage = composeTopError.value,
+                    scrollToTopSignal = composeScrollToTopSignal.intValue,
+                    keepPositionAfterPrependSignal = composeKeepPositionAfterPrependSignal.intValue,
+                    prependedItemCount = composePrependedItemCount.intValue,
+                    bookshelfTick = bookshelfTick.intValue,
+                    isInBookshelf = { book -> isInBookshelf(book) },
+                    lifecycle = lifecycle,
+                    onBookClick = { book -> showBookInfo(book) },
+                    onLoadMore = { scrollToBottom(forceLoad = composeBottomError.value != null) },
+                    onLoadPrevious = { scrollToTop(forceLoad = composeTopError.value != null) }
+                )
             }
         }
-        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(recyclerView, dx, dy)
-                if (!recyclerView.canScrollVertically(1)) {
-                    scrollToBottom()
-                } else if (!recyclerView.canScrollVertically(-1) && dy < 0) {
-                    scrollToTop()
-                }
-            }
-        })
     }
 
     private fun scrollToBottom(forceLoad: Boolean = false) {
-        if ((loadMoreView.hasMore && !loadMoreView.isLoading && !loadMoreViewTop.isLoading) || forceLoad) {
-            loadMoreView.hasMore()
-            viewModel.explore()
-        }
+        val canLoad = composeHasMore.value && !composeBottomLoading.value && !composeTopLoading.value
+        if (!canLoad && !forceLoad) return
+        composeHasMore.value = true
+        composeBottomLoading.value = true
+        composeBottomError.value = null
+        viewModel.explore()
     }
 
     private fun scrollToTop(forceLoad: Boolean = false) {
-        if ((oldPage > 1 && !loadMoreView.isLoading && !loadMoreViewTop.isLoading) || forceLoad) {
-            loadMoreViewTop.hasMore()
-            oldPage--
-            viewModel.explore(oldPage)
-        }
+        if (composeBottomLoading.value || composeTopLoading.value) return
+        val targetPage = if (forceLoad) oldPage else oldPage - 1
+        if (targetPage < 1) return
+        oldPage = targetPage
+        composeTopLoading.value = true
+        composeTopError.value = null
+        composeHasPrevious.value = targetPage > 1
+        viewModel.explore(targetPage)
     }
 
     private fun upData(books: List<SearchBook>) {
-        loadMoreView.stopLoad()
-        if (books.isEmpty() && adapter.isEmpty()) {
-            loadMoreView.noMore(getString(R.string.empty))
-        } else if (adapter.getActualItemCount() == books.size) {
-            loadMoreView.noMore()
-        } else {
-            adapter.setItems(books)
-            if (isClearAll) { //全清空后,加了头,位置下移一个
-                scrollToPositionWithOffset(1)
-                isClearAll = false
-            }
+        val oldSize = composeBooks.size
+        composeBottomLoading.value = false
+        composeBottomError.value = null
+        if (books.isEmpty() && oldSize == 0) {
+            composeHasMore.value = false
+            replaceComposeBooks(emptyList())
+            isClearAll = false
+            return
+        }
+        composeHasMore.value = isClearAll || books.size > oldSize
+        replaceComposeBooks(books)
+        if (isClearAll) {
+            composeScrollToTopSignal.intValue++
+            isClearAll = false
         }
     }
 
     private fun upDataTop(books: List<SearchBook>) {
-        loadMoreViewTop.stopLoad()
-        adapter.addItems(0, books)
-        if (findFirstVisibleItemPosition() <= 1) {
-            scrollToPositionWithOffset(books.size)
-        }
-        if (oldPage <= 1) { //已到顶,隐藏头
-            val layoutParams = loadMoreViewTop.layoutParams
-            if (layoutParams != null) {
-                layoutParams.height = 0
-                loadMoreViewTop.layoutParams = layoutParams
-            }
-        }
+        composeTopLoading.value = false
+        composeTopError.value = null
+        prependComposeBooks(books)
+        composeHasPrevious.value = oldPage > 1
     }
 
-    private fun scrollToPositionWithOffset(position: Int) {
-        (binding.recyclerView.layoutManager as? LinearLayoutManager)
-            ?.scrollToPositionWithOffset(position, 0)
+    private fun replaceComposeBooks(books: List<SearchBook>) {
+        composeBooks.clear()
+        composeBooks.addAll(books)
+        composePrependedItemCount.intValue = 0
     }
 
-    private fun findFirstVisibleItemPosition(): Int {
-        return (binding.recyclerView.layoutManager as? LinearLayoutManager)
-            ?.findFirstVisibleItemPosition()
-            ?: 0
+    private fun prependComposeBooks(books: List<SearchBook>) {
+        if (books.isEmpty()) return
+        composeBooks.addAll(0, books)
+        composePrependedItemCount.intValue = books.size
+        composeKeepPositionAfterPrependSignal.intValue++
     }
 
-    override fun isInBookshelf(book: SearchBook): Boolean {
+    private fun isInBookshelf(book: SearchBook): Boolean {
         return viewModel.isInBookShelf(book)
     }
 
-    override fun showBookInfo(book: SearchBook) {
+    private fun showBookInfo(book: SearchBook) {
         lifecycleScope.launch {
             val isVideo = withContext(IO) {
                 SearchBookOpenHelper.isVideoResult(book, viewModel.sourceTypeHint())
             }
-            if (isVideo) {
-                SearchBookOpenHelper.open(this@ExploreShowActivity, book, true)
-            } else {
-                SearchBookOpenHelper.open(this@ExploreShowActivity, book, false)
-            }
+            SearchBookOpenHelper.open(this@ExploreShowActivity, book, isVideo)
         }
     }
 

@@ -62,6 +62,7 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfListItemStyle
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListPalette
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
+import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.releaseComposeImage
@@ -187,6 +188,10 @@ fun ExploreModernListScreen(
                 }
             }
         }
+        ComposeLazyListFastScroller(
+            state = listState,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
         SearchBookPreviewOverlay(
             state = previewState,
             renderConfig = renderConfig,
@@ -485,6 +490,15 @@ private fun ExploreBookTextContent(
             text = context.getString(R.string.author_show, book.author),
             palette = palette
         )
+        val kinds = remember(book.kind) { book.getKindList() }
+        if (kinds.isNotEmpty()) {
+            ExploreTagChips(
+                tags = kinds,
+                palette = palette,
+                compact = !rounded,
+                modifier = Modifier.padding(top = if (rounded) 6.dp else 3.dp)
+            )
+        }
         ExploreMetaLine(
             iconRes = R.drawable.ic_book_last,
             text = book.latestChapterTitle?.takeIf { it.isNotBlank() }?.let {
@@ -503,16 +517,6 @@ private fun ExploreBookTextContent(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = if (rounded) 5.dp else 2.dp)
             )
-        }
-        if (rounded) {
-            val kinds = remember(book.kind) { book.getKindList() }
-            if (kinds.isNotEmpty()) {
-                ExploreTagChips(
-                    tags = kinds,
-                    palette = palette,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
         }
     }
 }
@@ -553,11 +557,12 @@ private fun ExploreMetaLine(
 private fun ExploreTagChips(
     tags: List<String>,
     palette: BookshelfListPalette,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)
     ) {
         tags.take(3).forEach { tag ->
             Text(
@@ -570,8 +575,8 @@ private fun ExploreTagChips(
                 modifier = Modifier
                     .clip(RoundedCornerShape(palette.actionRadius))
                     .background(palette.accent.copy(alpha = 0.12f))
-                    .widthIn(max = 84.dp)
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .widthIn(max = if (compact) 72.dp else 84.dp)
+                    .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = if (compact) 2.dp else 3.dp)
             )
         }
     }
