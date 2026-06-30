@@ -50,6 +50,7 @@ import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.BookIntroUtils
 
 object BookshelfListItemStyle {
@@ -208,7 +209,7 @@ private fun BookshelfClassicListItem(
         BookshelfCoverBlock(
             item = item,
             width = metrics.coverWidth,
-            cornerRadius = metrics.cornerRadius,
+            style = CoverImageView.CoverStyle.COMPACT,
             fragment = fragment,
             lifecycle = lifecycle
         )
@@ -251,7 +252,7 @@ private fun BookshelfRoundedCardListItem(
         BookshelfCoverBlock(
             item = item,
             width = metrics.coverWidth,
-            cornerRadius = metrics.cornerRadius,
+            style = CoverImageView.CoverStyle.LIST,
             fragment = fragment,
             lifecycle = lifecycle
         )
@@ -273,7 +274,7 @@ private fun BookshelfRoundedCardListItem(
 private fun BookshelfCoverBlock(
     item: BookshelfItemUi,
     width: Dp,
-    cornerRadius: Dp,
+    style: CoverImageView.CoverStyle,
     fragment: Fragment?,
     lifecycle: Lifecycle?,
     modifier: Modifier = Modifier
@@ -282,7 +283,7 @@ private fun BookshelfCoverBlock(
         BookshelfListCover(
             item = item,
             width = width,
-            cornerRadius = cornerRadius,
+            style = style,
             fragment = fragment,
             lifecycle = lifecycle
         )
@@ -320,7 +321,7 @@ private fun BookshelfUnreadBadge(
 private fun BookshelfListCover(
     item: BookshelfItemUi,
     width: Dp,
-    cornerRadius: Dp,
+    style: CoverImageView.CoverStyle,
     fragment: Fragment?,
     lifecycle: Lifecycle?,
     modifier: Modifier = Modifier,
@@ -329,11 +330,11 @@ private fun BookshelfListCover(
     BookshelfComposeCover(
         item = item,
         modifier = modifier
-            .then(if (fillWidth) Modifier else Modifier.width(width).aspectRatio(0.75f))
-            .clip(RoundedCornerShape(cornerRadius)),
+            .then(if (fillWidth) Modifier else Modifier.width(width).aspectRatio(0.75f)),
         fragment = fragment,
         lifecycle = lifecycle,
-        fillBounds = true
+        fillBounds = true,
+        style = style
     )
 }
 

@@ -338,7 +338,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                                 c.backgroundColor = TopBarConfig.defaultBackgroundColor(c.isNightMode)
                             }
                             if (c.cornerScale == null) {
-                                c.cornerScale = 1f
+                                c.cornerScale = 0f
                             }
                             if (c.tagBarColor == null) {
                                 c.tagBarColor = Color.WHITE
@@ -369,7 +369,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                                     c.backgroundColor = TopBarConfig.defaultBackgroundColor(c.isNightMode)
                                 }
                                 if (c.cornerScale == null) {
-                                    c.cornerScale = 1f
+                                    c.cornerScale = 0f
                                 }
                                 if (c.tagBarColor == null) {
                                     c.tagBarColor = Color.WHITE

@@ -95,7 +95,7 @@ object TopBarConfig {
             tagBarAlpha = if (style == STYLE_REGULAR) 0 else 100,
             tagSelectedColor = ContextCompat.getColor(context, R.color.background_card),
             backgroundColor = defaultBackgroundColor(isNight),
-            cornerScale = 1f,
+            cornerScale = if (style == STYLE_REGULAR) 0f else 1f,
             showSearchInDefaultStyle = MainLayoutPresetConfig.defaultTopBarShowSearch(),
             updatedAt = 0L
         )

@@ -19,7 +19,8 @@ fun BookshelfComposeCover(
     modifier: Modifier = Modifier,
     fragment: Fragment? = null,
     lifecycle: Lifecycle? = null,
-    fillBounds: Boolean = false
+    fillBounds: Boolean = false,
+    style: CoverImageView.CoverStyle = CoverImageView.CoverStyle.GRID
 ) {
     val coverRequest = remember(item.coverIdentityKey()) {
         item.toCoverRequest()
@@ -30,7 +31,7 @@ fun BookshelfComposeCover(
         author = coverRequest.author,
         sourceOrigin = coverRequest.sourceOrigin,
         modifier = modifier,
-        style = CoverImageView.CoverStyle.GRID,
+        style = style,
         fragment = fragment,
         lifecycle = lifecycle,
         preferThumb = coverRequest.preferThumb,
