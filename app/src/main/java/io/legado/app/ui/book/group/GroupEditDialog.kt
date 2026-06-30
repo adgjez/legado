@@ -42,7 +42,6 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
 import io.legado.app.R
 import io.legado.app.data.entities.BookGroup
@@ -53,8 +52,8 @@ import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.FileUtils
@@ -201,8 +200,6 @@ private fun GroupEditContent(
                 Box(
                     modifier = Modifier
                         .size(width = 90.dp, height = 120.dp)
-                        .clip(RoundedCornerShape(style.actionRadius))
-                        .background(style.fieldSurface)
                         .clickable {
                             if (!coverPath.isNullOrBlank()) {
                                 // 已有封面：选择切换或删除（简化为直接选图）
@@ -212,11 +209,17 @@ private fun GroupEditContent(
                             }
                         }
                 ) {
-                    AndroidView(
+                    BookCoverImage(
+                        path = coverPath,
+                        name = groupName,
+                        author = null,
+                        sourceOrigin = null,
                         modifier = Modifier.fillMaxSize(),
-                        factory = { ctx -> CoverImageView(ctx) },
-                        update = { it.load(coverPath) },
-                        onRelease = { it.releaseComposeImage() }
+                        style = CoverImageView.CoverStyle.DETAIL,
+                        loadOnlyWifi = false,
+                        preferThumb = false,
+                        allowNameOverlay = true,
+                        fillBounds = true
                     )
                 }
                 Spacer(modifier = Modifier.height(14.dp))

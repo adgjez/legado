@@ -136,6 +136,7 @@ import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
@@ -2278,6 +2279,7 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) {
+        binding.ivCover.setCoverStyle(CoverImageView.CoverStyle.DETAIL)
         binding.ivCover.load(book, false) {
             applyBookInfoBackground()
         }

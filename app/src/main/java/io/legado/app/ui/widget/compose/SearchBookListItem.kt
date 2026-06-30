@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,14 +21,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
@@ -67,19 +63,16 @@ fun SearchBookListItem(
         onLongClick = { onPreview(coverBounds.value) }
     ) { metrics ->
         Box(modifier = Modifier.width(metrics.coverWidth)) {
-            AndroidView(
+            BookCoverImage(
+                book = book,
                 modifier = Modifier
-                    .width(metrics.coverWidth)
-                    .aspectRatio(0.75f)
-                    .clip(RoundedCornerShape(metrics.cornerRadius))
-                    .onGloballyPositioned { coordinates ->
-                        coverBounds.value = coordinates.boundsInRoot()
-                    },
-                factory = { context -> CoverImageView(context) },
-                update = { view ->
-                    view.load(book, AppConfig.loadCoverOnlyWifi, fragment, lifecycle)
-                },
-                onRelease = { it.releaseComposeImage() }
+                    .width(metrics.coverWidth),
+                style = if (rounded) CoverImageView.CoverStyle.LIST else CoverImageView.CoverStyle.COMPACT,
+                loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
+                fragment = fragment,
+                lifecycle = lifecycle,
+                preferThumb = true,
+                onBoundsChanged = { coverBounds.value = it }
             )
             if (inBookshelf) {
                 Box(

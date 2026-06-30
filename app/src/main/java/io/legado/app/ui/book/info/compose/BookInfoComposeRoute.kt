@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.compose.ui.zIndex
 import androidx.core.text.HtmlCompat
@@ -101,6 +102,7 @@ import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.book.info.BookInfoUseWebHost
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
 import io.noties.markwon.Markwon
@@ -1140,7 +1142,7 @@ private fun BookInfoCoverBackdrop(
     val imageDarkenAlpha = (0.15f + scrollOffset / 1800f).coerceIn(0.15f, 0.34f)
     val parallaxOffset = scrollOffset * 0.22f
     Box(modifier = modifier.background(style.colors.contentTop)) {
-        BookInfoImage(
+        BookInfoBackdropImage(
             path = coverPath,
             modifier = Modifier
                 .fillMaxSize()
@@ -1187,17 +1189,20 @@ private fun BookInfoPosterHero(
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        BookInfoImage(
+        BookCoverImage(
             path = state.coverPath,
+            name = state.name,
+            author = state.author,
+            sourceOrigin = null,
             modifier = Modifier
                 .width(126.dp)
                 .aspectRatio(0.75f)
-                .shadow(6.dp, RoundedCornerShape(style.metrics.panelRadius), clip = false)
-                .clip(RoundedCornerShape(style.metrics.panelRadius))
                 .combinedClickable(
                     onClick = actions.onChangeCover,
                     onLongClick = actions.onPreviewCover
-                )
+                ),
+            style = CoverImageView.CoverStyle.DETAIL,
+            fillBounds = true
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -1293,16 +1298,20 @@ private fun BookInfoHero(
             .background(style.colors.surface.copy(alpha = 0.96f))
             .padding(16.dp)
     ) {
-        BookInfoImage(
+        BookCoverImage(
             path = state.coverPath,
+            name = state.name,
+            author = state.author,
+            sourceOrigin = null,
             modifier = Modifier
                 .width(108.dp)
                 .aspectRatio(0.75f)
-                .clip(RoundedCornerShape(style.metrics.panelRadius))
                 .combinedClickable(
                     onClick = actions.onChangeCover,
                     onLongClick = actions.onPreviewCover
-                )
+                ),
+            style = CoverImageView.CoverStyle.DETAIL,
+            fillBounds = true
         )
         Spacer(modifier = Modifier.width(16.dp))
         Column(
@@ -1558,7 +1567,7 @@ private fun BookInfoAiImagesPanel(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 state.aiImagePaths.forEach { path ->
-                    BookInfoImage(
+                    BookInfoBackdropImage(
                         path = path,
                         modifier = Modifier
                             .size(width = 88.dp, height = 104.dp)
@@ -1762,7 +1771,7 @@ private fun BookInfoActionButton(
 }
 
 @Composable
-private fun BookInfoImage(
+private fun BookInfoBackdropImage(
     path: String?,
     modifier: Modifier = Modifier
 ) {
@@ -1807,40 +1816,14 @@ private fun BookInfoPreviewImage(
     style: BookInfoComposeStyle,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val fallbackWidth = with(density) { 180.dp.toPx().roundToInt() }
-    val fallbackHeight = with(density) { 230.dp.toPx().roundToInt() }
-    AndroidView(
-        modifier = modifier.background(style.colors.surfaceVariant.copy(alpha = 0.72f)),
-        factory = {
-            ImageView(it).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                adjustViewBounds = false
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            }
-        },
-        update = { imageView ->
-            val target = path?.takeIf { it.isNotBlank() }
-            val width = imageView.width.takeIf { it > 0 } ?: fallbackWidth
-            val height = imageView.height.takeIf { it > 0 } ?: fallbackHeight
-            val tag = "${target ?: R.drawable.image_cover_default}:$width:$height"
-            if (imageView.tag != tag) {
-                imageView.tag = tag
-                val request = if (target == null) {
-                    ImageLoader.load(context, R.drawable.image_cover_default)
-                } else {
-                    ImageLoader.load(context, target)
-                        .error(R.drawable.image_cover_default)
-                        .placeholder(R.drawable.image_cover_default)
-                }
-                request
-                    .centerCrop()
-                    .override(width, height)
-                    .into(imageView)
-            }
-        },
-        onRelease = { it.releaseComposeImage() }
+    BookCoverImage(
+        path = path,
+        name = null,
+        author = null,
+        sourceOrigin = null,
+        modifier = modifier,
+        style = CoverImageView.CoverStyle.PREVIEW,
+        fillBounds = true
     )
 }
 

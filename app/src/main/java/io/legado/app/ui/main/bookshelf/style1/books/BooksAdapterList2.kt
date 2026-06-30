@@ -12,6 +12,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.invisible
 import io.legado.app.utils.toTimeAgo
 import splitties.views.onLongClick
@@ -47,6 +48,7 @@ class BooksAdapterList2(
             tvAuthor.text = item.author
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
+            ivCover.setCoverStyle(CoverImageView.CoverStyle.COMPACT)
             ivCover.loadThumb(item, false, fragment, lifecycle)
             upRefresh(binding, item)
             upLastUpdateTime(binding, item)
@@ -59,12 +61,15 @@ class BooksAdapterList2(
                         "author" -> tvAuthor.text = item.author
                         "dur" -> tvRead.text = item.durChapterTitle
                         "last" -> tvLast.text = item.latestChapterTitle
-                        "cover" -> ivCover.loadThumb(
-                            item,
-                            false,
-                            fragment,
-                            lifecycle
-                        )
+                        "cover" -> {
+                            ivCover.setCoverStyle(CoverImageView.CoverStyle.COMPACT)
+                            ivCover.loadThumb(
+                                item,
+                                false,
+                                fragment,
+                                lifecycle
+                            )
+                        }
 
                         "refresh" -> upRefresh(binding, item)
                         "lastUpdateTime" -> upLastUpdateTime(binding, item)

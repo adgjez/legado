@@ -53,27 +53,24 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import android.content.Context
-import android.widget.ImageView
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
-import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
 import kotlin.math.roundToInt
 
@@ -607,7 +604,6 @@ private fun DiscoverySuiteWaterfallBookCard(
     lifecycle: Lifecycle
 ) {
     val palette = renderConfig.palette
-    val coverShape = RoundedCornerShape(6.dp)
     var coverBounds by remember(book.displayKey()) { mutableStateOf<Rect?>(null) }
     Column(
         modifier = Modifier
@@ -623,24 +619,17 @@ private fun DiscoverySuiteWaterfallBookCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(BOOK_COVER_ASPECT_RATIO)
-                .shadow(2.dp, coverShape, clip = false)
-                .clip(coverShape)
-                .onGloballyPositioned { coordinates ->
-                    coverBounds = coordinates.boundsInRoot()
-                }
         ) {
-            AndroidView(
+            BookCoverImage(
+                book = book,
                 modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    CoverImageView(context).apply {
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                    }
-                },
-                update = { view ->
-                    view.scaleType = ImageView.ScaleType.CENTER_CROP
-                    view.loadSuiteThumb(book, fragment, lifecycle)
-                },
-                onRelease = { it.releaseComposeImage() }
+                style = CoverImageView.CoverStyle.GRID,
+                loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
+                fragment = fragment,
+                lifecycle = lifecycle,
+                preferThumb = true,
+                fillBounds = true,
+                onBoundsChanged = { coverBounds = it }
             )
         }
         Text(
@@ -998,7 +987,6 @@ private fun DiscoverySuiteRankedListBookRow(
     lifecycle: Lifecycle
 ) {
     val palette = renderConfig.palette
-    val coverShape = RoundedCornerShape(5.dp)
     var coverBounds by remember(book.displayKey()) { mutableStateOf<Rect?>(null) }
     Row(
         modifier = Modifier
@@ -1024,24 +1012,19 @@ private fun DiscoverySuiteRankedListBookRow(
                 modifier = Modifier
                     .width(40.dp)
                     .aspectRatio(BOOK_COVER_ASPECT_RATIO)
-                    .shadow(3.dp, coverShape, clip = false)
-                    .clip(coverShape)
-                .onGloballyPositioned { coordinates ->
-                    coverBounds = coordinates.boundsInRoot()
-                }
-        ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    CoverImageView(context).apply {
-                        scaleType = ImageView.ScaleType.CENTER_CROP
+                    .onGloballyPositioned { coordinates ->
+                        coverBounds = coordinates.boundsInRoot()
                     }
-                },
-                update = { view ->
-                    view.scaleType = ImageView.ScaleType.CENTER_CROP
-                    view.loadSuiteThumb(book, fragment, lifecycle)
-                },
-                onRelease = { it.releaseComposeImage() }
+        ) {
+            BookCoverImage(
+                book = book,
+                modifier = Modifier.fillMaxSize(),
+                style = CoverImageView.CoverStyle.COMPACT,
+                loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
+                fragment = fragment,
+                lifecycle = lifecycle,
+                preferThumb = true,
+                fillBounds = true
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
@@ -1210,7 +1193,6 @@ private fun DiscoverySuiteCoverBookItem(
     lifecycle: Lifecycle
 ) {
     val palette = renderConfig.palette
-    val coverShape = RoundedCornerShape(6.dp)
     var coverBounds by remember(book.displayKey()) { mutableStateOf<Rect?>(null) }
     Box(
         modifier = modifier,
@@ -1220,12 +1202,6 @@ private fun DiscoverySuiteCoverBookItem(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .aspectRatio(BOOK_COVER_ASPECT_RATIO)
-                .shadow(
-                    elevation = 4.dp,
-                    shape = coverShape,
-                    clip = false
-                )
-                .clip(coverShape)
                 .onGloballyPositioned { coordinates ->
                     coverBounds = coordinates.boundsInRoot()
                 }
@@ -1234,20 +1210,15 @@ private fun DiscoverySuiteCoverBookItem(
                     onLongClick = { onBookPreview(book, coverBounds) }
                 )
         ) {
-            AndroidView(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(coverShape),
-                factory = { context ->
-                    CoverImageView(context).apply {
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                    }
-                },
-                update = { view ->
-                    view.scaleType = ImageView.ScaleType.CENTER_CROP
-                    view.loadSuiteThumb(book, fragment, lifecycle)
-                },
-                onRelease = { it.releaseComposeImage() }
+            BookCoverImage(
+                book = book,
+                modifier = Modifier.fillMaxSize(),
+                style = CoverImageView.CoverStyle.GRID,
+                loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
+                fragment = fragment,
+                lifecycle = lifecycle,
+                preferThumb = true,
+                fillBounds = true
             )
             rank?.let {
                 Box(
@@ -1319,26 +1290,6 @@ private fun Float.withSuiteAlphaMultiplier(
 ): Float {
     val safeMultiplier = multiplier.coerceIn(1f, 4f)
     return (this * safeMultiplier).coerceIn(this, maxAlpha.coerceIn(this, 1f))
-}
-
-private fun CoverImageView.loadSuiteThumb(
-    book: SearchBook,
-    fragment: Fragment,
-    lifecycle: Lifecycle
-) {
-    val display = CoverDisplayResolver.resolve(book)
-    load(
-        path = display.path,
-        name = display.name,
-        author = display.author,
-        loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
-        sourceOrigin = display.sourceOrigin,
-        fragment = fragment,
-        lifecycle = lifecycle,
-        preferThumb = true,
-        forcePath = display.forcePath,
-        allowNameOverlay = display.allowNameOverlay
-    )
 }
 
 private const val RANDOM_WIDGET_DISPLAY_COUNT = 6
@@ -1461,21 +1412,17 @@ private fun DiscoverySuiteLegacyCoverBookItem(
                 onLongClick = { onBookPreview(book) }
             )
     ) {
-        AndroidView(
+        BookCoverImage(
+            book = book,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(BOOK_COVER_ASPECT_RATIO)
-                .clip(RoundedCornerShape(palette.actionRadius)),
-            factory = { context ->
-                CoverImageView(context).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                }
-            },
-            update = { view ->
-                view.scaleType = ImageView.ScaleType.CENTER_CROP
-                view.loadSuiteThumb(book, fragment, lifecycle)
-            },
-            onRelease = { it.releaseComposeImage() }
+                .aspectRatio(BOOK_COVER_ASPECT_RATIO),
+            style = CoverImageView.CoverStyle.GRID,
+            loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
+            fragment = fragment,
+            lifecycle = lifecycle,
+            preferThumb = true,
+            fillBounds = true
         )
         Text(
             text = book.name,

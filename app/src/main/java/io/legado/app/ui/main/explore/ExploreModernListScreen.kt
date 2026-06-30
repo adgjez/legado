@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as lazyColumnItems
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -38,14 +37,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
@@ -55,11 +51,11 @@ import io.legado.app.ui.main.bookshelf.compose.BookListCardSurface
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListItemStyle
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.ui.widget.compose.SearchBookListItem
 import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
-import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
 
 @Composable
@@ -335,22 +331,21 @@ private fun ExploreGridBookItem(
             .combinedClickable(
                 onClick = { onClick(book) },
                 onLongClick = { onPreview(coverBounds) }
-            )
+        )
     ) {
         Box {
-            AndroidView(
+            BookCoverImage(
+                book = book,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(0.75f)
-                    .clip(RoundedCornerShape(palette.actionRadius))
-                    .onGloballyPositioned { coordinates ->
-                        coverBounds = coordinates.boundsInRoot()
-                    },
-                factory = { context -> CoverImageView(context) },
-                update = { view ->
-                    view.load(book, AppConfig.loadCoverOnlyWifi, fragment, lifecycle)
-                },
-                onRelease = { it.releaseComposeImage() }
+                    .aspectRatio(0.75f),
+                style = CoverImageView.CoverStyle.GRID,
+                loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
+                fragment = fragment,
+                lifecycle = lifecycle,
+                preferThumb = true,
+                fillBounds = true,
+                onBoundsChanged = { coverBounds = it }
             )
             if (inBookshelf) {
                 Box(

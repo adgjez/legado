@@ -3,7 +3,6 @@ package io.legado.app.ui.main.ai
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
-import android.widget.ImageView
 import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -48,8 +47,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -73,6 +70,7 @@ import io.legado.app.ui.main.ai.compose.AiChatRoute
 import io.legado.app.ui.main.ai.compose.AiChatScreenActions
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
 import io.legado.app.ui.book.character.compose.CharacterAvatar
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -986,26 +984,18 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 .clickable(onClick = onClick)
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
-                AndroidView(
+                BookCoverImage(
+                    path = group.coverUrl,
+                    name = group.bookName.ifBlank { group.label },
+                    author = group.author,
+                    sourceOrigin = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(0.75f)
-                        .clip(RoundedCornerShape(style.metrics.chipRadius)),
-                    factory = {
-                        CoverImageView(it).apply {
-                            scaleType = ImageView.ScaleType.CENTER_CROP
-                        }
-                    },
-                    update = {
-                        it.load(
-                            path = group.coverUrl,
-                            name = group.bookName.ifBlank { group.label },
-                            author = group.author,
-                            loadOnlyWifi = false,
-                            preferThumb = true
-                        )
-                    },
-                    onRelease = { it.releaseComposeImage() }
+                        .aspectRatio(0.75f),
+                    style = CoverImageView.CoverStyle.GRID,
+                    loadOnlyWifi = false,
+                    preferThumb = true,
+                    fillBounds = true
                 )
                 Text(
                     text = group.bookName.ifBlank { group.label },
@@ -1044,26 +1034,18 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AndroidView(
+                BookCoverImage(
+                    path = group.coverUrl,
+                    name = group.bookName.ifBlank { group.label },
+                    author = group.author,
+                    sourceOrigin = null,
                     modifier = Modifier
                         .width(52.dp)
-                        .height(72.dp)
-                        .clip(RoundedCornerShape(style.metrics.chipRadius)),
-                    factory = {
-                        CoverImageView(it).apply {
-                            scaleType = ImageView.ScaleType.CENTER_CROP
-                        }
-                    },
-                    update = {
-                        it.load(
-                            path = group.coverUrl,
-                            name = group.bookName.ifBlank { group.label },
-                            author = group.author,
-                            loadOnlyWifi = false,
-                            preferThumb = true
-                        )
-                    },
-                    onRelease = { it.releaseComposeImage() }
+                        .height(72.dp),
+                    style = CoverImageView.CoverStyle.COMPACT,
+                    loadOnlyWifi = false,
+                    preferThumb = true,
+                    fillBounds = true
                 )
                 Column(
                     modifier = Modifier
@@ -1345,26 +1327,18 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 .clickable(onClick = onClick)
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
-                AndroidView(
+                BookCoverImage(
+                    path = group.coverUrl,
+                    name = group.bookName.ifBlank { group.label },
+                    author = group.author,
+                    sourceOrigin = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(116.dp)
-                        .clip(RoundedCornerShape(style.metrics.chipRadius)),
-                    factory = {
-                        CoverImageView(it).apply {
-                            scaleType = ImageView.ScaleType.CENTER_CROP
-                        }
-                    },
-                    update = {
-                        it.load(
-                            path = group.coverUrl,
-                            name = group.bookName.ifBlank { group.label },
-                            author = group.author,
-                            loadOnlyWifi = false,
-                            preferThumb = true
-                        )
-                    },
-                    onRelease = { it.releaseComposeImage() }
+                        .height(116.dp),
+                    style = CoverImageView.CoverStyle.GRID,
+                    loadOnlyWifi = false,
+                    preferThumb = true,
+                    fillBounds = true
                 )
                 Text(
                     text = group.bookName.ifBlank { group.label },

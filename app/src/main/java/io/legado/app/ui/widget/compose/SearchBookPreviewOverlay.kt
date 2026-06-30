@@ -1,7 +1,6 @@
 package io.legado.app.ui.widget.compose
 
 import android.content.Context
-import android.widget.ImageView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.Animatable
@@ -48,14 +47,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.CoverDisplayResolver
-import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.widget.image.CoverImageView
@@ -180,20 +176,16 @@ fun SearchBookPreviewOverlay(
                     }
                 )
                 if (closing) {
-                    AndroidView(
+                    BookCoverImage(
+                        book = state.book,
                         modifier = Modifier
                             .matchParentSize()
                             .graphicsLayer { alpha = (1f - contentAlpha).coerceIn(0f, 1f) },
-                        factory = { viewContext ->
-                            CoverImageView(viewContext).apply {
-                                scaleType = ImageView.ScaleType.CENTER_CROP
-                            }
-                        },
-                        update = { view ->
-                            view.scaleType = ImageView.ScaleType.CENTER_CROP
-                            view.loadPreviewThumb(state.book, fragment, lifecycle)
-                        },
-                        onRelease = { it.releaseComposeImage() }
+                        style = CoverImageView.CoverStyle.PREVIEW,
+                        fragment = fragment,
+                        lifecycle = lifecycle,
+                        preferThumb = true,
+                        fillBounds = true
                     )
                 }
             }
@@ -227,21 +219,15 @@ private fun SearchBookPreviewContent(
                 modifier = Modifier
                     .width(98.dp)
                     .aspectRatio(0.75f)
-                    .shadow(6.dp, RoundedCornerShape(8.dp), clip = false)
-                    .clip(RoundedCornerShape(8.dp))
             ) {
-                AndroidView(
+                BookCoverImage(
+                    book = book,
                     modifier = Modifier.fillMaxSize(),
-                    factory = { viewContext ->
-                        CoverImageView(viewContext).apply {
-                            scaleType = ImageView.ScaleType.CENTER_CROP
-                        }
-                    },
-                    update = { view ->
-                        view.scaleType = ImageView.ScaleType.CENTER_CROP
-                        view.loadPreviewThumb(book, fragment, lifecycle)
-                    },
-                    onRelease = { it.releaseComposeImage() }
+                    style = CoverImageView.CoverStyle.PREVIEW,
+                    fragment = fragment,
+                    lifecycle = lifecycle,
+                    preferThumb = true,
+                    fillBounds = true
                 )
             }
             Column(
@@ -370,26 +356,6 @@ private fun SearchBookPreviewBackHandler(
             callback.remove()
         }
     }
-}
-
-private fun CoverImageView.loadPreviewThumb(
-    book: SearchBook,
-    fragment: Fragment?,
-    lifecycle: Lifecycle?
-) {
-    val display = CoverDisplayResolver.resolve(book)
-    load(
-        path = display.path,
-        name = display.name,
-        author = display.author,
-        loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
-        sourceOrigin = display.sourceOrigin,
-        fragment = fragment,
-        lifecycle = lifecycle,
-        preferThumb = true,
-        forcePath = display.forcePath,
-        allowNameOverlay = display.allowNameOverlay
-    )
 }
 
 private fun SearchBook.previewKey(): String {

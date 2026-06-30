@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.SearchBook
@@ -151,26 +152,18 @@ private fun BookResultPreview(
                     }
             ) {
                 Column(modifier = Modifier.padding(9.dp)) {
-                    AndroidView(
+                    BookCoverImage(
+                        path = book.coverUrl,
+                        name = book.name,
+                        author = book.author,
+                        sourceOrigin = book.origin,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(0.75f),
-                        factory = {
-                            CoverImageView(it).apply {
-                                scaleType = ImageView.ScaleType.CENTER_CROP
-                            }
-                        },
-                        update = {
-                            it.load(
-                                path = book.coverUrl,
-                                name = book.name,
-                                author = book.author,
-                                loadOnlyWifi = false,
-                                sourceOrigin = book.origin,
-                                preferThumb = true
-                            )
-                        },
-                        onRelease = { it.releaseComposeImage() }
+                        style = CoverImageView.CoverStyle.GRID,
+                        loadOnlyWifi = false,
+                        preferThumb = true,
+                        fillBounds = true
                     )
                     Text(
                         text = book.name,

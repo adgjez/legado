@@ -6,40 +6,44 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.collection.LruCache
+import androidx.core.graphics.createBitmap
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.Priority
 import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import io.legado.app.constant.AppPattern
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.CoverThumbnailCache
+import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.model.BookCover
+import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
-import android.view.ViewOutlineProvider
-import androidx.collection.LruCache
-import androidx.core.graphics.createBitmap
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.CoverDisplayResolver
-import io.legado.app.help.config.CoverCollectionManager
-import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
-import io.legado.app.lib.theme.backgroundColor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,10 +67,33 @@ class CoverImageView @JvmOverloads constructor(
         private val nameBitmapCache by lazy { LruCache<String, Bitmap>(33) }
         private val needNameBitmap by lazy { LruCache<String, Boolean>(99) }
     }
+
+    enum class CoverStyle(
+        val radiusDp: Float,
+        val elevationDp: Float,
+        val strokeWidthDp: Float,
+        val strokeAlpha: Float
+    ) {
+        FLAT(8f, 0f, 0.6f, 0.16f),
+        COMPACT(7f, 1f, 0.6f, 0.16f),
+        LIST(8f, 1.5f, 0.6f, 0.18f),
+        GRID(8f, 2f, 0.6f, 0.18f),
+        DETAIL(12f, 5f, 0.75f, 0.20f),
+        PREVIEW(10f, 6f, 0.75f, 0.22f)
+    }
+
     private var viewWidth: Float = 0f
     private var viewHeight: Float = 0f
     private var currentJob: Job? = null
     private val triggerChannel = Channel<Unit>(Channel.CONFLATED)
+    private val outlineRect = RectF()
+    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+    }
+    private var coverStyle = CoverStyle.LIST
+    private var coverRadiusPx = CoverStyle.LIST.radiusDp.dpToPx()
+    private var coverStrokeWidthPx = CoverStyle.LIST.strokeWidthDp.dpToPx()
+    private var coverStrokeAlpha = CoverStyle.LIST.strokeAlpha
     var bitmapPath: String? = null
         private set
     private var loadKey: String? = null
@@ -82,6 +109,20 @@ class CoverImageView @JvmOverloads constructor(
     init {
         setBackgroundColor(Color.TRANSPARENT)
         scaleType = ScaleType.CENTER_CROP
+        setCoverStyle(CoverStyle.LIST)
+    }
+
+    fun setCoverStyle(style: CoverStyle) {
+        if (coverStyle == style && elevation == style.elevationDp.dpToPx()) return
+        coverStyle = style
+        coverRadiusPx = style.radiusDp.dpToPx()
+        coverStrokeWidthPx = style.strokeWidthDp.dpToPx()
+        coverStrokeAlpha = style.strokeAlpha
+        elevation = style.elevationDp.dpToPx()
+        translationZ = 0f
+        updateOutline()
+        invalidateOutline()
+        invalidate()
     }
 
     override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
@@ -107,9 +148,14 @@ class CoverImageView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        updateOutline()
+    }
+
+    private fun updateOutline() {
         outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, w, h, 12f)
+                if (width <= 0 || height <= 0) return
+                outline.setRoundRect(0, 0, width, height, coverRadiusPx)
             }
         }
         clipToOutline = true
@@ -117,9 +163,8 @@ class CoverImageView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!drawBookName) return
-        val currentName = this.name ?: return
-        if (drawNameOverlayForCurrentCover) {
+        val currentName = this.name
+        if (drawBookName && currentName != null && drawNameOverlayForCurrentCover) {
             val currentAuthor = this.author
             val pathName = if (drawBookAuthor){
                 currentName + currentAuthor
@@ -129,10 +174,20 @@ class CoverImageView @JvmOverloads constructor(
             val cacheBitmap =  nameBitmapCache[pathName + width]
             if (cacheBitmap != null) {
                 canvas.drawBitmap(cacheBitmap, 0f, 0f, null)
-                return
+            } else {
+                drawNameAuthor(pathName, currentName, currentAuthor, false)
             }
-            drawNameAuthor(pathName, currentName, currentAuthor, false)
         }
+        drawCoverStroke(canvas)
+    }
+
+    private fun drawCoverStroke(canvas: Canvas) {
+        if (coverStrokeWidthPx <= 0f || coverStrokeAlpha <= 0f || width <= 0 || height <= 0) return
+        val inset = coverStrokeWidthPx / 2f
+        outlineRect.set(inset, inset, width - inset, height - inset)
+        strokePaint.strokeWidth = coverStrokeWidthPx
+        strokePaint.color = ColorUtils.withAlpha(context.secondaryTextColor, coverStrokeAlpha)
+        canvas.drawRoundRect(outlineRect, coverRadiusPx, coverRadiusPx, strokePaint)
     }
 
     private fun drawNameAuthor(pathName: String, name: String, author: String?, asyncAwait: Boolean = true) {

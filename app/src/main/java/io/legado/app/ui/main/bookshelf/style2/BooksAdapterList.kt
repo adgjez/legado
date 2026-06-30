@@ -13,6 +13,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
@@ -69,6 +70,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvAuthor.text = item.author
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
+            ivCover.setCoverStyle(CoverImageView.CoverStyle.LIST)
             ivCover.load(item, false)
             flHasNew.visible()
             ivAuthor.visible()
@@ -89,10 +91,13 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             "author" -> tvAuthor.text = item.author
                             "dur" -> tvRead.text = item.durChapterTitle
                             "last" -> tvLast.text = item.latestChapterTitle
-                            "cover" -> ivCover.load(
-                                item,
-                                false
-                            )
+                            "cover" -> {
+                                ivCover.setCoverStyle(CoverImageView.CoverStyle.LIST)
+                                ivCover.load(
+                                    item,
+                                    false
+                                )
+                            }
 
                             "refresh" -> upRefresh(this, item)
                         }
@@ -143,6 +148,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvAuthor.text = item.author
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
+            ivCover.setCoverStyle(CoverImageView.CoverStyle.COMPACT)
             ivCover.load(item, false)
             flHasNew.visible()
             ivAuthor.visible()
@@ -162,10 +168,13 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             "author" -> tvAuthor.text = item.author
                             "dur" -> tvRead.text = item.durChapterTitle
                             "last" -> tvLast.text = item.latestChapterTitle
-                            "cover" -> ivCover.load(
-                                item,
-                                false
-                            )
+                            "cover" -> {
+                                ivCover.setCoverStyle(CoverImageView.CoverStyle.COMPACT)
+                                ivCover.load(
+                                    item,
+                                    false
+                                )
+                            }
 
                             "refresh" -> upRefresh(this, item)
                         }
@@ -210,6 +219,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvRead.typeface = uiTypeface
             tvLast.typeface = uiTypeface
             tvName.text = item.groupName
+            ivCover.setCoverStyle(CoverImageView.CoverStyle.LIST)
             ivCover.load(item.cover)
             flHasNew.gone()
             ivAuthor.gone()
@@ -229,7 +239,10 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                     bundle.keySet().forEach {
                         when (it) {
                             "groupName" -> tvName.text = item.groupName
-                            "cover" -> ivCover.load(item.cover)
+                            "cover" -> {
+                                ivCover.setCoverStyle(CoverImageView.CoverStyle.LIST)
+                                ivCover.load(item.cover)
+                            }
                         }
                     }
                 }

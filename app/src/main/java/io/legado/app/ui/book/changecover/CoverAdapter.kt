@@ -7,6 +7,7 @@ import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemCoverBinding
+import io.legado.app.ui.widget.image.CoverImageView
 
 
 class CoverAdapter(context: Context, val callBack: CallBack) :
@@ -35,6 +36,7 @@ class CoverAdapter(context: Context, val callBack: CallBack) :
         item: SearchBook,
         payloads: MutableList<Any>
     ) = binding.run {
+        ivCover.setCoverStyle(CoverImageView.CoverStyle.GRID)
         ivCover.load(item, false)
         tvSource.text = item.originName
     }

@@ -11,6 +11,7 @@ import io.legado.app.databinding.ItemCacheManageBookBinding
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -83,6 +84,7 @@ class CacheManageAdapter(
             it.setTextColor(context.primaryTextColor)
         }
         btnChapters.setTextColor(context.accentColor)
+        ivCover.setCoverStyle(CoverImageView.CoverStyle.LIST)
         ivCover.load(book, false)
         tvName.text = book.name
         btnSource.text = if (item.sourceAvailable) {

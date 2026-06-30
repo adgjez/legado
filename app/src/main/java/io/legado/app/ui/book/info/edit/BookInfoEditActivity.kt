@@ -27,6 +27,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
@@ -178,6 +179,7 @@ class BookInfoEditActivity :
 
     private fun upCover() {
         viewModel.book?.let {
+            binding.ivCover.setCoverStyle(CoverImageView.CoverStyle.DETAIL)
             binding.ivCover.load(it, false)
         }
     }

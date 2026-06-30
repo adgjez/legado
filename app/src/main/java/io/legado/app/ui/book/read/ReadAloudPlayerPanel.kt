@@ -116,6 +116,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
@@ -2425,38 +2426,18 @@ internal fun ReadAloudCapsule(
                         .background(colors.panel)
                         .clickable(onClick = onExpand)
                 ) {
-                    AndroidView(
+                    BookCoverImage(
+                        path = state.coverUrl,
+                        name = state.bookName,
+                        author = state.author,
+                        sourceOrigin = state.sourceOrigin,
                         modifier = Modifier.fillMaxSize(),
-                        factory = {
-                            CoverImageView(it).apply {
-                                scaleType = ImageView.ScaleType.CENTER_CROP
-                            }
-                        },
-                        update = {
-                            val loadKey = listOf(
-                                state.coverUrl.orEmpty(),
-                                state.bookName,
-                                state.author,
-                                state.sourceOrigin.orEmpty(),
-                                "thumb",
-                                state.coverForcePath.toString(),
-                                state.coverAllowNameOverlay.toString()
-                            ).joinToString("|")
-                            if (it.tag != loadKey) {
-                                it.tag = loadKey
-                                it.load(
-                                    path = state.coverUrl,
-                                    name = state.bookName,
-                                    author = state.author,
-                                    loadOnlyWifi = false,
-                                    sourceOrigin = state.sourceOrigin,
-                                    preferThumb = true,
-                                    forcePath = state.coverForcePath,
-                                    allowNameOverlay = state.coverAllowNameOverlay
-                                )
-                            }
-                        },
-                        onRelease = { it.releaseComposeImage() }
+                        style = CoverImageView.CoverStyle.FLAT,
+                        loadOnlyWifi = false,
+                        preferThumb = true,
+                        forcePath = state.coverForcePath,
+                        allowNameOverlay = state.coverAllowNameOverlay,
+                        fillBounds = true
                     )
                 }
                 Surface(
@@ -4295,52 +4276,21 @@ private fun CoverArt(
     width: Dp,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    BookCoverImage(
+        path = state.coverUrl,
+        name = state.bookName,
+        author = state.author,
+        sourceOrigin = state.sourceOrigin,
         modifier = modifier
             .width(width)
-            .aspectRatio(0.75f)
-            .shadow(
-                elevation = 22.dp,
-                shape = RoundedCornerShape(15.dp),
-                clip = false
-            )
-            .clip(RoundedCornerShape(13.dp))
-            .background(colors.panel)
-    ) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = {
-                CoverImageView(it).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                }
-            },
-            update = {
-                val loadKey = listOf(
-                    state.coverUrl.orEmpty(),
-                    state.bookName,
-                    state.author,
-                    state.sourceOrigin.orEmpty(),
-                    "full",
-                    state.coverForcePath.toString(),
-                    state.coverAllowNameOverlay.toString()
-                ).joinToString("|")
-                if (it.tag != loadKey) {
-                    it.tag = loadKey
-                    it.load(
-                        path = state.coverUrl,
-                        name = state.bookName,
-                        author = state.author,
-                        loadOnlyWifi = false,
-                        sourceOrigin = state.sourceOrigin,
-                        preferThumb = false,
-                        forcePath = state.coverForcePath,
-                        allowNameOverlay = state.coverAllowNameOverlay
-                    )
-                }
-            },
-            onRelease = { it.releaseComposeImage() }
-        )
-    }
+            .aspectRatio(0.75f),
+        style = CoverImageView.CoverStyle.DETAIL,
+        loadOnlyWifi = false,
+        preferThumb = false,
+        forcePath = state.coverForcePath,
+        allowNameOverlay = state.coverAllowNameOverlay,
+        fillBounds = true
+    )
 }
 
 @Composable

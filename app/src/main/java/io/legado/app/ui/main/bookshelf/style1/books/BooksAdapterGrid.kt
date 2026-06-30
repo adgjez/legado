@@ -11,6 +11,7 @@ import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiTitleTypeface
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
@@ -42,6 +43,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                     } else {
                         tvName.gone()
                     }
+                    ivCover.setCoverStyle(CoverImageView.CoverStyle.GRID)
                     ivCover.loadThumb(item, false)
                     upRefresh(binding, item)
                 } else {
@@ -50,10 +52,13 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                         bundle.keySet().forEach {
                             when (it) {
                                 "name" -> tvName.text = item.name
-                                "cover" -> ivCover.loadThumb(
-                                    item,
-                                    false
-                                )
+                                "cover" -> {
+                                    ivCover.setCoverStyle(CoverImageView.CoverStyle.GRID)
+                                    ivCover.loadThumb(
+                                        item,
+                                        false
+                                    )
+                                }
 
                                 "refresh" -> upRefresh(binding, item)
                             }
@@ -65,6 +70,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 if (payloads.isEmpty()) {
                     tvName.applyUiTitleTypeface(context)
                     tvName.text = item.name
+                    ivCover.setCoverStyle(CoverImageView.CoverStyle.GRID)
                     ivCover.loadThumb(item, false)
                     upRefresh(binding, item)
                 } else {
@@ -73,10 +79,13 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                         bundle.keySet().forEach {
                             when (it) {
                                 "name" -> tvName.text = item.name
-                                "cover" -> ivCover.loadThumb(
-                                    item,
-                                    false
-                                )
+                                "cover" -> {
+                                    ivCover.setCoverStyle(CoverImageView.CoverStyle.GRID)
+                                    ivCover.loadThumb(
+                                        item,
+                                        false
+                                    )
+                                }
 
                                 "refresh" -> upRefresh(binding, item)
                             }

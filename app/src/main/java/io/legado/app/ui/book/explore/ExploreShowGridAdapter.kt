@@ -10,6 +10,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfGrid2Binding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiTitleTypeface
+import io.legado.app.ui.widget.image.CoverImageView
 
 class ExploreShowGridAdapter(
     context: Context,
@@ -48,6 +49,7 @@ class ExploreShowGridAdapter(
             tvName.text = item.name
             bvUnread.isVisible = callBack.isInBookshelf(item)
             rlLoading.isVisible = false
+            ivCover.setCoverStyle(CoverImageView.CoverStyle.GRID)
             ivCover.load(item, AppConfig.loadCoverOnlyWifi)
         }
     }

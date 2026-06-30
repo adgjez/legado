@@ -12,6 +12,7 @@ import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.BookIntroUtils
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -63,6 +64,7 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 llKind.visible()
                 llKind.setLabels(kinds)
             }
+            ivCover.setCoverStyle(CoverImageView.CoverStyle.LIST)
             ivCover.load(
                 item,
                 AppConfig.loadCoverOnlyWifi

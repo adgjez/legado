@@ -1,49 +1,17 @@
 package io.legado.app.ui.main.bookshelf.compose
 
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.graphics.drawable.toBitmap
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import com.bumptech.glide.Priority
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.DecodeFormat
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.target.Target
-import com.bumptech.glide.request.transition.Transition
 import io.legado.app.data.dao.BookShelfDisplay
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.help.CoverThumbnailCache
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
-import io.legado.app.help.glide.ImageLoader
-import io.legado.app.help.glide.OkHttpModelLoader
-import io.legado.app.model.BookCover
-
-private var cachedFallbackDrawable: Drawable? = null
-private var cachedFallbackBitmap: Bitmap? = null
+import io.legado.app.ui.widget.compose.BookCoverImage
+import io.legado.app.ui.widget.image.CoverImageView
 
 @Composable
 fun BookshelfComposeCover(
@@ -53,116 +21,23 @@ fun BookshelfComposeCover(
     lifecycle: Lifecycle? = null,
     fillBounds: Boolean = false
 ) {
-    val context = LocalContext.current
     val coverRequest = remember(item.coverIdentityKey()) {
         item.toCoverRequest()
     }
-    var bitmap by remember(coverRequest.loadKey) { mutableStateOf<Bitmap?>(null) }
-    val fallbackBitmap = remember(BookCover.defaultDrawable) {
-        defaultCoverBitmap()
-    }
-    val target = remember(coverRequest.loadKey) {
-        object : CustomTarget<Bitmap>() {
-            override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
-                bitmap = resource
-            }
-
-            override fun onLoadCleared(placeholder: Drawable?) {
-                bitmap = (placeholder as? BitmapDrawable)?.bitmap
-            }
-
-            override fun onLoadFailed(errorDrawable: Drawable?) {
-                bitmap = (errorDrawable as? BitmapDrawable)?.bitmap ?: fallbackBitmap
-            }
-        }
-    }
-    DisposableEffect(target) {
-        onDispose {
-            val appContext = context.applicationContext ?: context
-            runCatching { com.bumptech.glide.Glide.with(appContext).clear(target) }
-        }
-    }
-    LaunchedEffect(coverRequest.loadKey, fragment, lifecycle) {
-        bitmap = fallbackBitmap
-        val useThumb = coverRequest.preferThumb && !AppConfig.loadCoverHighQuality
-        val thumbFile = if (useThumb) {
-            CoverThumbnailCache.existing(context, coverRequest.thumbKey)
-        } else {
-            null
-        }
-        if (AppConfig.useDefaultCover && !coverRequest.forcePath) {
-            return@LaunchedEffect
-        }
-        val builder = when {
-            thumbFile != null -> {
-                ImageLoader.loadBitmap(context, thumbFile.absolutePath)
-            }
-
-            fragment != null && lifecycle != null -> {
-                ImageLoader.loadBitmap(fragment, lifecycle, coverRequest.path)
-            }
-
-            else -> {
-                ImageLoader.loadBitmap(context, coverRequest.path)
-            }
-        }
-        var options = RequestOptions()
-            .format(DecodeFormat.PREFER_ARGB_8888)
-            .disallowHardwareConfig()
-            .set(OkHttpModelLoader.loadOnlyWifiOption, false)
-        coverRequest.sourceOrigin?.let {
-            options = options.set(OkHttpModelLoader.sourceOriginOption, it)
-        }
-        builder
-            .apply(options)
-            .placeholder(BookCover.defaultDrawable)
-            .error(BookCover.defaultDrawable)
-            .priority(if (AppConfig.loadCoverHighQuality) Priority.NORMAL else Priority.HIGH)
-            .override(
-                if (useThumb) 240 else Target.SIZE_ORIGINAL,
-                if (useThumb) 320 else Target.SIZE_ORIGINAL
-            )
-            .centerCrop()
-            .addListener(object : RequestListener<Bitmap> {
-                override fun onLoadFailed(
-                    e: GlideException?,
-                    model: Any?,
-                    target: Target<Bitmap>,
-                    isFirstResource: Boolean
-                ): Boolean {
-                    return false
-                }
-
-                override fun onResourceReady(
-                    resource: Bitmap,
-                    model: Any,
-                    target: Target<Bitmap>?,
-                    dataSource: DataSource,
-                    isFirstResource: Boolean
-                ): Boolean {
-                    if (useThumb && thumbFile == null) {
-                        CoverThumbnailCache.saveAsync(context, coverRequest.thumbKey, BitmapDrawable(context.resources, resource))
-                    }
-                    return false
-                }
-            })
-            .into(target)
-    }
-    val coverModifier = if (fillBounds) {
-        modifier
-    } else {
-        modifier.aspectRatio(0.75f)
-    }
-    Box(
-        modifier = coverModifier.background(Color.Transparent)
-    ) {
-        Image(
-            bitmap = (bitmap ?: fallbackBitmap).asImageBitmap(),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-    }
+    BookCoverImage(
+        path = coverRequest.path,
+        name = coverRequest.name,
+        author = coverRequest.author,
+        sourceOrigin = coverRequest.sourceOrigin,
+        modifier = modifier,
+        style = CoverImageView.CoverStyle.GRID,
+        fragment = fragment,
+        lifecycle = lifecycle,
+        preferThumb = coverRequest.preferThumb,
+        forcePath = coverRequest.forcePath,
+        allowNameOverlay = coverRequest.allowNameOverlay,
+        fillBounds = fillBounds
+    )
 }
 
 private data class BookshelfCoverRequest(
@@ -172,8 +47,7 @@ private data class BookshelfCoverRequest(
     val sourceOrigin: String?,
     val preferThumb: Boolean,
     val forcePath: Boolean,
-    val loadKey: String,
-    val thumbKey: String
+    val allowNameOverlay: Boolean?
 )
 
 private fun BookshelfItemUi.toCoverRequest(): BookshelfCoverRequest {
@@ -195,16 +69,6 @@ private fun BookShelfDisplay.toCoverRequest(): BookshelfCoverRequest {
         originalCover.isRealCoverPath()
     val forcePath = usingCollectionCover || forceOriginalCover
     val allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
-    val displayKey = listOf(
-        collectionCover ?: originalCover,
-        name,
-        author,
-        origin,
-        AppConfig.useDefaultCover.toString(),
-        CoverCollectionManager.selectionKey(),
-        forcePath.toString(),
-        allowNameOverlay.toString()
-    ).joinToString("|")
     return buildCoverRequest(
         path = collectionCover ?: originalCover,
         name = name,
@@ -212,7 +76,7 @@ private fun BookShelfDisplay.toCoverRequest(): BookshelfCoverRequest {
         sourceOrigin = origin,
         preferThumb = true,
         forcePath = forcePath,
-        displayKey = displayKey
+        allowNameOverlay = allowNameOverlay
     )
 }
 
@@ -224,7 +88,7 @@ private fun BookGroup.toCoverRequest(): BookshelfCoverRequest {
         sourceOrigin = null,
         preferThumb = true,
         forcePath = false,
-        displayKey = listOf(cover.orEmpty(), groupName, AppConfig.useDefaultCover.toString()).joinToString("|")
+        allowNameOverlay = true,
     )
 }
 
@@ -235,14 +99,8 @@ private fun buildCoverRequest(
     sourceOrigin: String?,
     preferThumb: Boolean,
     forcePath: Boolean,
-    displayKey: String
+    allowNameOverlay: Boolean?
 ): BookshelfCoverRequest {
-    val useThumb = preferThumb && !AppConfig.loadCoverHighQuality
-    val loadKey = listOf(
-        displayKey,
-        useThumb.toString(),
-        forcePath.toString()
-    ).joinToString("|")
     return BookshelfCoverRequest(
         path = path,
         name = name,
@@ -250,8 +108,7 @@ private fun buildCoverRequest(
         sourceOrigin = sourceOrigin,
         preferThumb = preferThumb,
         forcePath = forcePath,
-        loadKey = loadKey,
-        thumbKey = "$sourceOrigin|$path|$name|$author"
+        allowNameOverlay = allowNameOverlay
     )
 }
 
@@ -264,18 +121,5 @@ private fun BookshelfItemUi.coverIdentityKey(): String {
     return when (this) {
         is BookshelfBookItemUi -> "$configKey|book|${display.bookUrl}|${display.getDisplayCover()}|${display.name}|${display.author}"
         is BookshelfFolderItemUi -> "$configKey|folder|${group.groupId}|${group.cover}|${group.groupName}"
-    }
-}
-
-private fun defaultCoverBitmap(): Bitmap {
-    val drawable = BookCover.defaultDrawable
-    cachedFallbackBitmap?.takeIf {
-        cachedFallbackDrawable === drawable && !it.isRecycled
-    }?.let {
-        return it
-    }
-    return drawable.toBitmap(width = 240, height = 320).also {
-        cachedFallbackDrawable = drawable
-        cachedFallbackBitmap = it
     }
 }

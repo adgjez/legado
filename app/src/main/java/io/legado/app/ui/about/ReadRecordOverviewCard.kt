@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -37,11 +38,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.data.entities.Book
+import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
+import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CircleImageView
 import io.legado.app.ui.widget.image.CoverImageView
@@ -525,17 +529,14 @@ private fun ReadRecordRankRow(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AndroidView(
+        ReadRecordBookCoverImage(
+            book = item.book,
+            snapshot = item.snapshot,
             modifier = Modifier
                 .width(54.dp)
                 .height(72.dp)
-                .clip(RoundedCornerShape(context.composeReadRecordPanelRadius())),
-            factory = { CoverImageView(it) },
-            update = { cover ->
-                cover.alpha = alpha
-                cover.loadReadRecordCover(item.book, item.snapshot)
-            },
-            onRelease = { it.releaseComposeImage() }
+                .graphicsLayer { this.alpha = alpha },
+            style = CoverImageView.CoverStyle.COMPACT
         )
         Column(
             modifier = Modifier
@@ -581,17 +582,56 @@ private fun ReadRecordCoverItem(
     onLongClick: () -> Unit
 ) {
     val context = LocalContext.current
-    AndroidView(
+    ReadRecordBookCoverImage(
+        book = item.book,
+        snapshot = item.snapshot,
         modifier = Modifier
             .width(78.dp)
             .height(104.dp)
-            .clip(RoundedCornerShape(context.composeReadRecordPanelRadius()))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        factory = { CoverImageView(it) },
-        update = { cover ->
-            cover.loadReadRecordCover(item.book, item.snapshot)
-        },
-        onRelease = { it.releaseComposeImage() }
+        style = CoverImageView.CoverStyle.GRID
+    )
+}
+
+@Composable
+private fun ReadRecordBookCoverImage(
+    book: Book?,
+    snapshot: ReadRecentVisualSnapshot?,
+    modifier: Modifier = Modifier,
+    style: CoverImageView.CoverStyle
+) {
+    if (book != null) {
+        BookCoverImage(
+            book = book,
+            modifier = modifier,
+            style = style,
+            loadOnlyWifi = false,
+            preferThumb = true,
+            fillBounds = true
+        )
+        return
+    }
+    val originalCover = snapshot?.displayCover()
+    val bookKey = snapshot?.bookUrl
+        ?.takeIf { it.isNotBlank() }
+        ?: listOf(snapshot?.name, snapshot?.author).joinToString("|")
+    val collectionCover = CoverCollectionManager.selectedCollectionCover(bookKey, originalCover)
+    val usingCollectionCover = collectionCover != null
+    val forceOriginalCover = collectionCover == null &&
+        CoverCollectionManager.isMixedMode() &&
+        originalCover.isRealCoverPath()
+    BookCoverImage(
+        path = collectionCover ?: originalCover,
+        name = snapshot?.name,
+        author = snapshot?.author,
+        sourceOrigin = null,
+        modifier = modifier,
+        style = style,
+        loadOnlyWifi = false,
+        preferThumb = true,
+        forcePath = usingCollectionCover || forceOriginalCover,
+        allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath(),
+        fillBounds = true
     )
 }
 
