@@ -284,38 +284,46 @@ private fun MainTopTitleRow(
                 onClick = onSearchEntryClick
             )
         } else {
-            Row(
-                modifier = Modifier
-                    .height(controlHeight)
-                    .then(if (titleMaxWidth != null) Modifier.widthIn(max = titleMaxWidth) else Modifier)
-                    .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
-                    .combinedClickable(
-                        enabled = state.titleEnabled,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onLongClick = { onTitleLongClick() },
-                        onClick = onTitleClick
-                    )
-                    .alpha(state.titleAlpha)
-                    .padding(start = if (isRegular) 12.dp else 0.dp, end = if (isRegular) 8.dp else 0.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart
             ) {
-                Text(
-                    text = state.title,
-                    color = textColor,
-                    fontSize = state.titleTextSizeSp.sp,
-                    fontFamily = titleFont,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Image(
-                    painter = painterResource(R.drawable.ic_arrow_drop_down),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(textColor),
-                    modifier = Modifier.size(dimensionResource(R.dimen.bookshelf_title_arrow_size))
-                )
+                Row(
+                    modifier = Modifier
+                        .height(controlHeight)
+                        .then(if (titleMaxWidth != null) Modifier.widthIn(max = titleMaxWidth) else Modifier)
+                        .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
+                        .combinedClickable(
+                            enabled = state.titleEnabled,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onLongClick = { onTitleLongClick() },
+                            onClick = onTitleClick
+                        )
+                        .alpha(state.titleAlpha)
+                        .padding(
+                            start = if (isRegular) 12.dp else 0.dp,
+                            end = if (isRegular) 8.dp else 0.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = state.title,
+                        color = textColor,
+                        fontSize = state.titleTextSizeSp.sp,
+                        fontFamily = titleFont,
+                        modifier = Modifier.weight(1f, fill = false),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Image(
+                        painter = painterResource(R.drawable.ic_arrow_drop_down),
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(textColor),
+                        modifier = Modifier.size(dimensionResource(R.dimen.bookshelf_title_arrow_size))
+                    )
+                }
             }
-            Spacer(modifier = Modifier.weight(1f))
         }
         val marginStart = if (isRegular) 6.dp else 8.dp
         state.actions
