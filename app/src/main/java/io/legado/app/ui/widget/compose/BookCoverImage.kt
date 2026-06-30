@@ -1,7 +1,11 @@
 package io.legado.app.ui.widget.compose
 
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF as AndroidRectF
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -21,13 +25,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -59,11 +59,11 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.model.BookCover
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
+import kotlin.math.roundToInt
 
 private const val BOOK_COVER_ASPECT_RATIO = 0.75f
 private const val COVER_THUMB_WIDTH = 240
@@ -321,27 +321,8 @@ fun BookCoverImage(
                 Modifier
             }
         )
-        .then(
-            if (style.elevationDp > 0f) {
-                Modifier.shadow(style.elevationDp.dp, shape, clip = false)
-            } else {
-                Modifier
-            }
-        )
+        .coverOuterShadow(style)
         .clip(shape)
-        .drawWithContent {
-            drawContent()
-            if (style.strokeWidthDp > 0f && style.strokeAlpha > 0f) {
-                val strokeWidth = style.strokeWidthDp.dp.toPx()
-                val radius = style.radiusDp.dp.toPx()
-                drawRoundRect(
-                    color = Color(context.secondaryTextColor).copy(alpha = style.strokeAlpha),
-                    size = size,
-                    cornerRadius = CornerRadius(radius, radius),
-                    style = Stroke(width = strokeWidth)
-                )
-            }
-        }
 
     Box(modifier = frameModifier) {
         Image(
@@ -356,6 +337,33 @@ fun BookCoverImage(
                 author = cleanAuthor,
                 modifier = Modifier.matchParentSize()
             )
+        }
+    }
+}
+
+private fun Modifier.coverOuterShadow(style: CoverImageView.CoverStyle): Modifier {
+    if (style.elevationDp <= 0f) return this
+    return drawWithCache {
+        val radius = style.radiusDp.dp.toPx()
+        val blurRadius = maxOf(1f, style.elevationDp.dp.toPx() * 1.35f)
+        val spread = blurRadius * 2.5f
+        val shadowAlpha = (0.10f + style.elevationDp * 0.018f).coerceIn(0.12f, 0.22f)
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb((shadowAlpha * 255).roundToInt(), 0, 0, 0)
+            maskFilter = BlurMaskFilter(blurRadius, BlurMaskFilter.Blur.NORMAL)
+        }
+        val clearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        }
+        val coverRect = AndroidRectF(0f, 0f, size.width, size.height)
+        val layerRect = AndroidRectF(-spread, -spread, size.width + spread, size.height + spread)
+        onDrawBehind {
+            drawContext.canvas.nativeCanvas.apply {
+                val saveCount = saveLayer(layerRect, null)
+                drawRoundRect(coverRect, radius, radius, shadowPaint)
+                drawRoundRect(coverRect, radius, radius, clearPaint)
+                restoreToCount(saveCount)
+            }
         }
     }
 }

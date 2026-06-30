@@ -74,12 +74,12 @@ class CoverImageView @JvmOverloads constructor(
         val strokeWidthDp: Float,
         val strokeAlpha: Float
     ) {
-        FLAT(8f, 0f, 0.6f, 0.16f),
-        COMPACT(7f, 1f, 0.6f, 0.16f),
-        LIST(8f, 1.5f, 0.6f, 0.18f),
-        GRID(8f, 2f, 0.6f, 0.18f),
-        DETAIL(12f, 5f, 0.75f, 0.20f),
-        PREVIEW(10f, 6f, 0.75f, 0.22f)
+        FLAT(8f, 0f, 0f, 0f),
+        COMPACT(7f, 1f, 0f, 0f),
+        LIST(8f, 1.5f, 0f, 0f),
+        GRID(8f, 2f, 0f, 0f),
+        DETAIL(12f, 5f, 0f, 0f),
+        PREVIEW(10f, 6f, 0f, 0f)
     }
 
     private var viewWidth: Float = 0f
