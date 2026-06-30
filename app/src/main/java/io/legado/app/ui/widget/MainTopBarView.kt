@@ -361,6 +361,7 @@ class MainTopBarView @JvmOverloads constructor(
         } else {
             null
         }
+        updateActionProxyMetrics(resources.getDimensionPixelSize(R.dimen.bookshelf_action_button_size))
         renderBackgroundLayer(null, 0f)
         listOf(primaryBar, selectsBar, tagsBar).forEach {
             it.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
@@ -380,6 +381,7 @@ class MainTopBarView @JvmOverloads constructor(
             config.takeUnless { hideConfigBg },
             if (hideConfigBg) 0f else TopBarConfig.cornerRadius(context, config)
         )
+        updateActionProxyMetrics(resources.getDimensionPixelSize(R.dimen.top_bar_regular_action_size))
         primaryBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         selectsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         tagsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
@@ -538,11 +540,30 @@ class MainTopBarView @JvmOverloads constructor(
         post { onHeightChanged?.invoke() }
     }
 
+    private fun updateActionProxyMetrics(sizePx: Int) {
+        listOf(
+            moreButton,
+            searchButton,
+            filterButton,
+            starButton,
+            refreshButton,
+            loginButton,
+            filterToggleButton
+        ).forEach { button ->
+            val params = button.layoutParams as? LayoutParams ?: LayoutParams(sizePx, sizePx)
+            params.width = sizePx
+            params.height = sizePx
+            button.layoutParams = params
+        }
+    }
+
     private fun actionButton(drawableRes: Int, contentDescRes: Int): StateAwareImageButton {
         return StateAwareImageButton(context, drawableRes).apply {
             setImageResource(drawableRes)
             contentDescription = context.getString(contentDescRes)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val size = resources.getDimensionPixelSize(R.dimen.bookshelf_action_button_size)
+            layoutParams = LayoutParams(size, size)
         }
     }
 
