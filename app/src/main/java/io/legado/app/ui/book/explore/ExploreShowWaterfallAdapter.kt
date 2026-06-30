@@ -71,7 +71,7 @@ class ExploreShowWaterfallAdapter(
                 tvLasted.text = context.getString(R.string.lasted_show, item.latestChapterTitle)
                 tvLasted.visible()
             }
-            tvIntroduce.text = item.trimIntro(context)
+            tvIntroduce.text = item.exploreListIntro(context)
             val kinds = item.getKindList()
             if (kinds.isEmpty()) {
                 llKind.gone()

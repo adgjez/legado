@@ -12,6 +12,7 @@ import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.utils.BookIntroUtils
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -53,7 +54,8 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 tvLasted.text = context.getString(R.string.lasted_show, item.latestChapterTitle)
                 tvLasted.visible()
             }
-            tvIntroduce.text = item.trimIntro(context)
+            tvIntroduce.maxLines = 3
+            tvIntroduce.text = item.exploreListIntro(context)
             val kinds = item.getKindList()
             if (kinds.isEmpty()) {
                 llKind.gone()
@@ -95,4 +97,9 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
 
         fun showBookInfo(book: SearchBook)
     }
+}
+
+internal fun SearchBook.exploreListIntro(context: Context): String {
+    return BookIntroUtils.listIntro(intro)
+        ?: context.getString(R.string.intro_show_null)
 }
