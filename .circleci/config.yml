@@ -296,4 +296,8 @@ jobs:
 workflows:
   arm64-github-release:
     jobs:
-      - build-arm64-github-release
+      - build-arm64-github-release:
+          filters:
+            branches:
+              only:
+                - feature/discovery-suite-select
