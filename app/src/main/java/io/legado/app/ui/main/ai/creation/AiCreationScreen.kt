@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URL
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -27,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -145,6 +147,7 @@ private class ImageGenState {
 private class VideoGenState {
     var generating by mutableStateOf(false)
     var resultUrl by mutableStateOf<String?>(null)
+    var localPath by mutableStateOf<String?>(null)
     var errorMsg by mutableStateOf<String?>(null)
     var progressText by mutableStateOf("")
     var videoProgress by mutableFloatStateOf(0f)
@@ -774,7 +777,12 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
             VideoMode.entries.forEach { m ->
                 val sel = mode == m
                 Surface(
-                    onClick = { mode = m; videoState.resultUrl = null; videoState.errorMsg = null },
+                    onClick = {
+                        mode = m
+                        videoState.resultUrl = null
+                        videoState.localPath = null
+                        videoState.errorMsg = null
+                    },
                     shape = RoundedCornerShape(style.metrics.chipRadius),
                     color = if (sel) style.colors.accent.copy(alpha = 0.14f)
                     else style.colors.cardSurface
@@ -930,6 +938,7 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
                 videoState.generating = true
                 videoState.errorMsg = null
                 videoState.resultUrl = null
+                videoState.localPath = null
                 videoState.progressText = "创建视频任务..."
                 videoState.videoProgress = 0f
                 generationScope.launch {
@@ -964,6 +973,7 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
                             }
                         }
                         videoState.resultUrl = result.videoUrl
+                        videoState.localPath = result.localPath
                         videoState.progressText = ""
                         videoState.videoProgress = 1f
                         AiCreationHistory.addVideo(
@@ -1045,10 +1055,6 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
             }
         }
         videoState.resultUrl?.let { url ->
-            var cachedPath by remember { mutableStateOf<String?>(null) }
-            LaunchedEffect(url) {
-                cachedPath = withContext(Dispatchers.IO) { cacheVideo(url) }
-            }
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
                 color = style.colors.cardSurface,
@@ -1065,7 +1071,7 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
                                     ViewGroup.LayoutParams.MATCH_PARENT,
                                     ViewGroup.LayoutParams.WRAP_CONTENT
                                 )
-                                setUp(cachedPath ?: url, false, null, "")
+                                setUp(videoState.localPath ?: url, false, null, "")
                                 startPlayLogic()
                             }
                         },
@@ -1095,7 +1101,7 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
                             shape = RoundedCornerShape(style.metrics.chipRadius)
                         ) { Text("系统播放器", fontSize = 13.sp) }
                     }
-                    if (cachedPath != null) {
+                    if (videoState.localPath != null) {
                         Text("已缓存", color = style.colors.secondaryText, fontSize = 11.sp)
                     }
                 }
@@ -1241,20 +1247,34 @@ private fun VideoHistorySection(style: AiComposeStyle) {
                             Text("×", color = style.colors.danger, fontSize = 16.sp)
                         }
                     }
-                    // 视频预览缩略图
+                    // 缓存 + 预览抽帧
+                    val cachedPath = remember { mutableStateOf<String?>(null) }
+                    val thumbnail = remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+                    LaunchedEffect(record.url) {
+                        cachedPath.value = withContext(Dispatchers.IO) { cacheVideo(record.url) }
+                        cachedPath.value?.let { path ->
+                            thumbnail.value = withContext(Dispatchers.IO) {
+                                var retriever: android.media.MediaMetadataRetriever? = null
+                                try {
+                                    retriever = android.media.MediaMetadataRetriever()
+                                    retriever.setDataSource(path)
+                                    retriever.frameAtTime
+                                } catch (_: Exception) { null }
+                                finally { retriever?.release() }
+                            }
+                        }
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 200.dp)
+                            .height(160.dp)
                             .clip(RoundedCornerShape(style.metrics.chipRadius))
-                            .background(style.colors.cardSurface.copy(alpha = 0.5f)),
+                            .background(Color.Black.copy(alpha = 0.7f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(context).data(record.url).crossfade(true).build(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        thumbnail.value?.let { bmp ->
+                            Image(bitmap = bmp.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize())
+                        }
                         Surface(
                             shape = RoundedCornerShape(50),
                             color = Color.Black.copy(alpha = 0.5f),
