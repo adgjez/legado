@@ -633,9 +633,22 @@ class MainTopBarView @JvmOverloads constructor(
 
     class StateAwareImageButton(
         context: Context,
-        val iconRes: Int
+        iconRes: Int
     ) : AppCompatImageButton(context) {
         var onStateChanged: (() -> Unit)? = null
+        var iconRes: Int = iconRes
+            private set
+
+        override fun setImageResource(resId: Int) {
+            iconRes = resId
+            super.setImageResource(resId)
+            onStateChanged?.invoke()
+        }
+
+        override fun setContentDescription(contentDescription: CharSequence?) {
+            super.setContentDescription(contentDescription)
+            onStateChanged?.invoke()
+        }
 
         override fun setVisibility(visibility: Int) {
             if (visibility == getVisibility()) {
