@@ -13,15 +13,12 @@ import android.text.Editable
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.Menu
-import android.view.MenuItem
 import android.widget.PopupWindow
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.ArrayAdapter
 import android.widget.AdapterView
 import android.widget.AutoCompleteTextView
-import android.view.SubMenu
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.mutableIntStateOf
@@ -169,18 +166,18 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var discoverBookAdapter: RecyclerAdapter<SearchBook, *>? = null
     private var discoverBookLayoutMode = 0
     private val searchView: SearchView? by lazy {
-        binding.titleBar.findViewById<SearchView?>(R.id.search_view)
+        binding.root.findViewById<SearchView?>(R.id.search_view)
     }
     private val diffItemCallBack = ExploreDiffItemCallBack()
     private val groups = linkedSetOf<String>()
     private var exploreFlowJob: Job? = null
-    private var groupsMenu: SubMenu? = null
     private var oldModeInitialized = false
     private var modernModeInitialized = false
     private var discoveryPageMode = AppConfig.DISCOVERY_PAGE_MODE_MODERN
     private var usingModernDiscovery = false
     private var usingSuiteDiscovery = false
     private var sourceMenuPopup: PopupWindow? = null
+    private var classicGroupPopup: ModernActionPopup.Handle? = null
     private var tagFilterPopup: ModernActionPopup.Handle? = null
     private var discoverSourceFlowJob: Job? = null
     private var discoverBookshelfFlowJob: Job? = null
@@ -238,7 +235,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var discoverDefaultFiltersAppliedKey: String? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setSupportToolbar(binding.titleBar.toolbar)
+        initClassicTopBar()
         discoveryPageMode = AppConfig.discoveryPageMode
         usingModernDiscovery = discoveryPageMode == AppConfig.DISCOVERY_PAGE_MODE_MODERN
         usingSuiteDiscovery = discoveryPageMode == AppConfig.DISCOVERY_PAGE_MODE_SUITE
@@ -340,15 +337,16 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         scheduleDiscoveryWarmup()
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu) {
-        super.onCompatCreateOptionsMenu(menu)
-        if (usingModernDiscovery || usingSuiteDiscovery) {
-            groupsMenu = null
-            return
+    private fun initClassicTopBar() {
+        binding.classicTopBar.applyStatusBarPadding(withInitialPadding = true)
+        binding.classicTopBar.setMode(io.legado.app.ui.widget.MainTopBarView.Mode.READ_RECORD)
+        binding.classicTopBar.setSearchEntryVisible(false)
+        binding.classicTopBar.setTitle(getString(R.string.discovery))
+        binding.classicTopBar.moreButton.setImageResource(R.drawable.ic_groups)
+        binding.classicTopBar.moreButton.contentDescription = getString(R.string.group)
+        binding.classicTopBar.moreButton.setOnClickListener {
+            showClassicGroupPopup(it)
         }
-        menuInflater.inflate(R.menu.main_explore, menu)
-        groupsMenu = menu.findItem(R.id.menu_group)?.subMenu
-        upGroupsMenu()
     }
 
     private fun applyDiscoveryMode(loadData: Boolean = true) {
@@ -358,7 +356,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoveryPageMode = mode
         usingModernDiscovery = modern
         usingSuiteDiscovery = suite
-        binding.titleBar.isGone = modern || suite
+        binding.classicTopBarContainer.isGone = modern || suite
         binding.llModernDiscovery.isVisible = modern
         binding.composeDiscoverySuite.isVisible = suite
         binding.rvFind.isGone = modern || suite
@@ -3351,7 +3349,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 .collect {
                     groups.clear()
                     groups.addAll(it)
-                    upGroupsMenu()
                     delay(500)
                 }
         }
@@ -3436,26 +3433,21 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         WebViewPool.destroyScope(WebViewPool.Scope.DISCOVERY)
         oldModeInitialized = false
         modernModeInitialized = false
-        groupsMenu = null
+        classicGroupPopup?.dismiss()
+        classicGroupPopup = null
         super.onDestroyView()
-    }
-
-    private fun upGroupsMenu() = groupsMenu?.transaction { subMenu ->
-        subMenu.removeGroup(R.id.menu_group_text)
-        groups.forEach {
-            subMenu.add(R.id.menu_group_text, Menu.NONE, Menu.NONE, it)
-        }
     }
 
     override val scope: CoroutineScope
         get() = viewLifecycleOwner.lifecycleScope
 
-    override fun onCompatOptionsItemSelected(item: MenuItem) {
-        super.onCompatOptionsItemSelected(item)
-        if (usingModernDiscovery || usingSuiteDiscovery) return
-        if (item.groupId == R.id.menu_group_text) {
-            searchView?.setQuery("group:${item.title}", true) ?: upExploreData("group:${item.title}")
+    private fun showClassicGroupPopup(anchor: View) {
+        val actions = groups.map { group ->
+            ModernActionPopup.Action(group) {
+                searchView?.setQuery("group:$group", true) ?: upExploreData("group:$group")
+            }
         }
+        classicGroupPopup = ModernActionPopup.show(anchor, actions, classicGroupPopup)
     }
 
     override fun scrollTo(pos: Int) {

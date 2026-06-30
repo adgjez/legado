@@ -5,14 +5,24 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <io.legado.app.ui.widget.TitleBar
-        android:id="@+id/title_bar"
-        android:layout_width="match_parent"
+    <LinearLayout
+        android:id="@+id/classic_top_bar_container"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        app:attachToActivity="false"
-        app:contentLayout="@layout/view_search"
+        android:orientation="vertical"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:title="@string/discovery" />
+        tools:ignore="UseCompoundDrawables">
+
+        <io.legado.app.ui.widget.MainTopBarView
+            android:id="@+id/classic_top_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <include layout="@layout/view_search" />
+
+    </LinearLayout>
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipe_refresh_layout"
@@ -21,7 +31,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/title_bar">
+        app:layout_constraintTop_toBottomOf="@id/classic_top_bar_container">
 
         <FrameLayout
             android:layout_width="match_parent"
