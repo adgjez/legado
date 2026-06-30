@@ -4,13 +4,14 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
-import java.net.URL
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import splitties.init.appCtx
@@ -297,7 +298,7 @@ object AiCreationService {
                             ?.takeIf { it.isNotBlank() }
                         if (!url.isNullOrBlank()) return VideoResult(
                                 videoUrl = url,
-                                localPath = downloadVideo(url)
+                                localPath = withContext(Dispatchers.IO) { downloadVideo(url) }
                             )
                         throw AiCreationException("视频生成完成但未获取到URL，任务ID: $taskId", payload)
                     }
@@ -329,8 +330,12 @@ object AiCreationService {
             val dir = File(appCtx.cacheDir, "ai_video").also { it.mkdirs() }
             val file = File(dir, "video_${url.hashCode()}.mp4")
             if (file.exists()) return file.absolutePath
-            URL(url).openStream().use { input ->
-                file.outputStream().use { output -> input.copyTo(output) }
+            val request = okhttp3.Request.Builder().url(url).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                response.body?.byteStream()?.use { input ->
+                    file.outputStream().use { output -> input.copyTo(output) }
+                }
             }
             file.absolutePath
         } catch (_: Exception) { null }

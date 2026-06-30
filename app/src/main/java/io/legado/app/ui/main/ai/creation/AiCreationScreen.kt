@@ -10,7 +10,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.net.URL
+import java.util.concurrent.TimeUnit
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -50,6 +50,7 @@ import io.legado.app.help.ai.AiCreationException
 import io.legado.app.help.ai.AiCreationHistory
 import io.legado.app.help.ai.AiCreationService
 import io.legado.app.help.gsyVideo.VideoPlayer
+import io.legado.app.help.http.okHttpClient
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
 import kotlinx.coroutines.CoroutineScope
@@ -1354,15 +1355,22 @@ private fun VideoPlayerDialog(url: String, onDismiss: () -> Unit) {
 
 // ── 视频缓存 ──
 
+private val videoDownloadClient = okHttpClient.newBuilder()
+    .connectTimeout(60, TimeUnit.SECONDS)
+    .readTimeout(300, TimeUnit.SECONDS)
+    .build()
+
 private fun cacheVideo(url: String): String? {
     return try {
-        val dir = File(appCtx.cacheDir, "ai_video")
-        dir.mkdirs()
-        val name = "video_${url.hashCode()}.mp4"
-        val file = File(dir, name)
+        val dir = File(appCtx.cacheDir, "ai_video").also { it.mkdirs() }
+        val file = File(dir, "video_${url.hashCode()}.mp4")
         if (file.exists()) return file.absolutePath
-        URL(url).openStream().use { input ->
-            file.outputStream().use { output -> input.copyTo(output) }
+        val request = okhttp3.Request.Builder().url(url).build()
+        videoDownloadClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            response.body?.byteStream()?.use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+            }
         }
         file.absolutePath
     } catch (_: Exception) { null }
