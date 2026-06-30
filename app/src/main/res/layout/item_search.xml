@@ -123,7 +123,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:ellipsize="end"
-            android:maxLines="2"
+            android:maxLines="3"
             android:scrollbars="none"
             android:text="@string/book_intro"
             android:textColor="@color/primaryText"

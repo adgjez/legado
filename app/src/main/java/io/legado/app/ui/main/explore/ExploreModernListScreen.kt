@@ -479,7 +479,7 @@ private fun ExploreBookTextContent(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Spacer(modifier = Modifier.height(if (rounded) 5.dp else 2.dp))
+        Spacer(modifier = Modifier.height(if (rounded) 5.dp else 3.dp))
         ExploreMetaLine(
             iconRes = R.drawable.ic_author,
             text = context.getString(R.string.author_show, book.author),
@@ -492,16 +492,16 @@ private fun ExploreBookTextContent(
             },
             palette = palette
         )
-        book.trimIntroOrNull()?.let { intro ->
+        book.trimIntroOrNull(context)?.let { intro ->
             Text(
                 text = intro,
                 color = palette.secondaryText,
                 fontSize = 12.sp,
                 lineHeight = 17.sp,
                 fontFamily = palette.bodyFontFamily,
-                maxLines = 3,
+                maxLines = if (rounded) 3 else 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = if (rounded) 5.dp else 2.dp)
+                modifier = Modifier.padding(top = if (rounded) 5.dp else 3.dp)
             )
         }
         if (rounded) {
@@ -528,7 +528,7 @@ private fun ExploreMetaLine(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 1.dp),
+            .padding(top = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
@@ -577,6 +577,7 @@ private fun ExploreTagChips(
     }
 }
 
-private fun SearchBook.trimIntroOrNull(): String? {
-    return BookIntroUtils.listIntro(intro)
+private fun SearchBook.trimIntroOrNull(context: android.content.Context): String? {
+    val introText = BookIntroUtils.listIntro(intro) ?: return null
+    return context.getString(R.string.intro_show, introText)
 }
