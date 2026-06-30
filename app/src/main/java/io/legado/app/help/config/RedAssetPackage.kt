@@ -17,7 +17,15 @@ internal object RedAssetPackage {
     }
 
     private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
-    private val navigationKeys = setOf("home", "bookshelf", "notes", "statistics", "settings")
+    private val navigationIconExtensions = imageExtensions + setOf("svg", "ico")
+    private val navigationKeys = setOf(
+        "home", "bookshelf", "bookcase", "book", "books",
+        "feature", "discovery", "explore", "find",
+        "notes", "rss", "subscribe", "subscription", "feed",
+        "statistics", "stats", "readrecord", "record", "history",
+        "settings", "my", "mine", "profile", "user", "config",
+        "search", "findsearch"
+    )
 
     fun zipPayload(file: File, tempDir: File): File? {
         val header = file.inputStream().use { input ->
@@ -93,7 +101,12 @@ internal object RedAssetPackage {
 
     private fun hasNavigationIcons(names: List<String>): Boolean {
         return navigationKeys.count { key ->
-            names.any { it == "${key}_normal.png" || it == "${key}_selected.png" }
+            names.any { name ->
+                val extension = name.substringAfterLast('.', "")
+                if (extension !in navigationIconExtensions) return@any false
+                val stem = name.substringBeforeLast('.', name)
+                stem == key || stem == "${key}_normal" || stem == "${key}_selected"
+            }
         } >= 3
     }
 }

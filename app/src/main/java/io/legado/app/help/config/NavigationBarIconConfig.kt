@@ -43,6 +43,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
@@ -65,6 +66,11 @@ object NavigationBarIconConfig {
     private const val legacyMigratedNightKey = "navigationBarLegacyMigratedNight"
     private const val maxIconBitmapCacheSize = 24
     private const val redImportIconSize = 192
+    private val redSvgXmlDeclarationRegex = Regex("^\\s*<\\?xml[^>]*\\?>", RegexOption.IGNORE_CASE)
+    private val redSvgDoctypeRegex = Regex(
+        "<!DOCTYPE\\s+svg\\b[^>]*>",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
 
     private var currentDayEntryCache: CachedEntry? = null
     private var currentNightEntryCache: CachedEntry? = null
@@ -429,6 +435,26 @@ object NavigationBarIconConfig {
             packageZip.delete()
             FileUtils.delete(packageDir, deleteRootDir = true)
         }
+    }
+
+    fun copyEntryForMode(entry: Entry, isNightMode: Boolean): Entry? {
+        if (entry.config.isNightMode == isNightMode) return entry
+        if (entry.dirName == DEFAULT_DIR_NAME) return null
+        val sourceDir = entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName)
+        if (!sourceDir.isDirectory) return null
+        val config = normalizeConfig(entry.config.copy(
+            isNightMode = isNightMode,
+            icons = entry.config.icons.toMutableMap()
+        ))
+        val dirName = config.name.normalizeFileName().ifBlank { "navigation_${System.currentTimeMillis()}" }
+        val targetDir = localDir(isNightMode, dirName)
+        if (targetDir.exists()) {
+            FileUtils.delete(targetDir, deleteRootDir = true)
+        }
+        sourceDir.copyRecursively(targetDir, overwrite = true)
+        File(targetDir, packageFileName).writeText(GSON.toJson(config))
+        clearRuntimeCache()
+        return Entry(config, Source.LOCAL, dirName, localDir = targetDir)
     }
 
     suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) {
@@ -924,18 +950,55 @@ object NavigationBarIconConfig {
 
     private fun decodeRedNavigationIcon(file: File, targetSize: Int): Bitmap? {
         if (!file.isFile) return null
-        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return null
+        val bytes = runCatching { file.readBytes() }.getOrElse {
+            AppLog.put("读取 RED 底栏图标失败: ${file.name}, ${it.localizedMessage}")
+            return null
+        }
         if (bytes.isIcoHeader()) {
             decodeIcoPng(bytes)?.let { return it }
         }
         if (file.extension.equals("svg", ignoreCase = true) || bytes.looksLikeSvg()) {
-            SvgUtils.createBitmap(file.absolutePath, targetSize, targetSize)?.let { return it }
+            decodeRedNavigationSvg(file, bytes, targetSize)?.let { return it }
         }
         BitmapFactory.decodeFile(file.absolutePath)?.let { return it }
         if (!file.extension.equals("svg", ignoreCase = true)) {
             SvgUtils.createBitmap(file.absolutePath, targetSize, targetSize)?.let { return it }
         }
         return null
+    }
+
+    private fun decodeRedNavigationSvg(file: File, bytes: ByteArray, targetSize: Int): Bitmap? {
+        val text = runCatching { bytes.toString(Charsets.UTF_8) }.getOrDefault("")
+        val sanitized = sanitizeRedNavigationSvg(text)
+        if (sanitized.isNotBlank()) {
+            renderRedNavigationSvg(file, sanitized.toByteArray(Charsets.UTF_8), targetSize, "sanitized")
+                ?.let { return it }
+        }
+        if (sanitized != text) {
+            renderRedNavigationSvg(file, bytes, targetSize, "raw")
+                ?.let { return it }
+        } else if (sanitized.isBlank()) {
+            renderRedNavigationSvg(file, bytes, targetSize, "raw")
+                ?.let { return it }
+        }
+        AppLog.put("跳过无法解析的 RED 底栏 SVG: ${file.name}")
+        return null
+    }
+
+    private fun renderRedNavigationSvg(file: File, bytes: ByteArray, targetSize: Int, label: String): Bitmap? {
+        return runCatching {
+            SvgUtils.createBitmapOrThrow(ByteArrayInputStream(bytes), targetSize, targetSize)
+        }.getOrElse {
+            AppLog.put("解析 RED 底栏 SVG 失败($label): ${file.name}, ${it.localizedMessage}")
+            null
+        }
+    }
+
+    private fun sanitizeRedNavigationSvg(text: String): String {
+        val withoutBom = text.trimStart('\uFEFF')
+        return redSvgDoctypeRegex
+            .replace(redSvgXmlDeclarationRegex.replace(withoutBom, ""), "")
+            .trimStart()
     }
 
     private fun ByteArray.isIcoHeader(): Boolean {

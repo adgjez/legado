@@ -479,6 +479,20 @@ object AppearanceKitManager {
         result.navigationBars.forEach {
             binding.setNavigationBar(it.config.isNightMode, ComponentRef(it.dirName, it.config.name))
         }
+        if (binding.dayNavigationBar == null) {
+            result.navigationBars.firstOrNull { it.config.isNightMode }?.let { source ->
+                NavigationBarIconConfig.copyEntryForMode(source, false)?.let {
+                    binding.setNavigationBar(false, ComponentRef(it.dirName, it.config.name))
+                }
+            }
+        }
+        if (binding.nightNavigationBar == null) {
+            result.navigationBars.firstOrNull { !it.config.isNightMode }?.let { source ->
+                NavigationBarIconConfig.copyEntryForMode(source, true)?.let {
+                    binding.setNavigationBar(true, ComponentRef(it.dirName, it.config.name))
+                }
+            }
+        }
         result.coverCollections.forEach {
             binding.setCoverCollection(it.isNight, ComponentRef(it.id, it.name))
         }

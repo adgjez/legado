@@ -1552,7 +1552,14 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (AppearanceKitManager.isAppearanceKitPackage(file)) {
                     emptyList<ThemePackageManager.Entry>() to AppearanceKitManager.importPackage(file).total
                 } else {
-                    ThemePackageManager.importPackage(file) to 0
+                    val result = ThemePackageManager.importPackageDetailed(file)
+                    val extraCount = result.navigationBars.size + result.coverCollections.size
+                    val totalCount = if (extraCount > 0) {
+                        result.themes.size + extraCount
+                    } else {
+                        0
+                    }
+                    result.themes to totalCount
                 }
             }.onSuccess {
                 toastOnUi(

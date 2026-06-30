@@ -702,9 +702,15 @@ object ThemePackageManager {
             if (entries.isEmpty()) {
                 throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
             }
+            val dayNavigationBar = importRedNavigationPack(unzipDir, redTheme.name, redTheme.light, redTheme.dark, false)
+            val nightNavigationBar = importRedNavigationPack(unzipDir, redTheme.name, redTheme.dark, redTheme.light, true)
             val navigationBars = listOfNotNull(
-                importRedNavigationPack(unzipDir, redTheme.name, redTheme.light, redTheme.dark, false),
-                importRedNavigationPack(unzipDir, redTheme.name, redTheme.dark, redTheme.light, true)
+                dayNavigationBar ?: nightNavigationBar?.let {
+                    NavigationBarIconConfig.copyEntryForMode(it, false)
+                },
+                nightNavigationBar ?: dayNavigationBar?.let {
+                    NavigationBarIconConfig.copyEntryForMode(it, true)
+                }
             )
             val coverCollections = listOfNotNull(
                 importRedCoverGallery(unzipDir, redTheme.light, false),
@@ -764,7 +770,7 @@ object ThemePackageManager {
             sourceDir = sourceDir,
             fallbackName = fallbackName,
             isNightMode = isNightTheme,
-            opacity = navigationColors.cardColor.alphaPercentOrNull() ?: 72
+            opacity = navigationColors.navigationBarOpacityPercent()
         )
     }
 
@@ -827,6 +833,12 @@ object ThemePackageManager {
         if (value.length != 8) return null
         return value.take(2).toIntOrNull(16)
             ?.let { (it * 100f / 255f).toInt().coerceIn(0, 100) }
+    }
+
+    private fun RedThemeColors.navigationBarOpacityPercent(): Int {
+        return cardColor.alphaPercentOrNull()
+            ?.takeIf { it >= 16 }
+            ?: 72
     }
 
     private fun RedThemeColors.hasMeaningfulThemeContent(backgroundPayload: String? = null): Boolean {
