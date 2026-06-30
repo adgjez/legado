@@ -38,7 +38,6 @@ import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
-import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
@@ -70,7 +69,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -529,14 +527,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 }
             })
             if (config.layoutMode != "sidebar") {
-                addView(optionRow(
-                    getString(R.string.merge_discovery_rss),
-                    getString(if (AppConfig.mergeDiscoveryRss) R.string.enabled else R.string.disabled)
-                ) {
-                    putPrefBoolean(PreferKey.mergeDiscoveryRss, !AppConfig.mergeDiscoveryRss)
-                    postEvent(EventBus.NOTIFY_MAIN, false)
-                    refreshEditDialog()
-                })
                 if (config.layoutMode == "floating") {
                     addView(optionRow(getString(R.string.bottom_bar_material_mode), effectModeLabel(config.effectMode)) {
                         selector(
@@ -557,7 +547,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     })
                     addView(optionRow(
                         getString(R.string.search),
-                        if (config.hideSearchInFloatingStyle) "Off" else "On"
+                        getString(if (config.hideSearchInFloatingStyle) R.string.disabled else R.string.enabled)
                     ) {
                         config.hideSearchInFloatingStyle = !config.hideSearchInFloatingStyle
                         refreshEditDialog()

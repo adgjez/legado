@@ -696,6 +696,8 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 composeListItemStyle = AppConfig.bookshelfListItemStyle
                 updateComposeItems()
             } else {
+                bookshelfMargin = AppConfig.bookshelfMargin
+                binding.rvBookshelf.invalidateItemDecorations()
                 booksAdapter.notifyDataSetChanged()
             }
         }

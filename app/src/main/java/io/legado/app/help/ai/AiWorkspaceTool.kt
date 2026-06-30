@@ -134,7 +134,7 @@ object AiWorkspaceTool {
         val file = resolvePath(sessionId, args?.optString("path").orEmpty())
             .getOrElse { return error(it.message ?: "invalid path") }
         if (!file.isFile) return error("file not found")
-        val text = file.readText()
+        val text = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val offset = (args?.optInt("offset", 0) ?: 0).coerceAtLeast(0)
         val maxChars = (args?.optInt("maxChars", 20_000) ?: 20_000).coerceIn(1, MAX_READ_CHARS)
         val chunk = text.drop(offset).take(maxChars)
@@ -157,7 +157,7 @@ object AiWorkspaceTool {
         val file = resolvePath(sessionId, args.optString("path"))
             .getOrElse { return error(it.message ?: "invalid path") }
         if (!file.isFile) return error("file not found")
-        val text = file.readText()
+        val text = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val lines = text.lines()
         val startLine = args.optInt("startLine", 1).coerceAtLeast(1)
         val maxLines = args.optInt("maxLines", 120).coerceIn(1, 1_000)
@@ -206,7 +206,7 @@ object AiWorkspaceTool {
             .getOrElse { return error(it.message ?: "invalid regex") }
         val maxMatches = args.optInt("maxMatches", 50).coerceIn(1, MAX_SEARCH_MATCHES)
         val contextLines = args.optInt("contextLines", 2).coerceIn(0, 10)
-        val text = file.readText()
+        val text = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val matches = collectRegexMatches(
             sessionId = sessionId,
             file = file,
@@ -258,7 +258,7 @@ object AiWorkspaceTool {
                     return@forEach
                 }
                 scannedFiles++
-                val text = runCatching { file.readText() }.getOrNull() ?: run {
+                val text = readWorkspaceText(file).getOrNull() ?: run {
                     skippedFiles++
                     return@forEach
                 }
@@ -297,12 +297,16 @@ object AiWorkspaceTool {
             .getOrElse { return error(it.message ?: "invalid path") }
         validateWritableFile(file).getOrElse { return error(it.message ?: "invalid file") }
         val existed = file.exists()
-        val before = if (existed && file.isFile) file.readText() else ""
+        val before = if (existed && file.isFile) {
+            readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
+        } else {
+            ""
+        }
         val backupId = backupIfNeeded(sessionId, file, args.optString("backup", "auto"), existed)
             .getOrElse { return error(it.message ?: "backup failed") }
         file.parentFile?.mkdirs()
         file.writeText(content)
-        return mutationResult(sessionId, file, before, file.readText(), backupId)
+        return mutationResult(sessionId, file, before, content, backupId)
             .let { JSONObject(it).put("inputFile", true).toString() }
     }
 
@@ -318,7 +322,11 @@ object AiWorkspaceTool {
         val existed = file.exists()
         if (mode == "create" && existed) return error("file already exists")
         if (mode !in setOf("create", "overwrite", "append")) return error("unsupported mode")
-        val before = if (existed && file.isFile) file.readText() else ""
+        val before = if (existed && file.isFile) {
+            readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
+        } else {
+            ""
+        }
         val backupId = backupIfNeeded(sessionId, file, args.optString("backup", "auto"), existed)
             .getOrElse { return error(it.message ?: "backup failed") }
         file.parentFile?.mkdirs()
@@ -326,7 +334,8 @@ object AiWorkspaceTool {
             "append" -> file.appendText(content)
             else -> file.writeText(content)
         }
-        return mutationResult(sessionId, file, before, file.readText(), backupId)
+        val after = if (mode == "append") before + content else content
+        return mutationResult(sessionId, file, before, after, backupId)
     }
 
     private fun editFile(args: JSONObject?): String {
@@ -337,7 +346,7 @@ object AiWorkspaceTool {
         validateWritableFile(file).getOrElse { return error(it.message ?: "invalid file") }
         if (!file.isFile) return error("file not found")
         val replacements = args.optJSONArray("replacements") ?: return error("missing replacements")
-        var text = file.readText()
+        var text = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val before = text
         for (index in 0 until replacements.length()) {
             val item = replacements.optJSONObject(index) ?: return error("invalid replacement at $index")
@@ -361,7 +370,7 @@ object AiWorkspaceTool {
         if (oldText.isEmpty()) return error("oldText is empty")
         val newText = args.optString("newText")
         val expectMatches = args.optInt("expectMatches", 1).coerceAtLeast(0)
-        val before = file.readText()
+        val before = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val replacement = resolveLiteralReplacement(
             text = before,
             oldText = oldText,
@@ -387,7 +396,7 @@ object AiWorkspaceTool {
         val sessionId = sessionId(args)
         val file = resolveEditableFile(sessionId, args.optString("path"))
             .getOrElse { return error(it.message ?: "invalid path") }
-        val before = file.readText()
+        val before = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val item = JSONObject().apply {
             put("pattern", args.optString("pattern"))
             put("replacement", args.optString("replacement"))
@@ -415,7 +424,7 @@ object AiWorkspaceTool {
         val startLine = args.optInt("startLine", 0)
         val endLine = args.optInt("endLine", startLine)
         if (startLine <= 0 || endLine < startLine) return error("invalid line range")
-        val before = file.readText()
+        val before = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val lines = before.split('\n').toMutableList()
         if (startLine > lines.size + 1 || endLine > lines.size) {
             return error("line range outside file, file has ${lines.size} line(s)")
@@ -456,7 +465,7 @@ object AiWorkspaceTool {
         val file = resolveEditableFile(sessionId, args.optString("path"))
             .getOrElse { return error(it.message ?: "invalid path") }
         val textToInsert = args.optString("text")
-        val before = file.readText()
+        val before = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val mode = args.optString("position", "after").ifBlank { "after" }
         val anchor = args.optString("anchor")
         val after = if (anchor.isNotEmpty()) {
@@ -492,7 +501,7 @@ object AiWorkspaceTool {
         val file = resolvePath(sessionId, args.optString("path"))
             .getOrElse { return error(it.message ?: "invalid path") }
         if (!file.isFile) return error("file not found")
-        val after = file.readText()
+        val after = readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }
         val backupIdArg = args.optString("backupId").trim()
         val beforeSource: String
         val before: String
@@ -501,7 +510,7 @@ object AiWorkspaceTool {
             val backupFile = resolveBackupFile(sessionId, backupIdArg)
                 .getOrElse { return error(it.message ?: "invalid backupId") }
             beforeSource = "backup"
-            before = backupFile.readText()
+            before = readWorkspaceText(backupFile).getOrElse { return error(it.message ?: "backup is too large") }
             backupId = backupIdArg
         } else {
             val beforeContent = args.optString("beforeContent")
@@ -513,7 +522,7 @@ object AiWorkspaceTool {
                 val latest = latestBackupForPath(sessionId, relativePath(sessionId, file))
                     ?: return error("backupId or beforeContent is required, and no backup was found for this path")
                 beforeSource = "latestBackup"
-                before = latest.second.readText()
+                before = readWorkspaceText(latest.second).getOrElse { return error(it.message ?: "backup is too large") }
                 backupId = latest.first
             }
         }
@@ -596,7 +605,7 @@ object AiWorkspaceTool {
             .put("sessionId", sessionId)
             .put("path", relativePath(sessionId, file))
             .put("backupId", backupId ?: JSONObject.NULL)
-            .put("sha256", sha256(file.readText()))
+            .put("sha256", sha256(readWorkspaceText(file).getOrElse { return error(it.message ?: "file is too large") }))
             .toString()
     }
 
@@ -605,20 +614,26 @@ object AiWorkspaceTool {
         val sessionId = sessionId(args)
         val backupId = args.optString("backupId").trim()
         if (backupId.isBlank() || backupId.contains("..")) return error("invalid backupId")
-        val source = File(backupRoot(sessionId), backupId).canonicalFile
-        if (!source.path.startsWith(backupRoot(sessionId).canonicalPath) || !source.isFile) {
+        val backupRoot = backupRoot(sessionId).canonicalFile
+        val source = File(backupRoot, backupId).canonicalFile
+        if (!source.toPath().startsWith(backupRoot.toPath()) || source == backupRoot || !source.isFile) {
             return error("backup not found")
         }
         val targetPath = args.optString("path").ifBlank { backupId.substringAfter('/') }
         val target = resolvePath(sessionId, targetPath, allowMissing = true)
             .getOrElse { return error(it.message ?: "invalid path") }
         validateWritableFile(target).getOrElse { return error(it.message ?: "invalid file") }
-        val before = if (target.isFile) target.readText() else ""
+        val before = if (target.isFile) {
+            readWorkspaceText(target).getOrElse { return error(it.message ?: "file is too large") }
+        } else {
+            ""
+        }
+        val after = readWorkspaceText(source).getOrElse { return error(it.message ?: "backup is too large") }
         val backupBeforeRestore = backupIfNeeded(sessionId, target, "auto", target.exists())
             .getOrElse { return error(it.message ?: "backup failed") }
         target.parentFile?.mkdirs()
         source.copyTo(target, overwrite = true)
-        return mutationResult(sessionId, target, before, target.readText(), backupBeforeRestore)
+        return mutationResult(sessionId, target, before, after, backupBeforeRestore)
     }
 
     private fun importBookSource(args: JSONObject?): String {
@@ -740,9 +755,10 @@ object AiWorkspaceTool {
     private fun sessionId(args: JSONObject?): String {
         return args?.optString("sessionId").orEmpty()
             .trim()
-            .replace(Regex("[^A-Za-z0-9._-]"), "_")
-            .ifBlank { DEFAULT_SESSION_ID }
             .take(80)
+            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+            .trim('_')
+            .ifBlank { DEFAULT_SESSION_ID }
     }
 
     private fun workspaceRoot(sessionId: String): File {
@@ -759,7 +775,7 @@ object AiWorkspaceTool {
         }
         val root = backupRoot(sessionId).canonicalFile
         val file = File(root, backupId).canonicalFile
-        if (!file.path.startsWith(root.path + File.separator) || !file.isFile) {
+        if (!file.toPath().startsWith(root.toPath()) || file == root || !file.isFile) {
             return Result.failure(IllegalArgumentException("backup not found"))
         }
         return Result.success(file)
@@ -785,7 +801,7 @@ object AiWorkspaceTool {
         if (path.contains("..")) return Result.failure(IllegalArgumentException("path traversal is not allowed"))
         val target = File(workspaceRoot(sessionId), path).canonicalFile
         val root = workspaceRoot(sessionId).canonicalFile
-        if (target != root && !target.path.startsWith(root.path + File.separator)) {
+        if (target != root && !target.toPath().startsWith(root.toPath())) {
             return Result.failure(IllegalArgumentException("path is outside workspace"))
         }
         if (!allowMissing && !target.exists()) {
@@ -805,7 +821,18 @@ object AiWorkspaceTool {
         if (!isTextWorkspaceFile(file)) {
             return Result.failure(IllegalArgumentException("unsupported file extension"))
         }
+        if (file.exists() && file.length() > MAX_FILE_BYTES) {
+            return Result.failure(IllegalArgumentException("file is too large"))
+        }
         return Result.success(Unit)
+    }
+
+    private fun readWorkspaceText(file: File): Result<String> {
+        if (!file.isFile) return Result.failure(IllegalArgumentException("file not found"))
+        if (file.length() > MAX_FILE_BYTES) {
+            return Result.failure(IllegalArgumentException("file is too large"))
+        }
+        return runCatching { file.readText() }
     }
 
     private fun isTextWorkspaceFile(file: File): Boolean {
@@ -846,7 +873,8 @@ object AiWorkspaceTool {
     private fun sourceFromWorkspace(sessionId: String, path: String): BookSource? {
         val file = resolvePath(sessionId, path).getOrNull() ?: return null
         if (!file.isFile) return null
-        return GSON.fromJsonObject<BookSource>(file.readText()).getOrNull()
+        val text = readWorkspaceText(file).getOrNull() ?: return null
+        return GSON.fromJsonObject<BookSource>(text).getOrNull()
     }
 
     private fun findBookSource(args: JSONObject): BookSource? {

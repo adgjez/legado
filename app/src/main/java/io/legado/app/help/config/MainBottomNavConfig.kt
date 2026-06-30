@@ -129,7 +129,7 @@ object MainBottomNavConfig {
         return listOf(
             ItemState(KEY_BOOKSHELF, true),
             ItemState(KEY_DISCOVERY, legacyVisible(PreferKey.showDiscovery, true)),
-            ItemState(KEY_RSS, legacyVisible(PreferKey.showRss, false)),
+            ItemState(KEY_RSS, legacyVisible(PreferKey.showRss, true)),
             ItemState(KEY_READ_RECORD, legacyVisible(PreferKey.showReadRecord, true)),
             ItemState(KEY_MY, true)
         )

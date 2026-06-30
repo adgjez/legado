@@ -6,6 +6,7 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import okhttp3.Response
+import okhttp3.ResponseBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -17,6 +18,7 @@ object AiMcpClient {
     private const val HEADER_PROTOCOL_VERSION = "MCP-Protocol-Version"
     private const val HEADER_SESSION_ID = "Mcp-Session-Id"
     private const val TOOL_CACHE_TTL_MS = 60_000L
+    private const val MAX_MCP_RESPONSE_BYTES = 1_048_576L
 
     private data class SessionState(
         val sessionId: String?,
@@ -280,12 +282,16 @@ object AiMcpClient {
     private fun readJsonRpcResponse(response: Response, requestId: String): JSONObject {
         val body = response.body ?: throw IllegalStateException("MCP empty response body")
         if (!response.isSuccessful) {
-            val payload = body.string()
+            val payload = response.peekBody(16_384).string()
             throw IllegalStateException(
                 "MCP ${response.code} ${response.message}: ${extractJsonRpcError(payload)}"
             )
         }
-        val payload = body.string()
+        val contentLength = body.contentLength()
+        if (contentLength > MAX_MCP_RESPONSE_BYTES) {
+            throw IllegalStateException("MCP response is too large")
+        }
+        val payload = body.stringLimited(MAX_MCP_RESPONSE_BYTES, "MCP response is too large")
         if (payload.isBlank()) {
             return JSONObject()
         }
@@ -330,6 +336,20 @@ object AiMcpClient {
             }
         }
         throw IllegalStateException("MCP SSE response missing matching id")
+    }
+
+    private fun ResponseBody.stringLimited(maxBytes: Long, tooLargeMessage: String): String {
+        val contentLength = contentLength()
+        if (contentLength > maxBytes) {
+            throw IllegalStateException(tooLargeMessage)
+        }
+        val source = source()
+        source.request(maxBytes + 1L)
+        if (source.buffer.size > maxBytes) {
+            throw IllegalStateException(tooLargeMessage)
+        }
+        val charset = contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+        return source.buffer.readString(charset)
     }
 
     private fun sanitizeSchema(schema: JSONObject?): JSONObject {

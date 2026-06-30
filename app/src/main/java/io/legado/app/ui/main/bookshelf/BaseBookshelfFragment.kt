@@ -288,6 +288,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                     listItemStyle = listItemStyle,
                     margin = AppConfig.bookshelfMargin
                 ),
+                onPreviewMarginChange = ::previewBookshelfMargin,
                 onApply = { values ->
                     applyBookshelfConfig(
                         previousLayout = bookshelfLayout,
@@ -298,6 +299,15 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                 }
             )
         )
+    }
+
+    private fun previewBookshelfMargin(margin: Int) {
+        val normalizedMargin = margin.coerceIn(0, 60)
+        if (AppConfig.bookshelfMargin == normalizedMargin) {
+            return
+        }
+        AppConfig.bookshelfMargin = normalizedMargin
+        postEvent(EventBus.BOOKSHELF_REFRESH, "")
     }
 
     private fun applyBookshelfConfig(

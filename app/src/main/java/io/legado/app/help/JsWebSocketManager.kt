@@ -22,6 +22,8 @@ import java.util.concurrent.locks.ReentrantLock
 object JsWebSocketManager {
 
     private const val MAX_CONNECTIONS = 16
+    private const val MAX_EVENTS_PER_CONNECTION = 128
+    private const val MAX_MESSAGE_BYTES = 1_048_576
     private const val DEFAULT_OPEN_TIMEOUT_MS = 15_000L
     private const val DEFAULT_READ_TIMEOUT_MS = 30_000L
     private const val IDLE_TIMEOUT_MS = 5 * 60 * 1000L
@@ -216,7 +218,7 @@ object JsWebSocketManager {
     ) : WebSocketListener() {
 
         val openLatch = CountDownLatch(1)
-        val events = LinkedBlockingQueue<Event>()
+        val events = LinkedBlockingQueue<Event>(MAX_EVENTS_PER_CONNECTION)
         val lock = ReentrantLock()
         @Volatile
         var webSocket: WebSocket? = null
@@ -246,24 +248,40 @@ object JsWebSocketManager {
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             touch()
-            events.offer(Event.Text(text))
+            if (text.toByteArray().size > MAX_MESSAGE_BYTES) {
+                offerEvent(Event.Failure("WebSocket message is too large"))
+                webSocket.close(1009, "message too large")
+                return
+            }
+            offerEvent(Event.Text(text))
         }
 
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
             touch()
-            events.offer(Event.Binary(bytes.toByteArray()))
+            if (bytes.size > MAX_MESSAGE_BYTES) {
+                offerEvent(Event.Failure("WebSocket message is too large"))
+                webSocket.close(1009, "message too large")
+                return
+            }
+            offerEvent(Event.Binary(bytes.toByteArray()))
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             isOpen = false
-            events.offer(Event.Closed(code, reason))
+            offerEvent(Event.Closed(code, reason))
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             error = t
             isOpen = false
             openLatch.countDown()
-            events.offer(Event.Failure(t.message ?: t.javaClass.simpleName))
+            offerEvent(Event.Failure(t.message ?: t.javaClass.simpleName))
+        }
+
+        private fun offerEvent(event: Event) {
+            while (!events.offer(event)) {
+                events.poll() ?: break
+            }
         }
     }
 

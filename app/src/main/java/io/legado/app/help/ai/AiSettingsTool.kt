@@ -28,9 +28,6 @@ object AiSettingsTool {
 
     private val settingDefs = listOf(
         SettingDef(PreferKey.themeMode, "int", min = 0, max = 3),
-        SettingDef(PreferKey.showDiscovery, "boolean"),
-        SettingDef(PreferKey.showRss, "boolean"),
-        SettingDef(PreferKey.showReadRecord, "boolean"),
         SettingDef(PreferKey.modernDiscoveryPage, "boolean"),
         SettingDef(
             PreferKey.discoveryPageMode,
@@ -42,7 +39,6 @@ object AiSettingsTool {
             )
         ),
         SettingDef(PreferKey.modernRssPage, "boolean"),
-        SettingDef(PreferKey.mergeDiscoveryRss, "boolean"),
         SettingDef(PreferKey.defaultHomePage, "string", values = setOf("bookshelf", "explore", "rss", "my")),
         SettingDef(PreferKey.aiAssistantEnabled, "boolean"),
         SettingDef(PreferKey.aiEnterToSend, "boolean"),
@@ -281,15 +277,12 @@ object AiSettingsTool {
     private fun categoryKeys(category: String): List<String> {
         return when (category) {
             "discovery" -> listOf(
-                PreferKey.showDiscovery,
                 PreferKey.discoveryPageMode,
                 PreferKey.modernDiscoveryPage
             )
 
             "subscription" -> listOf(
-                PreferKey.showRss,
-                PreferKey.modernRssPage,
-                PreferKey.mergeDiscoveryRss
+                PreferKey.modernRssPage
             )
 
             "ai" -> listOf(
@@ -306,10 +299,7 @@ object AiSettingsTool {
 
             else -> listOf(
                 PreferKey.themeMode,
-                PreferKey.defaultHomePage,
-                PreferKey.showDiscovery,
-                PreferKey.showRss,
-                PreferKey.showReadRecord
+                PreferKey.defaultHomePage
             )
         }
     }

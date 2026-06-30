@@ -200,6 +200,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         refreshAppearanceKitNow()
     }
     private var mainBackgroundVersion by mutableIntStateOf(0)
+    private var mainBackgroundSignature: MainThemeBackgroundSignature? = null
     private val bottomBarCornerRadius by lazy {
         resources.getDimension(R.dimen.main_bottom_bar_corner_radius)
     }
@@ -345,6 +346,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun onResume() {
         super.onResume()
+        refreshMainThemeBackground()
         refreshBottomNavigationConfig()
         binding.root.post {
             scheduleLiquidGlassWarmup()
@@ -355,11 +357,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     override fun upBackgroundImage() {
-        super.upBackgroundImage()
-        binding.root.post {
-            syncLiquidGlassSampleBackground()
-            scheduleLiquidGlassWarmup()
-        }
+        refreshMainThemeBackground(force = true)
     }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
@@ -581,6 +579,24 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun syncLiquidGlassSampleBackground() = binding.run {
         mainBackgroundVersion += 1
         invalidateLiquidGlassSampleTarget()
+    }
+
+    private fun refreshMainThemeBackground(
+        force: Boolean = false,
+        scheduleWarmup: Boolean = true
+    ) {
+        val signature = MainThemeBackgroundState.signature(this)
+        if (!force && signature == mainBackgroundSignature) {
+            return
+        }
+        mainBackgroundSignature = signature
+        super.upBackgroundImage()
+        syncLiquidGlassSampleBackground()
+        if (scheduleWarmup) {
+            binding.root.post {
+                scheduleLiquidGlassWarmup()
+            }
+        }
     }
 
     private fun refreshBottomNavigationConfig() {
@@ -1540,7 +1556,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         applyBottomNavigationIcons()
         onUpBooksBadgeView = null
         upBottomMenu()
-        syncLiquidGlassSampleBackground()
+        refreshMainThemeBackground(force = true, scheduleWarmup = false)
         applyBottomLayoutMode()
         refreshMainTopBars(root)
         updateAiFloatingBall()
@@ -1603,15 +1619,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun createSolidBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
+        val config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
         val baseColor = bottomBackground
-        val alpha = standardBottomBarOpacityLevel(AppConfig.liquidGlassLevel)
+        val alpha = standardBottomBarOpacityLevel(config.opacity)
         return GradientDrawable().apply {
             shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
             if (!oval) {
                 this.cornerRadius = cornerRadius
             }
             setColor(AppColorUtils.withAlpha(baseColor, alpha))
-            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+            bottomBarBorderColor(config)?.let { setStroke(1.dpToPx(), it) }
         }
     }
 
@@ -2034,9 +2051,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun isDiscoveryRssMerged(): Boolean {
-        return AppConfig.mergeDiscoveryRss &&
-            MainBottomNavConfig.isVisible(MainBottomNavConfig.KEY_DISCOVERY) &&
-            MainBottomNavConfig.isVisible(MainBottomNavConfig.KEY_RSS)
+        return false
     }
 
     /**
@@ -2210,6 +2225,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             onUpBooksBadgeView!!.setBadgeCount(it)
         }
         observeEvent<String>(EventBus.RECREATE) {
+            refreshMainThemeBackground(force = true, scheduleWarmup = false)
             recreate()
         }
         observeEvent<Boolean>(EventBus.NAVIGATION_BAR_CHANGED) {
@@ -2227,10 +2243,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         observeEvent<Boolean>(EventBus.MAIN_THEME_BACKGROUND_CHANGED) {
             if (it == AppConfig.isNightTheme) {
-                binding.root.post {
-                    syncLiquidGlassSampleBackground()
-                    scheduleLiquidGlassWarmup()
-                }
+                refreshMainThemeBackground(force = true)
             }
         }
         observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {

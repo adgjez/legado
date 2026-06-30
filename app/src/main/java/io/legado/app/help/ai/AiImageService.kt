@@ -18,6 +18,7 @@ import io.legado.app.ui.main.ai.AiImageProviderConfig
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
+import okhttp3.ResponseBody
 import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
 import org.json.JSONArray
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit
 object AiImageService {
 
     private const val MAX_IMAGE_BYTES = 32 * 1024 * 1024
+    private const val MAX_IMAGE_RESPONSE_BYTES = 48L * 1024L * 1024L
 
     private data class ImageGenerationResult(
         val source: String,
@@ -124,7 +126,7 @@ object AiImageService {
             }
             response.use {
                 status = "${it.code} ${it.message}"
-                val text = it.body.string()
+                val text = it.body.stringLimited(MAX_IMAGE_RESPONSE_BYTES)
                 if (!it.isSuccessful) error(text.ifBlank { status })
                 val root = JSONObject(text)
                 imageFromOpenAiResponse(root)?.let { source ->
@@ -177,7 +179,7 @@ object AiImageService {
             }
             response.use {
                 status = "${it.code} ${it.message}"
-                val text = it.body.string()
+                val text = it.body.stringLimited(MAX_IMAGE_RESPONSE_BYTES)
                 if (!it.isSuccessful) error(text.ifBlank { status })
                 val output = JSONObject(text).optJSONArray("output") ?: error("Empty responses output")
                 for (index in 0 until output.length()) {
@@ -200,6 +202,20 @@ object AiImageService {
             logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, effectiveModel, e)
             throw e
         }
+    }
+
+    private fun ResponseBody.stringLimited(maxBytes: Long): String {
+        val contentLength = contentLength()
+        if (contentLength > maxBytes) {
+            throw IllegalStateException("Image response is too large")
+        }
+        val source = source()
+        source.request(maxBytes + 1L)
+        if (source.buffer.size > maxBytes) {
+            throw IllegalStateException("Image response is too large")
+        }
+        val charset = contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+        return source.buffer.readString(charset)
     }
 
     private suspend fun generateByJs(prompt: String, provider: AiImageProviderConfig): ImageGenerationResult {

@@ -26,8 +26,11 @@ fun MainThemeBackgroundLayer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val state = remember(version, context) {
-        MainThemeBackgroundState.from(context)
+    val signature = remember(version, context) {
+        MainThemeBackgroundState.signature(context)
+    }
+    val state = remember(signature) {
+        MainThemeBackgroundState.from(signature)
     }
     ComposeThemeImageLayer(
         state = ComposeThemeImageState(
@@ -48,16 +51,36 @@ data class MainThemeBackgroundState(
     val fallbackColor: Int
 ) {
     companion object {
-        fun from(context: Context): MainThemeBackgroundState {
+        fun signature(context: Context): MainThemeBackgroundSignature {
             val fallbackColor = ThemeConfig.getFallbackBackgroundColor(context)
-            if (AppConfig.isEInkMode) {
-                return MainThemeBackgroundState(null, animated = false, blur = 0, crop = null, fallbackColor)
-            }
             val themeMode = ThemeConfig.getTheme()
+            if (AppConfig.isEInkMode) {
+                return MainThemeBackgroundSignature(
+                    themeMode = themeMode,
+                    rawPath = null,
+                    resolvedPath = null,
+                    fileLength = 0L,
+                    fileLastModified = 0L,
+                    blur = 0,
+                    crop = null,
+                    fallbackColor = fallbackColor,
+                    eInkMode = true
+                )
+            }
             val imageKey = when (themeMode) {
                 Theme.Light -> PreferKey.bgImage
                 Theme.Dark -> PreferKey.bgImageN
-                else -> return MainThemeBackgroundState(null, animated = false, blur = 0, crop = null, fallbackColor)
+                else -> return MainThemeBackgroundSignature(
+                    themeMode = themeMode,
+                    rawPath = null,
+                    resolvedPath = null,
+                    fileLength = 0L,
+                    fileLastModified = 0L,
+                    blur = 0,
+                    crop = null,
+                    fallbackColor = fallbackColor,
+                    eInkMode = false
+                )
             }
             val blurKey = when (themeMode) {
                 Theme.Light -> PreferKey.bgImageBlurring
@@ -69,14 +92,34 @@ data class MainThemeBackgroundState(
                 Theme.Dark -> PreferKey.bgImageNCrop
                 else -> null
             }
-            val resolvedPath = resolveBackgroundPath(context, imageKey)
+            val rawPath = context.getPrefString(imageKey)?.takeIf { it.isNotBlank() }
+            val resolvedPath = rawPath?.let { resolveBackgroundPath(context, imageKey, it) }
             val file = resolvedPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+            return MainThemeBackgroundSignature(
+                themeMode = themeMode,
+                rawPath = rawPath,
+                resolvedPath = file?.absolutePath ?: resolvedPath,
+                fileLength = file?.length() ?: 0L,
+                fileLastModified = file?.lastModified() ?: 0L,
+                blur = blurKey?.let { context.getPrefInt(it, 0) } ?: 0,
+                crop = ThemeConfig.normalizeBackgroundCrop(cropKey?.let { context.getPrefString(it) }),
+                fallbackColor = fallbackColor,
+                eInkMode = false
+            )
+        }
+
+        fun from(context: Context): MainThemeBackgroundState {
+            return from(signature(context))
+        }
+
+        fun from(signature: MainThemeBackgroundSignature): MainThemeBackgroundState {
+            val file = signature.resolvedPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
             return MainThemeBackgroundState(
                 file = file,
                 animated = ImageTypeUtils.isAnimatedImage(file),
-                blur = blurKey?.let { context.getPrefInt(it, 0) } ?: 0,
-                crop = cropKey?.let { context.getPrefString(it).toComposeCrop() },
-                fallbackColor = fallbackColor
+                blur = signature.blur,
+                crop = signature.crop.toComposeCrop(),
+                fallbackColor = signature.fallbackColor
             )
         }
 
@@ -87,8 +130,7 @@ data class MainThemeBackgroundState(
             return ComposeThemeImageCrop(parts[0], parts[1], parts[2], parts[3])
         }
 
-        private fun resolveBackgroundPath(context: Context, imageKey: String): String? {
-            val path = context.getPrefString(imageKey)?.takeIf { it.isNotBlank() } ?: return null
+        private fun resolveBackgroundPath(context: Context, imageKey: String, path: String): String? {
             if (!path.startsWith("http", ignoreCase = true)) return path
             val name = urlToBackgroundFileName(path)
             val filePath = FileUtils.getPath(context.externalFiles, imageKey, name)
@@ -107,3 +149,15 @@ data class MainThemeBackgroundState(
         }
     }
 }
+
+data class MainThemeBackgroundSignature(
+    val themeMode: Theme,
+    val rawPath: String?,
+    val resolvedPath: String?,
+    val fileLength: Long,
+    val fileLastModified: Long,
+    val blur: Int,
+    val crop: String?,
+    val fallbackColor: Int,
+    val eInkMode: Boolean
+)

@@ -116,8 +116,7 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
             PreferKey.discoveryPageMode,
             PreferKey.modernDiscoveryPage,
             PreferKey.modernRssPage,
-            PreferKey.discoveryPageLayout,
-            PreferKey.mergeDiscoveryRss -> postEvent(EventBus.NOTIFY_MAIN, false)
+            PreferKey.discoveryPageLayout -> postEvent(EventBus.NOTIFY_MAIN, false)
         }
     }
 

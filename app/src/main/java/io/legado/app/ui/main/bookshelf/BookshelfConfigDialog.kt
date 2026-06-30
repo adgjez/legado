@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.bookshelf
 
+import android.content.DialogInterface
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -164,6 +165,9 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
         margin = 12
     )
     private var onApply: ((BookshelfConfigValues) -> Unit)? = null
+    private var onPreviewMarginChange: ((Int) -> Unit)? = null
+    private var previewMarginChanged = false
+    private var applied = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -186,7 +190,14 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                             options = options,
                             texts = texts,
                             style = style,
-                            onValuesChange = { values = it }
+                            onValuesChange = { nextValues ->
+                                val previousValues = values
+                                values = nextValues
+                                if (nextValues.margin != previousValues.margin) {
+                                    previewMarginChanged = true
+                                    onPreviewMarginChange?.invoke(nextValues.margin.coerceIn(0, 60))
+                                }
+                            }
                         )
                     },
                     actions = {
@@ -196,6 +207,7 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                             applyLabel = texts.applyLabel,
                             onCancel = { dismissAllowingStateLoss() },
                             onApply = {
+                                applied = true
                                 dismissAllowingStateLoss()
                                 onApply?.invoke(values)
                             }
@@ -203,6 +215,13 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                     }
                 )
             }
+        }
+    }
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        if (!applied && previewMarginChanged) {
+            onPreviewMarginChange?.invoke(initialValues.margin.coerceIn(0, 60))
         }
     }
 
@@ -259,10 +278,12 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
     companion object {
         fun create(
             initialValues: BookshelfConfigValues,
+            onPreviewMarginChange: ((Int) -> Unit)? = null,
             onApply: (BookshelfConfigValues) -> Unit
         ): BookshelfConfigDialog {
             return BookshelfConfigDialog().apply {
                 this.initialValues = initialValues
+                this.onPreviewMarginChange = onPreviewMarginChange
                 this.onApply = onApply
             }
         }

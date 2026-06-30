@@ -220,7 +220,7 @@ private fun BookshelfClassicListItem(
             modifier = Modifier.weight(1f),
             showIntro = true,
             showTags = false,
-            introMaxLines = if (compact) 1 else 2
+            introMaxLines = if (compact) 1 else 3
         )
         BookshelfListStatus(item = item, palette = palette)
     }

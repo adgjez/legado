@@ -661,7 +661,7 @@ object AiChatService {
                 debugLog = requestLog.append("response=<empty body>\n").toSafeDebugLog()
             )
             if (!rawResponse.isSuccessful) {
-                val payload = body.string()
+                val payload = rawResponse.peekBody(16_384).string()
                 throw AiChatException(
                     message = extractError(payload).ifBlank {
                         "${rawResponse.code} ${rawResponse.message}"

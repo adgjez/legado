@@ -3706,7 +3706,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadBookConfig.upBg(epubReadView.width, epubReadView.height)
             }
             epubReadView.clearSelection()
-            applyEpubRendererStyleOnly()
+            ReadBook.book?.takeIf { it.isEpub }?.let { book ->
+                cancelEpubCoreForegroundHard(book)
+                cancelEpubCorePrefetchHard(book)
+            }
+            refreshEpubCoreAfterConfigurationChange()
         } else {
             readView.refreshVisualStyle()
         }

@@ -185,6 +185,7 @@ object AppearanceKitManager {
             updatedAt = now
         )
         saveIndex(kits + kit)
+        context.putPrefString(PreferKey.currentAppearanceKitId, kit.id)
         kit
     }
 

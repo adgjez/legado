@@ -139,7 +139,6 @@ class HttpReadAloudService : BaseReadAloudService(),
     private var speechRate: Int = AppConfig.speechRatePlay + 5
     private var downloadTask: Coroutine<*>? = null
     private var playIndexJob: Job? = null
-    private var downloadErrorNo: Int = 0
     private var playErrorNo = 0
     private val downloadTaskActiveLock = Mutex()
 
@@ -331,8 +330,9 @@ class HttpReadAloudService : BaseReadAloudService(),
                 ensureActive()
                 val httpTts = ReadAloud.httpTTS
                 val requests = buildCurrentAudioRequests(httpTts)
-                val downloaderChannel = Channel<AudioDownloadTask>(Channel.UNLIMITED)
-                repeat(maxSynthesisThreadCount(requests)) {
+                val workerCount = maxSynthesisThreadCount(requests)
+                val downloaderChannel = Channel<AudioDownloadTask>((workerCount * 2).coerceAtLeast(4))
+                repeat(workerCount) {
                     launch {
                         for (task in downloaderChannel) {
                             task.downloader.download(null)
@@ -555,7 +555,6 @@ class HttpReadAloudService : BaseReadAloudService(),
         httpTts: HttpTTS?
     ): SynthesisResult {
         return runCatching {
-            downloadErrorNo = 0
             if (route?.engineType == SpeechRoute.ENGINE_SYSTEM || httpTts == null) {
                 synthesizeSystemSpeakFile(fileName, speakText, route ?: defaultSystemRoute())
             } else {
@@ -666,7 +665,6 @@ class HttpReadAloudService : BaseReadAloudService(),
         fileName: String?
     ): InputStream? {
         val primary = runCatching {
-            downloadErrorNo = 0
             getSpeakStream(httpTts, speakText, route)
         }
         primary.getOrNull()?.let { return it }
@@ -678,7 +676,6 @@ class HttpReadAloudService : BaseReadAloudService(),
         fallbackRoutesFor(route).forEach { fallbackRoute ->
             currentCoroutineContext().ensureActive()
             val result = runCatching {
-                downloadErrorNo = 0
                 if (fallbackRoute.engineType == SpeechRoute.ENGINE_SYSTEM) {
                     val targetFileName = fileName ?: return@runCatching null
                     if (synthesizeSystemSpeakFile(targetFileName, speakText, fallbackRoute)) {
@@ -730,6 +727,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         route: SpeechRoute? = null
     ): InputStream? {
         val suppressRouteError = suppressRouteTtsError(route)
+        var downloadErrorNo = 0
         while (true) {
             try {
                 val analyzeUrl = AnalyzeUrl(
@@ -777,18 +775,17 @@ class HttpReadAloudService : BaseReadAloudService(),
                     val contentType = contentType.substringBefore(";")
                     val ct = httpTts.contentType
                     if (contentType == "application/json" || contentType.startsWith("text/")) {
-                        throw NoStackTraceException(response.body.string())
+                        throw NoStackTraceException(response.peekBody(8_192).string())
                     } else if (ct?.isNotBlank() == true) {
                         if (!contentType.matches(ct.toRegex())) {
                             throw NoStackTraceException(
-                                "TTS服务器返回错误：" + response.body.string()
+                                "TTS服务器返回错误：" + response.peekBody(8_192).string()
                             )
                         }
                     }
                 }
                 currentCoroutineContext().ensureActive()
                 response.body.byteStream().let { stream ->
-                    downloadErrorNo = 0
                     return stream
                 }
             } catch (e: Exception) {

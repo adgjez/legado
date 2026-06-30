@@ -122,7 +122,7 @@ async function getReleaseMetadata(env: Env): Promise<ReleaseMetadata> {
   if (metadataObject) {
     const metadata = (await metadataObject.json()) as ReleaseMetadata;
     const normalized = normalizeMetadata(metadata, apkKey);
-    cachedMetadata = { value: normalized, expiresAt: now + 300_000 };
+    cachedMetadata = { value: normalized, expiresAt: now + 15_000 };
     return normalized;
   }
 
@@ -140,7 +140,7 @@ async function getReleaseMetadata(env: Env): Promise<ReleaseMetadata> {
     },
     apkKey,
   );
-  cachedMetadata = { value: normalized, expiresAt: now + 60_000 };
+  cachedMetadata = { value: normalized, expiresAt: now + 15_000 };
   return normalized;
 }
 

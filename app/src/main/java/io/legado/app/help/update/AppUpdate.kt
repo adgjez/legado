@@ -93,8 +93,8 @@ object AppUpdate {
                 } ?: Result.failure(NoStackTraceException("内测版更新检查超时"))
             }
 
-            val officialResult = officialDeferred.await()
             val internalBetaResult = internalBetaDeferred.await()
+            val officialResult = officialDeferred.await()
             val official = officialResult.getOrNull()
             val internalBeta = internalBetaResult.getOrNull()
 
@@ -131,12 +131,12 @@ object AppUpdate {
             return try {
                 AppUpdateGitee.checkNow()
             } catch (giteeError: Throwable) {
-                if (isLatestVersionError(giteeError)) {
-                    throw giteeError
-                }
                 try {
                     AppUpdateGitHub.checkNow()
                 } catch (githubError: Throwable) {
+                    if (isLatestVersionError(giteeError) && !isLatestVersionError(githubError)) {
+                        throw githubError
+                    }
                     if (isLatestVersionError(githubError)) {
                         throw githubError
                     }

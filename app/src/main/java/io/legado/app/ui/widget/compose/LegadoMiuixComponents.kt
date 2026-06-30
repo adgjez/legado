@@ -194,7 +194,8 @@ fun LegadoMiuixActionButton(
     insidePadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 ) {
     val resolvedCornerRadius = cornerRadius ?: palette.actionRadius ?: LocalContext.current.composeActionRadius()
-    val effectiveMinHeight = minHeight.coerceAtLeast(38.dp)
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val effectiveMinHeight = minHeight.coerceAtLeast((40f * fontScale).dp)
     val background = when {
         primary -> palette.accent
         danger -> palette.danger.copy(alpha = 0.13f)
@@ -224,7 +225,7 @@ fun LegadoMiuixActionButton(
                 text = text,
                 color = content,
                 fontSize = 14.sp,
-                lineHeight = 18.sp,
+                lineHeight = 20.sp,
                 fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -254,7 +255,7 @@ fun LegadoMiuixActionButton(
                 text = text,
                 color = content,
                 fontSize = 14.sp,
-                lineHeight = 18.sp,
+                lineHeight = 20.sp,
                 fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

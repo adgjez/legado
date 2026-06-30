@@ -25,6 +25,7 @@ import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.utils.ImageTypeUtils
 import java.io.File
 
@@ -62,9 +63,11 @@ private fun ComposeThemeImage(
     crop: ComposeThemeImageCrop?,
     stableWidthScale: Boolean
 ) {
-    // 在 composition 内缓存 loadKey，避免每次重组都执行 file.lastModified() 磁盘 IO
-    val loadKey = remember(file.absolutePath, animate, crop) {
-        ComposeThemeImageLoadKey(file.absolutePath, file.lastModified(), animate, crop)
+    // Include file stamp so same-path wallpaper replacements bypass stale Glide cache.
+    val fileLength = file.length()
+    val fileLastModified = file.lastModified()
+    val loadKey = remember(file.absolutePath, fileLength, fileLastModified, animate, crop) {
+        ComposeThemeImageLoadKey(file.absolutePath, fileLength, fileLastModified, animate, crop)
     }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -92,19 +95,25 @@ private fun ComposeThemeImage(
                 imageView.scaleType = ImageView.ScaleType.MATRIX
                 if (animate) {
                     requestManager.load(file)
+                        .signature(ObjectKey(loadKey.cacheKey))
                         .listener(imageView.drawableStartListener())
                         .into(imageView)
                 } else {
-                    requestManager.asBitmap().load(file).into(imageView)
+                    requestManager.asBitmap().load(file)
+                        .signature(ObjectKey(loadKey.cacheKey))
+                        .into(imageView)
                 }
             } else {
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
                 if (animate) {
                     requestManager.load(file).centerCrop()
+                        .signature(ObjectKey(loadKey.cacheKey))
                         .listener(imageView.drawableStartListener())
                         .into(imageView)
                 } else {
-                    requestManager.asBitmap().load(file).centerCrop().into(imageView)
+                    requestManager.asBitmap().load(file).centerCrop()
+                        .signature(ObjectKey(loadKey.cacheKey))
+                        .into(imageView)
                 }
             }
         },
@@ -218,10 +227,13 @@ data class ComposeThemeImageState(
 
 private data class ComposeThemeImageLoadKey(
     val path: String,
+    val length: Long,
     val lastModified: Long,
     val animated: Boolean,
     val crop: ComposeThemeImageCrop?
-)
+) {
+    val cacheKey: String = "$path:$length:$lastModified:$animated:$crop"
+}
 
 data class ComposeThemeImageCrop(
     val left: Float,

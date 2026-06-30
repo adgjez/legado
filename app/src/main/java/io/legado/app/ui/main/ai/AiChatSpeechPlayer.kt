@@ -255,10 +255,10 @@ object AiChatSpeechPlayer : TextToSpeech.OnInitListener {
                 response.headers["Content-Type"]?.substringBefore(";")?.let { contentType ->
                     val expected = httpTts.contentType
                     if (contentType == "application/json" || contentType.startsWith("text/")) {
-                        throw NoStackTraceException(response.body.string())
+                        throw NoStackTraceException(response.peekBody(8_192).string())
                     }
                     if (!expected.isNullOrBlank() && !contentType.matches(expected.toRegex())) {
-                        throw NoStackTraceException("TTS服务器返回错误：" + response.body.string())
+                        throw NoStackTraceException("TTS服务器返回错误：" + response.peekBody(8_192).string())
                     }
                 }
                 currentCoroutineContext().ensureActive()
