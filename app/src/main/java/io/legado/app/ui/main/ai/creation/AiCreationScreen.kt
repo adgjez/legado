@@ -50,7 +50,6 @@ import io.legado.app.help.ai.AiCreationService
 import io.legado.app.help.gsyVideo.VideoPlayer
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
-import io.legado.app.ui.video.VideoPlayerActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -747,6 +746,7 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
     var selectedAspectRatio by remember { mutableStateOf(videoAspectRatios[1]) } // 默认16:9
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 
+    var fullScreenVideo by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     // 冷却计时器：每秒更新倒计时
@@ -1078,11 +1078,7 @@ private fun VideoCreationPanel(style: AiComposeStyle, prompt: String, onPromptCh
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = {
-                                val intent = Intent(context, VideoPlayerActivity::class.java).apply {
-                                    putExtra("videoUrl", url)
-                                    putExtra("videoTitle", prompt.take(30))
-                                }
-                                context.startActivity(intent)
+                                fullScreenVideo = url
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = style.colors.accent),
@@ -1209,6 +1205,7 @@ private fun ImageHistorySection(style: AiComposeStyle) {
 private fun VideoHistorySection(style: AiComposeStyle) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    var fullScreenVideo by remember { mutableStateOf<String?>(null) }
     var videos by remember { mutableStateOf(AiCreationHistory.getVideos()) }
     val refresh = { videos = AiCreationHistory.getVideos() }
     if (videos.isEmpty()) return
@@ -1270,11 +1267,7 @@ private fun VideoHistorySection(style: AiComposeStyle) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
                             onClick = {
-                                val intent = Intent(context, VideoPlayerActivity::class.java).apply {
-                                    putExtra("videoUrl", record.url)
-                                    putExtra("videoTitle", record.prompt.take(30))
-                                }
-                                context.startActivity(intent)
+                                fullScreenVideo = record.url
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.textButtonColors(contentColor = style.colors.accent),
@@ -1292,6 +1285,48 @@ private fun VideoHistorySection(style: AiComposeStyle) {
                         ) { Text("系统播放", fontSize = 13.sp) }
                     }
                 }
+            }
+        }
+        // 全屏播放弹窗
+        fullScreenVideo?.let { videoUrl ->
+            VideoPlayerDialog(videoUrl, onDismiss = { fullScreenVideo = null })
+        }
+    }
+}
+
+// ── 全屏视频播放弹窗 ──
+
+@Composable
+private fun VideoPlayerDialog(url: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color.Black
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("关闭", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
+                    }
+                }
+                AndroidView(
+                    factory = { ctx ->
+                        VideoPlayer(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            setUp(url, false, null, "")
+                            startPlayLogic()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
             }
         }
     }
