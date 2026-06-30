@@ -7,16 +7,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -43,12 +40,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -59,15 +53,14 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.bookshelf.compose.BookListCardSurface
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListItemStyle
-import io.legado.app.ui.main.bookshelf.compose.BookshelfListPalette
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
+import io.legado.app.ui.widget.compose.SearchBookListItem
 import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
-import io.legado.app.utils.BookIntroUtils
 
 @Composable
 fun ExploreModernListScreen(
@@ -383,7 +376,6 @@ private fun ExploreGridBookItem(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ExploreBookListItem(
     book: SearchBook,
@@ -395,193 +387,15 @@ private fun ExploreBookListItem(
     onClick: (SearchBook) -> Unit,
     onPreview: (Rect?) -> Unit
 ) {
-    val palette = renderConfig.palette
     val rounded = listItemStyle == BookshelfListItemStyle.RoundedCard
-    var coverBounds by remember(book.bookUrl, book.origin, book.coverUrl) { mutableStateOf<Rect?>(null) }
-    BookListCardSurface(
+    SearchBookListItem(
+        book = book,
+        inBookshelf = inBookshelf,
         rounded = rounded,
-        compact = false,
         renderConfig = renderConfig,
+        fragment = fragment,
+        lifecycle = lifecycle,
         onClick = { onClick(book) },
-        onLongClick = { onPreview(coverBounds) }
-    ) { metrics ->
-        ExploreCoverBlock(
-            book = book,
-            inBookshelf = inBookshelf,
-            width = metrics.coverWidth,
-            cornerRadius = metrics.cornerRadius,
-            palette = palette,
-            fragment = fragment,
-            lifecycle = lifecycle,
-            onCoverBoundsChanged = { coverBounds = it }
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        ExploreBookTextContent(
-            book = book,
-            rounded = rounded,
-            palette = palette,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun ExploreCoverBlock(
-    book: SearchBook,
-    inBookshelf: Boolean,
-    width: Dp,
-    cornerRadius: Dp,
-    palette: BookshelfListPalette,
-    fragment: Fragment,
-    lifecycle: Lifecycle,
-    onCoverBoundsChanged: (Rect) -> Unit
-) {
-    Box(modifier = Modifier.width(width)) {
-        AndroidView(
-            modifier = Modifier
-                .width(width)
-                .aspectRatio(0.75f)
-                .clip(RoundedCornerShape(cornerRadius))
-                .onGloballyPositioned { coordinates ->
-                    onCoverBoundsChanged(coordinates.boundsInRoot())
-                },
-            factory = { context ->
-                CoverImageView(context)
-            },
-            update = { view ->
-                view.load(book, AppConfig.loadCoverOnlyWifi, fragment, lifecycle)
-            },
-            onRelease = { it.releaseComposeImage() }
-        )
-        if (inBookshelf) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .clip(CircleShape)
-                    .background(palette.accent)
-                    .size(10.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ExploreBookTextContent(
-    book: SearchBook,
-    rounded: Boolean,
-    palette: BookshelfListPalette,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    Column(modifier = modifier) {
-        Text(
-            text = book.name,
-            color = palette.primaryText,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = palette.titleFontFamily,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(modifier = Modifier.height(if (rounded) 5.dp else 2.dp))
-        ExploreMetaLine(
-            iconRes = R.drawable.ic_author,
-            text = context.getString(R.string.author_show, book.author),
-            palette = palette
-        )
-        val kinds = remember(book.kind) { book.getKindList() }
-        if (kinds.isNotEmpty()) {
-            ExploreTagChips(
-                tags = kinds,
-                palette = palette,
-                compact = !rounded,
-                modifier = Modifier.padding(top = if (rounded) 6.dp else 3.dp)
-            )
-        }
-        ExploreMetaLine(
-            iconRes = R.drawable.ic_book_last,
-            text = book.latestChapterTitle?.takeIf { it.isNotBlank() }?.let {
-                context.getString(R.string.lasted_show, it)
-            },
-            palette = palette
-        )
-        book.trimIntroOrNull()?.let { intro ->
-            Text(
-                text = intro,
-                color = palette.secondaryText,
-                fontSize = 12.sp,
-                lineHeight = 17.sp,
-                fontFamily = palette.bodyFontFamily,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = if (rounded) 5.dp else 2.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ExploreMetaLine(
-    iconRes: Int,
-    text: String?,
-    palette: BookshelfListPalette,
-    modifier: Modifier = Modifier
-) {
-    if (text.isNullOrBlank()) return
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 1.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = palette.secondaryText,
-            modifier = Modifier.size(14.dp)
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = text,
-            color = palette.secondaryText,
-            fontSize = 13.sp,
-            fontFamily = palette.bodyFontFamily,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun ExploreTagChips(
-    tags: List<String>,
-    palette: BookshelfListPalette,
-    compact: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)
-    ) {
-        tags.take(3).forEach { tag ->
-            Text(
-                text = tag,
-                color = palette.accent,
-                fontSize = 11.sp,
-                fontFamily = palette.bodyFontFamily,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(palette.actionRadius))
-                    .background(palette.accent.copy(alpha = 0.12f))
-                    .widthIn(max = if (compact) 72.dp else 84.dp)
-                    .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = if (compact) 2.dp else 3.dp)
-            )
-        }
-    }
-}
-
-private fun SearchBook.trimIntroOrNull(): String? {
-    return BookIntroUtils.listIntro(intro)
+        onPreview = onPreview
+    )
 }
