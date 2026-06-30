@@ -6,17 +6,14 @@ import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.widget.number.NumberPickerDialog
@@ -99,20 +96,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     private fun initRecyclerView() {
-        val layoutMode = AppConfig.discoveryPageLayout
-        adapter = when (layoutMode) {
-            3 -> ExploreShowGridAdapter(this, this)
-            2 -> ExploreShowWaterfallAdapter(this, this, 2)
-            else -> {
-                binding.recyclerView.addItemDecoration(VerticalDivider(this))
-                ExploreShowAdapter(this, this)
-            }
-        }
-        binding.recyclerView.layoutManager = when (layoutMode) {
-            3 -> GridLayoutManager(this, 3)
-            2 -> StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
-            else -> LinearLayoutManager(this)
-        }
+        binding.recyclerView.addItemDecoration(VerticalDivider(this))
+        adapter = ExploreShowAdapter(this, this)
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
         binding.recyclerView.applyNavigationBarPadding()
         adapter.addFooterView {
@@ -182,18 +168,14 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     private fun scrollToPositionWithOffset(position: Int) {
-        when (val layoutManager = binding.recyclerView.layoutManager) {
-            is LinearLayoutManager -> layoutManager.scrollToPositionWithOffset(position, 0)
-            is StaggeredGridLayoutManager -> layoutManager.scrollToPositionWithOffset(position, 0)
-        }
+        (binding.recyclerView.layoutManager as? LinearLayoutManager)
+            ?.scrollToPositionWithOffset(position, 0)
     }
 
     private fun findFirstVisibleItemPosition(): Int {
-        return when (val layoutManager = binding.recyclerView.layoutManager) {
-            is LinearLayoutManager -> layoutManager.findFirstVisibleItemPosition()
-            is StaggeredGridLayoutManager -> layoutManager.findFirstVisibleItemPositions(null).minOrNull() ?: 0
-            else -> 0
-        }
+        return (binding.recyclerView.layoutManager as? LinearLayoutManager)
+            ?.findFirstVisibleItemPosition()
+            ?: 0
     }
 
     override fun isInBookshelf(book: SearchBook): Boolean {
