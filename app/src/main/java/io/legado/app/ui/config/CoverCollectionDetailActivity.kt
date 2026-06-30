@@ -16,6 +16,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.ActivityCoverCollectionDetailBinding
 import io.legado.app.databinding.ItemCoverCollectionImageBinding
 import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
@@ -49,6 +50,10 @@ class CoverCollectionDetailActivity : BaseActivity<ActivityCoverCollectionDetail
         collectionId = intent.getStringExtra("id")
         binding.root.applyUiBodyTypefaceDeep(uiTypeface())
         adapter = Adapter()
+        adapter?.setOnItemLongClickListener { _, item ->
+            confirmDeleteImage(item)
+            true
+        }
         binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
         binding.recyclerView.adapter = adapter
         loadCollection()
@@ -78,6 +83,27 @@ class CoverCollectionDetailActivity : BaseActivity<ActivityCoverCollectionDetail
         title = current.name
         binding.titleBar.title = current.name
         adapter?.setItems(current.images)
+    }
+
+    private fun confirmDeleteImage(imagePath: String) {
+        alert(getString(R.string.delete), getString(R.string.cover_collection_delete_image_confirm)) {
+            yesButton {
+                deleteImage(imagePath)
+            }
+            noButton()
+        }
+    }
+
+    private fun deleteImage(imagePath: String) {
+        val current = collection ?: return
+        lifecycleScope.launch {
+            kotlin.runCatching {
+                collection = CoverCollectionManager.deleteImage(current, imagePath)
+            }.onFailure {
+                toastOnUi(it.localizedMessage)
+            }
+            bindCollection()
+        }
     }
 
     private inner class Adapter :

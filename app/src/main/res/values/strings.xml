@@ -2227,6 +2227,7 @@ Selected text or question:
     <string name="cover_collection_no_images_to_export">No images to export</string>
     <string name="cover_collection_export_failed_simple">Failed to export collection</string>
     <string name="cover_collection_zip_no_images">ZIP contains no available images</string>
+    <string name="cover_collection_delete_image_confirm">Delete this image from the collection?</string>
     <string name="paragraph_rule_manage">Paragraph rule management</string>
     <string name="paragraph_rule">Paragraph rules</string>
     <string name="paragraph_rule_add_hint">Add paragraph rule</string>

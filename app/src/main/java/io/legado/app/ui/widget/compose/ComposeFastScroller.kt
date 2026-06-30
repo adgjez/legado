@@ -1,16 +1,15 @@
 package io.legado.app.ui.widget.compose
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
@@ -46,18 +45,17 @@ fun ComposeLazyListFastScroller(
     state: LazyListState,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    thumbHeight: Dp = 54.dp
+    minThumbHeight: Dp = 44.dp
 ) {
     val totalItems = state.layoutInfo.totalItemsCount
     val visibleItems = state.layoutInfo.visibleItemsInfo.size
     val maxFirstIndex = (totalItems - visibleItems).coerceAtLeast(0)
-    // 连续滚动进度：整数索引 + 首个可见项已滚出的像素比例，消除按整项跳动的顿挫
-    val firstItemSize = state.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 0
+    val averageItemSize = averageVisibleListItemSize(state)
     val scrollProgress = if (maxFirstIndex <= 0) {
         0f
     } else {
-        val offsetFraction = if (firstItemSize > 0) {
-            state.firstVisibleItemScrollOffset.toFloat() / firstItemSize
+        val offsetFraction = if (averageItemSize > 0f) {
+            state.firstVisibleItemScrollOffset / averageItemSize
         } else {
             0f
         }
@@ -70,7 +68,7 @@ fun ComposeLazyListFastScroller(
         maxFirstIndex = maxFirstIndex,
         isScrollInProgress = state.isScrollInProgress,
         enabled = enabled,
-        thumbHeight = thumbHeight,
+        minThumbHeight = minThumbHeight,
         modifier = modifier,
         onScrollToIndex = { index -> state.scrollToItem(index) }
     )
@@ -81,17 +79,19 @@ fun ComposeLazyGridFastScroller(
     state: LazyGridState,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    thumbHeight: Dp = 54.dp
+    minThumbHeight: Dp = 44.dp
 ) {
     val totalItems = state.layoutInfo.totalItemsCount
     val visibleItems = state.layoutInfo.visibleItemsInfo.size
     val maxFirstIndex = (totalItems - visibleItems).coerceAtLeast(0)
-    val firstItemHeight = state.layoutInfo.visibleItemsInfo.firstOrNull()?.size?.height ?: 0
+    val gridLineMetrics = averageVisibleGridLineMetrics(state)
     val scrollProgress = if (maxFirstIndex <= 0) {
         0f
     } else {
-        val offsetFraction = if (firstItemHeight > 0) {
-            state.firstVisibleItemScrollOffset.toFloat() / firstItemHeight
+        val offsetFraction = if (gridLineMetrics.averageLineHeight > 0f) {
+            state.firstVisibleItemScrollOffset /
+                gridLineMetrics.averageLineHeight *
+                gridLineMetrics.firstLineItemCount
         } else {
             0f
         }
@@ -104,7 +104,7 @@ fun ComposeLazyGridFastScroller(
         maxFirstIndex = maxFirstIndex,
         isScrollInProgress = state.isScrollInProgress,
         enabled = enabled,
-        thumbHeight = thumbHeight,
+        minThumbHeight = minThumbHeight,
         modifier = modifier,
         onScrollToIndex = { index -> state.scrollToItem(index) }
     )
@@ -118,11 +118,11 @@ private fun ComposeFastScroller(
     maxFirstIndex: Int,
     isScrollInProgress: Boolean,
     enabled: Boolean,
-    thumbHeight: Dp,
+    minThumbHeight: Dp,
     modifier: Modifier,
     onScrollToIndex: suspend (Int) -> Unit
 ) {
-    if (!enabled || totalItems <= visibleItems || totalItems <= 0) return
+    if (!enabled || totalItems <= visibleItems || visibleItems <= 0 || totalItems <= 0) return
 
     var trackHeight by remember { mutableIntStateOf(0) }
     var dragging by remember { mutableStateOf(false) }
@@ -136,10 +136,9 @@ private fun ComposeFastScroller(
         )
     }
     val palette = rememberAppManagementPalette()
-    val density = LocalDensity.current
-    val thumbHeightPx = with(density) { thumbHeight.toPx() }
+    val minThumbHeightPx = with(LocalDensity.current) { minThumbHeight.toPx() }
     val active = dragging || isScrollInProgress || thumbVisible
-    // 视觉滑块：停止滚动后较快淡出，避免长期遮挡内容
+
     LaunchedEffect(isScrollInProgress, dragging) {
         if (isScrollInProgress || dragging) {
             thumbVisible = true
@@ -148,11 +147,11 @@ private fun ComposeFastScroller(
             thumbVisible = false
         }
     }
-    // 拖拽热区：停止后仍保留数秒，滑块淡出也能直接拖回来（易抓取）
+
     val visible by animateFloatAsState(
         targetValue = if (active) 1f else 0f,
         animationSpec = tween(
-            durationMillis = if (active) 140 else 220,
+            durationMillis = if (active) 120 else 200,
             easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
         ),
         label = "composeFastScrollerAlpha"
@@ -161,14 +160,14 @@ private fun ComposeFastScroller(
         targetValue = if (dragging) 8f else 6.5f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
+            stiffness = Spring.StiffnessMedium
         ),
         label = "composeFastScrollerThumbWidth"
     )
     val thumbAlpha by animateFloatAsState(
-        targetValue = if (dragging) 0.80f else 0.52f,
+        targetValue = if (dragging) 0.82f else 0.54f,
         animationSpec = tween(
-            durationMillis = 160,
+            durationMillis = 140,
             easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
         ),
         label = "composeFastScrollerThumbAlpha"
@@ -176,7 +175,7 @@ private fun ComposeFastScroller(
     val trackAlpha by animateFloatAsState(
         targetValue = if (dragging) 0.10f else 0f,
         animationSpec = tween(
-            durationMillis = 180,
+            durationMillis = 160,
             easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
         ),
         label = "composeFastScrollerTrackAlpha"
@@ -189,18 +188,27 @@ private fun ComposeFastScroller(
         },
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
+            stiffness = Spring.StiffnessMedium
         ),
         label = "composeFastScrollerThumbOffset"
     )
-    val hotzoneWidth by animateDpAsState(
-        targetValue = if (dragging) 48.dp else 36.dp,
-        animationSpec = tween(
-            durationMillis = 120,
-            easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-        ),
-        label = "composeFastScrollerHotzoneWidth"
+    val metrics = fastScrollerMetrics(
+        totalItems = totalItems,
+        visibleItems = visibleItems,
+        scrollProgress = scrollProgress,
+        maxFirstIndex = maxFirstIndex,
+        trackHeight = trackHeight,
+        minThumbHeight = minThumbHeightPx
     )
+    val animatedThumbTop by animateFloatAsState(
+        targetValue = metrics.thumbTop,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessHigh
+        ),
+        label = "composeFastScrollerThumbTop"
+    )
+
     LaunchedEffect(scrollTargets, maxFirstIndex) {
         scrollTargets
             .distinctUntilChanged()
@@ -217,15 +225,11 @@ private fun ComposeFastScroller(
             .onSizeChanged { trackHeight = it.height }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val metrics = fastScrollerMetrics(
-                totalItems = totalItems,
-                visibleItems = visibleItems,
-                scrollProgress = scrollProgress,
-                maxFirstIndex = maxFirstIndex,
-                trackHeight = size.height.roundToInt(),
-                thumbHeight = thumbHeightPx
-            )
-            val thumbTop = if (dragging) dragThumbTop else metrics.thumbTop
+            val thumbTop = if (dragging) {
+                dragThumbTop
+            } else {
+                animatedThumbTop.coerceIn(0f, metrics.maxThumbTop)
+            }
             drawFastScroller(
                 alpha = visible,
                 thumbTop = thumbTop,
@@ -240,47 +244,47 @@ private fun ComposeFastScroller(
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .width(hotzoneWidth)
+                .width(48.dp)
                 .fillMaxHeight()
-                .pointerInput(totalItems, visibleItems, trackHeight, maxFirstIndex) {
+                .pointerInput(totalItems, visibleItems, trackHeight, maxFirstIndex, minThumbHeightPx) {
                     detectDragGestures(
                         onDragStart = { offset ->
                             dragging = true
-                            val metrics = fastScrollerMetrics(
+                            val currentMetrics = fastScrollerMetrics(
                                 totalItems = totalItems,
                                 visibleItems = visibleItems,
                                 scrollProgress = scrollProgress,
                                 maxFirstIndex = maxFirstIndex,
                                 trackHeight = trackHeight,
-                                thumbHeight = thumbHeightPx
+                                minThumbHeight = minThumbHeightPx
                             )
-                            val currentTop = metrics.thumbTop
-                            dragGrabOffset = if (offset.y in currentTop..(currentTop + metrics.thumbHeight)) {
+                            val currentTop = currentMetrics.thumbTop
+                            dragGrabOffset = if (
+                                offset.y in currentTop..(currentTop + currentMetrics.thumbHeight)
+                            ) {
                                 offset.y - currentTop
                             } else {
-                                metrics.thumbHeight / 2f
+                                currentMetrics.thumbHeight / 2f
                             }
                             dragThumbTop = (offset.y - dragGrabOffset)
-                                .coerceIn(0f, metrics.maxThumbTop)
-                            val index = metrics.indexForThumbTop(dragThumbTop)
-                            scrollTargets.tryEmit(index)
+                                .coerceIn(0f, currentMetrics.maxThumbTop)
+                            scrollTargets.tryEmit(currentMetrics.indexForThumbTop(dragThumbTop))
                         },
                         onDragEnd = { dragging = false },
                         onDragCancel = { dragging = false },
                         onDrag = { change, _ ->
                             change.consume()
-                            val metrics = fastScrollerMetrics(
+                            val currentMetrics = fastScrollerMetrics(
                                 totalItems = totalItems,
                                 visibleItems = visibleItems,
                                 scrollProgress = scrollProgress,
                                 maxFirstIndex = maxFirstIndex,
                                 trackHeight = trackHeight,
-                                thumbHeight = thumbHeightPx
+                                minThumbHeight = minThumbHeightPx
                             )
                             dragThumbTop = (change.position.y - dragGrabOffset)
-                                .coerceIn(0f, metrics.maxThumbTop)
-                            val index = metrics.indexForThumbTop(dragThumbTop)
-                            scrollTargets.tryEmit(index)
+                                .coerceIn(0f, currentMetrics.maxThumbTop)
+                            scrollTargets.tryEmit(currentMetrics.indexForThumbTop(dragThumbTop))
                         }
                     )
                 }
@@ -306,10 +310,15 @@ private fun fastScrollerMetrics(
     scrollProgress: Float,
     maxFirstIndex: Int,
     trackHeight: Int,
-    thumbHeight: Float
+    minThumbHeight: Float
 ): FastScrollerMetrics {
     val safeTrackHeight = trackHeight.coerceAtLeast(1).toFloat()
-    val stableThumbHeight = thumbHeight.coerceIn(1f, safeTrackHeight)
+    val proportionalThumbHeight = safeTrackHeight * visibleItems.coerceAtLeast(1) /
+        totalItems.coerceAtLeast(1)
+    val maxThumbHeight = safeTrackHeight * 0.42f
+    val stableThumbHeight = proportionalThumbHeight
+        .coerceIn(minThumbHeight, maxThumbHeight.coerceAtLeast(minThumbHeight))
+        .coerceIn(1f, safeTrackHeight)
     val maxThumbTop = (safeTrackHeight - stableThumbHeight).coerceAtLeast(0f)
     val thumbTop = (maxThumbTop * scrollProgress.coerceIn(0f, 1f)).coerceIn(0f, maxThumbTop)
     return FastScrollerMetrics(
@@ -317,6 +326,31 @@ private fun fastScrollerMetrics(
         thumbHeight = stableThumbHeight,
         maxThumbTop = maxThumbTop,
         maxFirstIndex = maxFirstIndex
+    )
+}
+
+private fun averageVisibleListItemSize(state: LazyListState): Float {
+    val visibleItems = state.layoutInfo.visibleItemsInfo
+    if (visibleItems.isEmpty()) return 0f
+    return visibleItems.sumOf { it.size }.toFloat() / visibleItems.size
+}
+
+private data class GridLineMetrics(
+    val averageLineHeight: Float,
+    val firstLineItemCount: Int
+)
+
+private fun averageVisibleGridLineMetrics(state: LazyGridState): GridLineMetrics {
+    val visibleItems = state.layoutInfo.visibleItemsInfo
+    if (visibleItems.isEmpty()) return GridLineMetrics(0f, 1)
+    val lines = visibleItems.groupBy { it.offset.y }
+    val firstLineOffset = lines.keys.minOrNull() ?: return GridLineMetrics(0f, 1)
+    val averageLineHeight = lines.values
+        .sumOf { line -> line.maxOf { it.size.height } }
+        .toFloat() / lines.size
+    return GridLineMetrics(
+        averageLineHeight = averageLineHeight,
+        firstLineItemCount = lines[firstLineOffset]?.size?.coerceAtLeast(1) ?: 1
     )
 }
 

@@ -1224,4 +1224,8 @@
     <string name="auto_check_new_backup_t">自动检查新备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
+    <string name="cover_collection_delete_image_confirm">從圖集中刪除這張圖片？</string>
+    <string name="bottom_bar_items_manage">底欄按鈕管理</string>
+    <string name="bottom_bar_item_locked">始終顯示</string>
+    <string name="bottom_bar_item_hidden">已隱藏</string>
 </resources>

@@ -181,6 +181,28 @@ object CoverCollectionManager {
         ))
     }
 
+    suspend fun deleteImage(collection: Collection, imagePath: String): Collection = withContext(IO) {
+        if (imagePath !in collection.images) return@withContext collection
+        val collectionDir = collectionDir(collection)
+        val nextImages = collection.images.filterNot { it == imagePath }
+        val imageFile = File(imagePath)
+        runCatching {
+            val imageCanonical = imageFile.canonicalFile
+            val collectionCanonical = collectionDir.canonicalFile
+            if (
+                imageCanonical.isFile &&
+                imageCanonical.path.startsWith(collectionCanonical.path + File.separator)
+            ) {
+                imageCanonical.delete()
+            }
+        }
+        clearAssignments(collection.id)
+        update(collection.copy(
+            images = nextImages,
+            updatedAt = System.currentTimeMillis()
+        ))
+    }
+
     suspend fun rename(collection: Collection, name: String): Collection = withContext(IO) {
         update(collection.copy(
             name = name.trim().ifBlank { collection.name },
