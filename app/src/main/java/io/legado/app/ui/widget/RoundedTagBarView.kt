@@ -31,6 +31,13 @@ class RoundedTagBarView @JvmOverloads constructor(
         val alpha: Float = 1f
     )
 
+    data class Snapshot(
+        val items: List<Item>,
+        val selectedIndex: Int,
+        val selectedBackgroundVisible: Boolean,
+        val displayMode: DisplayMode
+    )
+
     private val layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
     private val adapter = TagAdapter()
     private val recyclerView = RecyclerView(context).apply {
@@ -54,6 +61,7 @@ class RoundedTagBarView @JvmOverloads constructor(
     private var selectedBackgroundVisible = true
     private var displayMode = DisplayMode.CHIP
     private var backgroundOverrideColor: Int? = null
+    private var onStateChanged: (() -> Unit)? = null
 
     init {
         clipToOutline = true
@@ -124,6 +132,7 @@ class RoundedTagBarView @JvmOverloads constructor(
         displayMode = mode
         styleSignature = null
         applyTopBarStyle(force = true)
+        notifyStateChanged()
     }
 
     fun setBackgroundOverrideColor(color: Int?) {
@@ -131,12 +140,14 @@ class RoundedTagBarView @JvmOverloads constructor(
         backgroundOverrideColor = color
         styleSignature = null
         applyTopBarStyle(force = true)
+        notifyStateChanged()
     }
 
     fun setSelectedBackgroundVisible(visible: Boolean) {
         if (selectedBackgroundVisible == visible) return
         selectedBackgroundVisible = visible
         adapter.notifyDataSetChanged()
+        notifyStateChanged()
     }
 
     fun submitItems(items: List<Item>, selectedIndex: Int = this.selectedIndex) {
@@ -148,6 +159,7 @@ class RoundedTagBarView @JvmOverloads constructor(
         this.items = items.toList()
         this.selectedIndex = normalizeIndex(selectedIndex)
         adapter.notifyDataSetChanged()
+        notifyStateChanged()
         if (this.selectedIndex != RecyclerView.NO_POSITION) {
             scrollToIndex(this.selectedIndex, smooth = false)
         }
@@ -170,9 +182,23 @@ class RoundedTagBarView @JvmOverloads constructor(
             adapter.notifyItemChanged(newIndex)
             scrollToIndex(newIndex, smooth)
         }
+        notifyStateChanged()
     }
 
     fun getSelectedIndex(): Int = selectedIndex
+
+    fun snapshot(): Snapshot {
+        return Snapshot(
+            items = items,
+            selectedIndex = selectedIndex,
+            selectedBackgroundVisible = selectedBackgroundVisible,
+            displayMode = displayMode
+        )
+    }
+
+    fun setOnStateChangedListener(listener: (() -> Unit)?) {
+        onStateChanged = listener
+    }
 
     fun setOnTagClickListener(listener: ((Int) -> Unit)?) {
         onTagClick = listener
@@ -180,6 +206,24 @@ class RoundedTagBarView @JvmOverloads constructor(
 
     fun setOnTagLongClickListener(listener: ((Int) -> Boolean)?) {
         onTagLongClick = listener
+    }
+
+    fun dispatchTagClick(index: Int) {
+        if (index in items.indices) {
+            onTagClick?.invoke(index)
+        }
+    }
+
+    fun dispatchTagLongClick(index: Int): Boolean {
+        return if (index in items.indices) {
+            onTagLongClick?.invoke(index) ?: false
+        } else {
+            false
+        }
+    }
+
+    private fun notifyStateChanged() {
+        onStateChanged?.invoke()
     }
 
     private fun normalizeIndex(index: Int): Int {
