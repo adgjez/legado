@@ -25,7 +25,9 @@ import coil.request.ImageRequest
 import io.legado.app.help.ai.*
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ArcReel 角色设计工坊 — 查看和编辑AI生成的角色、场景、道具设计
@@ -103,7 +105,9 @@ fun ArcReelDesignWorkshopScreen(
                     if (onGenerateCharacterImage != null) {
                         generatingName = name
                         scope.launch {
-                            val url = onGenerateCharacterImage(name)
+                            val url = withContext(Dispatchers.IO) {
+                                onGenerateCharacterImage(name)
+                            }
                             if (url != null) {
                                 characters = characters.map {
                                     if (it.name == name) it.copy(generatedImageUrl = url) else it
@@ -122,7 +126,9 @@ fun ArcReelDesignWorkshopScreen(
                     if (onGenerateSceneImage != null) {
                         generatingName = name
                         scope.launch {
-                            val url = onGenerateSceneImage(name)
+                            val url = withContext(Dispatchers.IO) {
+                                onGenerateSceneImage(name)
+                            }
                             if (url != null) {
                                 scenes = scenes.map {
                                     if (it.name == name) it.copy(generatedImageUrl = url) else it

@@ -60,7 +60,6 @@ private fun ArcReelActivityContent(
     chapterContents: List<Pair<Int, String>>?,
     onFinish: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     var project by remember {
         mutableStateOf(
             ArcReelProject(
