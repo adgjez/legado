@@ -107,6 +107,7 @@ import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
+import io.legado.app.utils.SearchBookMergeUtils
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
@@ -3290,8 +3291,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     }
                     VideoBookPreloader.preloadSearchBooks(viewLifecycleOwner.lifecycleScope, newBooks)
                     val oldSize = discoverBooks.size
-                    discoverBooks.addAll(newBooks)
-                    val hasNewBooks = discoverBooks.size > oldSize
+                    val mergedBooks = SearchBookMergeUtils.appendReplacing(discoverBooks, newBooks)
+                    val hasNewBooks = mergedBooks.size > oldSize
+                    discoverBooks.clear()
+                    discoverBooks.addAll(mergedBooks)
                     if (hasNewBooks) {
                         discoverPage += 1
                     } else {

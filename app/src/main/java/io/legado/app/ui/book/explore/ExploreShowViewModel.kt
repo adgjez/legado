@@ -12,6 +12,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.utils.SearchBookMergeUtils
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.Dispatchers.IO
@@ -85,10 +86,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         )
             .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
             .onSuccess(IO) { searchBooks ->
-                val newBooks = linkedSetOf<SearchBook>()
-                newBooks.addAll(searchBooks)
-                newBooks.addAll(books)
-                books = newBooks
+                books = LinkedHashSet(SearchBookMergeUtils.prependReplacing(books, searchBooks))
                 addBooksData.postValue(searchBooks)
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 pageLiveData.postValue(page)
@@ -117,7 +115,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         )
             .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
             .onSuccess(IO) { searchBooks ->
-                books.addAll(searchBooks)
+                books = LinkedHashSet(SearchBookMergeUtils.appendReplacing(books, searchBooks))
                 booksData.postValue(books.toList())
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 pageLiveData.postValue(page)
