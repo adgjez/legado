@@ -122,17 +122,25 @@ object ArcReelPipeline {
             artStyle = designInput.let { inferArtStyle(it) }
         )
 
-        // Phase 4: 生成角色形象图
+        // Phase 4: 生成角色形象图（使用增强版批量生成）
         if (generateImages && characters.isNotEmpty()) {
             updatePhase(ArcReelProject.PipelinePhase.GENERATING_CHARACTER_IMAGES, 0f, "正在生成角色形象图...")
-            val charWithImages = AiCharacterDesignService.generateCharacterImages(
-                characters, imageProvider
-            ) { done, total ->
-                updatePhase(
-                    ArcReelProject.PipelinePhase.GENERATING_CHARACTER_IMAGES,
-                    done.toFloat() / total,
-                    "角色形象图 $done/$total"
-                )
+            val prompts = characters.map { it.imagePromptCN.ifBlank { it.imagePrompt } }
+            val batchResults = AiImageService.generateBatch(
+                prompts = prompts,
+                provider = imageProvider,
+                maxConcurrent = 3,
+                onProgress = { done, total, _ ->
+                    updatePhase(
+                        ArcReelProject.PipelinePhase.GENERATING_CHARACTER_IMAGES,
+                        done.toFloat() / total.coerceAtLeast(1),
+                        "角色形象图 $done/$total"
+                    )
+                }
+            )
+            val charWithImages = characters.mapIndexed { index, char ->
+                val url = batchResults.getOrNull(index)?.imageUrl
+                char.copy(generatedImageUrl = url)
             }
             val charImages = charWithImages.filter { it.generatedImageUrl != null }
                 .associate { it.name to it.generatedImageUrl!! }
@@ -142,17 +150,25 @@ object ArcReelPipeline {
             )
         }
 
-        // Phase 5: 生成场景概念图
+        // Phase 5: 生成场景概念图（使用增强版批量生成）
         if (generateImages && scenes.isNotEmpty()) {
             updatePhase(ArcReelProject.PipelinePhase.GENERATING_SCENE_IMAGES, 0f, "正在生成场景概念图...")
-            val scenesWithImages = AiCharacterDesignService.generateSceneImages(
-                scenes, imageProvider
-            ) { done, total ->
-                updatePhase(
-                    ArcReelProject.PipelinePhase.GENERATING_SCENE_IMAGES,
-                    done.toFloat() / total,
-                    "场景概念图 $done/$total"
-                )
+            val prompts = scenes.map { it.imagePromptCN.ifBlank { it.imagePrompt } }
+            val batchResults = AiImageService.generateBatch(
+                prompts = prompts,
+                provider = imageProvider,
+                maxConcurrent = 3,
+                onProgress = { done, total, _ ->
+                    updatePhase(
+                        ArcReelProject.PipelinePhase.GENERATING_SCENE_IMAGES,
+                        done.toFloat() / total.coerceAtLeast(1),
+                        "场景概念图 $done/$total"
+                    )
+                }
+            )
+            val scenesWithImages = scenes.mapIndexed { index, scene ->
+                val url = batchResults.getOrNull(index)?.imageUrl
+                scene.copy(generatedImageUrl = url)
             }
             current = current.copy(scenes = scenesWithImages)
         }
@@ -179,43 +195,46 @@ object ArcReelPipeline {
             )
             val result = AiStoryboardService.generateStoryboard(input)
 
-            // 为分镜场景生成插画
+            // 为分镜场景生成插画（使用批量生成）
             var sceneImages = emptyMap<Int, String>()
             if (generateImages && result.scenes.isNotEmpty()) {
-                val images = AiSceneVisualizer.generateSceneImages(
-                    result.scenes, imageProvider
-                ) { done, total ->
-                    updatePhase(
-                        ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS,
-                        done.toFloat() / total,
-                        "场景插画 $done/$total"
-                    )
-                }
-                sceneImages = images.filter { it.second != null }
-                    .associate { it.first to it.second!! }
+                val prompts = result.scenes.map { it.visualPrompt.ifBlank { it.description } }
+                val batchResults = AiImageService.generateBatch(
+                    prompts = prompts,
+                    provider = imageProvider,
+                    maxConcurrent = 3,
+                    onProgress = { done, total, _ ->
+                        updatePhase(
+                            ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS,
+                            done.toFloat() / total.coerceAtLeast(1),
+                            "场景插画 $done/$total"
+                        )
+                    }
+                )
+                sceneImages = batchResults
+                    .filter { it.imageUrl != null }
+                    .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }
             }
             storyboards.add(ChapterStoryboard(chapterIdx, "第${chapterIdx + 1}章", result, sceneImages))
         }
 
-        // Phase 7: 视频生成（可选）
+        // Phase 7: 视频生成（可选，使用增强版进度追踪）
         val videos = mutableListOf<VideoOutput>()
         if (generateVideos) {
             updatePhase(ArcReelProject.PipelinePhase.GENERATING_VIDEO, 0f, "正在生成视频...")
-            // 取第一个分镜的第一个场景生成视频
             storyboards.firstOrNull()?.result?.scenes?.firstOrNull()?.let { scene ->
                 try {
                     val prompt = scene.visualPrompt.ifBlank { scene.description }
                     if (prompt.isNotBlank() && AiCreationService.hasApiKey()) {
-                        val result = AiCreationService.textToVideo(
-                            prompt = prompt,
-                            onProgress = { progress ->
-                                updatePhase(
-                                    ArcReelProject.PipelinePhase.GENERATING_VIDEO,
-                                    progress.percent / 100f,
-                                    "视频生成 ${progress.percent}% ${progress.statusText}"
-                                )
-                            }
-                        )
+                        val result = AiCreationService.textToVideoWithProgress(prompt = prompt)
+                        // 监控进度
+                        AiCreationService.progress.collect { p ->
+                            updatePhase(
+                                ArcReelProject.PipelinePhase.GENERATING_VIDEO,
+                                p.percent / 100f,
+                                "视频生成 ${p.percent}% ${p.statusText}"
+                            )
+                        }
                         videos.add(VideoOutput(
                             sceneId = scene.sceneId,
                             sceneTitle = scene.sceneTitle,
@@ -234,6 +253,19 @@ object ArcReelPipeline {
             videos = videos,
             status = ArcReelProject.ProjectStatus.COMPLETED,
             updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    /**
+     * 获取管道成本预估
+     */
+    fun estimateCost(project: ArcReelProject): JSONObject {
+        return AiModelManager.estimatePipelineCost(
+            characterCount = project.characters.size.coerceAtLeast(3),
+            sceneCount = project.scenes.size.coerceAtLeast(3),
+            chapterCount = project.storyboards.size.coerceAtLeast(1),
+            generateImages = true,
+            generateVideos = project.videos.isNotEmpty()
         )
     }
 
@@ -264,8 +296,15 @@ object ArcReelPipeline {
         var sceneImages = emptyMap<Int, String>()
         if (generateImages && result.scenes.isNotEmpty()) {
             updatePhase(ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS, 0f, "正在生成场景插画...")
-            val images = AiSceneVisualizer.generateSceneImages(result.scenes, imageProvider)
-            sceneImages = images.filter { it.second != null }.associate { it.first to it.second!! }
+            val prompts = result.scenes.map { it.visualPrompt.ifBlank { it.description } }
+            val batchResults = AiImageService.generateBatch(
+                prompts = prompts,
+                provider = imageProvider,
+                maxConcurrent = 3
+            )
+            sceneImages = batchResults
+                .filter { it.imageUrl != null }
+                .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }
         }
 
         val newStoryboard = ChapterStoryboard(chapterIndex, chapterTitle, result, sceneImages)

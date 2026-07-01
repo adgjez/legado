@@ -25,6 +25,22 @@ object AiChapterSummaryService {
         "batch_assign_character_speech_routes"
     )
 
+    data class SummaryResult(
+        val chapterIndex: Int,
+        val summary: String,
+        val cached: String = ""
+    )
+
+    data class BookSummaryResult(
+        val bookName: String,
+        val author: String,
+        val totalChapters: Int,
+        val summary: String,
+        val mainCharacters: List<String>,
+        val mainPlotPoints: List<String>,
+        val worldSetting: String
+    )
+
     data class SummaryInput(
         val book: Book,
         val chapter: BookChapter,
@@ -225,5 +241,90 @@ object AiChapterSummaryService {
             put("label", label)
             put("success", true)
         }
+    }
+
+    // ════════════════════════════════════════════
+    // ArcReel 增强 — 书籍级摘要
+    // ════════════════════════════════════════════
+
+    /**
+     * 基于章节摘要生成书籍级摘要
+     */
+    suspend fun summarizeBook(
+        bookName: String,
+        author: String,
+        chapterSummaries: List<SummaryResult>,
+        onPartial: (String) -> Unit = {}
+    ): BookSummaryResult {
+        require(chapterSummaries.isNotEmpty()) { "章节摘要列表为空" }
+
+        val summariesText = chapterSummaries
+            .sortedBy { it.chapterIndex }
+            .joinToString("\n\n") { "第${it.chapterIndex + 1}章: ${it.summary.take(500)}" }
+
+        val messages = listOf(
+            AiChatMessage(
+                role = AiChatMessage.Role.USER,
+                content = """
+                    你是小说分析专家。请根据以下章节摘要，生成书籍级分析报告。
+
+                    书名：$bookName
+                    作者：$author
+                    总章节数：${chapterSummaries.size}
+
+                    章节摘要：
+                    $summariesText
+
+                    请用JSON格式输出（不要包含markdown代码块标记）：
+                    {
+                      "summary": "全书故事梗概，200-300字",
+                      "mainCharacters": ["主角1", "主角2", "重要配角"],
+                      "mainPlotPoints": ["关键情节1", "关键情节2", "关键情节3"],
+                      "worldSetting": "世界观设定描述"
+                    }
+                """.trimIndent()
+            )
+        )
+        val raw = AiChatService.chatStream(
+            messages = messages,
+            onPartial = onPartial,
+            includeStructuredBlocks = false,
+            useAllTools = false,
+            modelConfigOverride = AppConfig.aiSummaryModelConfig
+        )
+        return parseBookSummary(raw, bookName, author, chapterSummaries.size)
+    }
+
+    private fun parseBookSummary(raw: String, bookName: String, author: String, totalChapters: Int): BookSummaryResult {
+        return try {
+            val cleaned = raw.trim()
+                .removePrefix("```json").removePrefix("```")
+                .removeSuffix("```").trim()
+            val json = JSONObject(cleaned)
+            BookSummaryResult(
+                bookName = bookName,
+                author = author,
+                totalChapters = totalChapters,
+                summary = json.optString("summary", ""),
+                mainCharacters = parseStringArray(json.optJSONArray("mainCharacters")),
+                mainPlotPoints = parseStringArray(json.optJSONArray("mainPlotPoints")),
+                worldSetting = json.optString("worldSetting", "")
+            )
+        } catch (_: Exception) {
+            BookSummaryResult(
+                bookName = bookName,
+                author = author,
+                totalChapters = totalChapters,
+                summary = raw.take(500),
+                mainCharacters = emptyList(),
+                mainPlotPoints = emptyList(),
+                worldSetting = ""
+            )
+        }
+    }
+
+    private fun parseStringArray(arr: org.json.JSONArray?): List<String> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).map { arr.getString(it) }
     }
 }

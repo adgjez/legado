@@ -17,6 +17,9 @@ import io.legado.app.help.source.getShareScope
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
@@ -469,6 +472,90 @@ object AiImageService {
                 else -> value.javaClass.simpleName
             }
             "$key:$type"
+        }
+    }
+
+    // ════════════════════════════════════════════
+    // ArcReel 增强 — 批量生成
+    // ════════════════════════════════════════════
+
+    data class BatchImageResult(
+        val index: Int,
+        val prompt: String,
+        val imageUrl: String?,
+        val error: String? = null
+    ) {
+        val success: Boolean get() = imageUrl != null && error == null
+    }
+
+    /**
+     * 批量生成图片，支持并发控制和进度回调
+     */
+    suspend fun generateBatch(
+        prompts: List<String>,
+        provider: AiImageProviderConfig? = null,
+        maxConcurrent: Int = 3,
+        onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }
+    ): List<BatchImageResult> {
+        val target = runCatching { resolveProvider(provider) }
+            .getOrNull() ?: return prompts.mapIndexed { index, prompt ->
+                BatchImageResult(index, prompt, null, "无可用的生图模型")
+            }
+
+        val total = prompts.size
+        val results = mutableListOf<BatchImageResult>()
+
+        // 分批处理，控制并发
+        prompts.chunked(maxConcurrent).forEach { batch ->
+            coroutineScope {
+                batch.mapIndexed { batchIndex, prompt ->
+                    async {
+                        val globalIndex = results.size + batchIndex
+                        onProgress(globalIndex, total, prompt.take(50))
+                        try {
+                            val url = generate(prompt, target)
+                            BatchImageResult(globalIndex, prompt, url)
+                        } catch (e: Exception) {
+                            BatchImageResult(globalIndex, prompt, null, e.message ?: "未知错误")
+                        }
+                    }
+                }.forEach { deferred ->
+                    results.add(deferred.await())
+                }
+            }
+            // 批次间短暂延迟，避免API限流
+            if (results.size < total) delay(500)
+        }
+
+        onProgress(total, total, "完成")
+        return results.sortedBy { it.index }
+    }
+
+    /**
+     * 批量生成并存储图片
+     */
+    suspend fun generateAndStoreBatch(
+        prompts: List<String>,
+        provider: AiImageProviderConfig? = null,
+        metadata: List<AiImageGalleryManager.ImageMetadata> = emptyList(),
+        maxConcurrent: Int = 3,
+        onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }
+    ): List<AiGeneratedImage> {
+        val results = generateBatch(prompts, provider, maxConcurrent, onProgress)
+        return results.mapNotNull { result ->
+            if (result.imageUrl != null) {
+                try {
+                    val meta = metadata.getOrNull(result.index)
+                        ?: AiImageGalleryManager.ImageMetadata()
+                    AiImageGalleryManager.saveGeneratedImage(
+                        imageSource = result.imageUrl,
+                        prompt = result.prompt,
+                        provider = resolveProvider(provider),
+                        model = "batch",
+                        metadata = meta
+                    )
+                } catch (_: Exception) { null }
+            } else null
         }
     }
 }

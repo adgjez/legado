@@ -6,6 +6,8 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -355,6 +357,104 @@ object AiCreationService {
             } ?: payload.take(200)
         } catch (_: Exception) {
             payload.take(200)
+        }
+    }
+
+    // ════════════════════════════════════════════
+    // ArcReel 增强 — 进度追踪与状态查询
+    // ════════════════════════════════════════════
+
+    data class CreationProgress(
+        val taskId: String = "",
+        val percent: Int = 0,
+        val statusText: String = "就绪",
+        val elapsedSeconds: Long = 0,
+        val resultUrl: String? = null,
+        val error: String? = null
+    )
+
+    private val _progress = MutableStateFlow(CreationProgress())
+    val progress: StateFlow<CreationProgress> = _progress
+
+    /**
+     * 带进度追踪的视频生成
+     */
+    suspend fun textToVideoWithProgress(
+        prompt: String,
+        numFrames: Int = 121,
+        width: Int = DEFAULT_VIDEO_WIDTH,
+        height: Int = DEFAULT_VIDEO_HEIGHT
+    ): VideoResult {
+        val result = textToVideo(
+            prompt = prompt,
+            numFrames = numFrames,
+            width = width,
+            height = height,
+            onProgress = { p ->
+                _progress.value = CreationProgress(
+                    percent = p.percent,
+                    statusText = p.statusText,
+                    elapsedSeconds = p.elapsedSeconds
+                )
+            }
+        )
+        _progress.value = CreationProgress(
+            percent = 100,
+            statusText = "完成",
+            resultUrl = result.videoUrl
+        )
+        return result
+    }
+
+    /**
+     * 查询视频任务状态
+     */
+    suspend fun queryVideoStatus(taskId: String): CreationProgress {
+        requireApiKey()
+        return try {
+            val response = client.newCallResponse {
+                url("$BASE_URL/v1/videos/$taskId")
+                addHeader("Authorization", "Bearer $apiKey")
+            }
+            response.use { resp ->
+                val payload = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    return CreationProgress(
+                        taskId = taskId,
+                        error = "查询失败: HTTP ${resp.code}"
+                    )
+                }
+                val root = JSONObject(payload)
+                val status = root.optString("status", "unknown")
+                val progress = root.optInt("progress", -1)
+                CreationProgress(
+                    taskId = taskId,
+                    percent = progress.coerceIn(0, 100),
+                    statusText = status
+                )
+            }
+        } catch (e: Exception) {
+            CreationProgress(
+                taskId = taskId,
+                error = e.message ?: "查询异常"
+            )
+        }
+    }
+
+    /**
+     * 估算生成成本
+     */
+    fun estimateCost(
+        imageCount: Int = 0,
+        videoCount: Int = 0,
+        videoFrames: Int = 121
+    ): JSONObject {
+        return JSONObject().apply {
+            put("imageCount", imageCount)
+            put("videoCount", videoCount)
+            put("videoFrames", videoFrames)
+            put("estimatedImageCost", "约 $imageCount 张图片")
+            put("estimatedVideoCost", "约 $videoCount 个视频，每个 ${videoFrames}帧")
         }
     }
 }
