@@ -227,14 +227,11 @@ object ArcReelPipeline {
                     val prompt = scene.visualPrompt.ifBlank { scene.description }
                     if (prompt.isNotBlank() && AiCreationService.hasApiKey()) {
                         val result = AiCreationService.textToVideoWithProgress(prompt = prompt)
-                        // 监控进度
-                        AiCreationService.progress.collect { p ->
-                            updatePhase(
-                                ArcReelProject.PipelinePhase.GENERATING_VIDEO,
-                                p.percent / 100f,
-                                "视频生成 ${p.percent}% ${p.statusText}"
-                            )
-                        }
+                        updatePhase(
+                            ArcReelProject.PipelinePhase.GENERATING_VIDEO,
+                            1f,
+                            "视频生成完成"
+                        )
                         videos.add(VideoOutput(
                             sceneId = scene.sceneId,
                             sceneTitle = scene.sceneTitle,
