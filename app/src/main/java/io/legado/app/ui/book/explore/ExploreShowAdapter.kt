@@ -55,7 +55,7 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 tvLasted.text = context.getString(R.string.lasted_show, item.latestChapterTitle)
                 tvLasted.visible()
             }
-            tvIntroduce.maxLines = 3
+            tvIntroduce.maxLines = 2
             tvIntroduce.text = item.exploreListIntro(context)
             val kinds = item.getKindList()
             if (kinds.isEmpty()) {

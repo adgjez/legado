@@ -206,7 +206,7 @@ private fun SearchBookListText(
                 fontSize = if (rounded) 13.sp else 12.sp,
                 lineHeight = if (rounded) 18.sp else 16.sp,
                 fontFamily = palette.bodyFontFamily,
-                maxLines = if (rounded) 3 else if (kinds.isNotEmpty() && !lasted.isNullOrBlank()) 1 else 2,
+                maxLines = if (rounded) 3 else 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
