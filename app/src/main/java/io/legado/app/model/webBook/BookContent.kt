@@ -181,16 +181,11 @@ object BookContent {
                 Debug.log(bookSource.bookSourceUrl, "获取标题出错, ${it.localizedMessage}")
             }.getOrNull()
             if (!title.isNullOrBlank()) {
-                val matchResult = AppPattern.imgRegex.find(title)
-                if (matchResult != null) {
-                    matchResult.groupValues[1]
-                    val (group1,group2) = matchResult.destructured
-                    title = if (group1 != "") {
-                        group1
-                    } else {
-                        bookChapter.title
-                    }
-                    bookChapter.imgUrl = group2
+                val titleImage = AppPattern.splitTitleImage(title)
+                if (titleImage != null) {
+                    val (text, image) = titleImage
+                    title = text.trimEnd().ifEmpty { bookChapter.title }
+                    bookChapter.imgUrl = image
                 }
                 bookChapter.title = title
                 bookChapter.titleMD5 = null

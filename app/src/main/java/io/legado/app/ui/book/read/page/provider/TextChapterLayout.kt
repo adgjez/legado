@@ -2379,7 +2379,7 @@ class TextChapterLayout(
 
     private suspend fun parseImageInfo(src: String): ImageInfo {
         imageInfoCache[src]?.let { return it }
-        if (src.startsWith(PARAGRAPH_BUBBLE_PREFIX)) {
+        if (src.startsWith(PARAGRAPH_BUBBLE_PREFIX, ignoreCase = true)) {
             return parseParagraphBubble(src).also { imageInfoCache[src] = it }
         }
         val urlMatcher = paramPattern.matcher(src)
@@ -2418,7 +2418,7 @@ class TextChapterLayout(
     }
 
     private fun parseParagraphBubble(src: String): ImageInfo {
-        val payload = src.removePrefix(PARAGRAPH_BUBBLE_PREFIX).trim()
+        val payload = src.substring(PARAGRAPH_BUBBLE_PREFIX.length).trim()
         val optionIndex = payload.indexOf(",{")
         val count = if (optionIndex >= 0) {
             payload.substring(0, optionIndex)
