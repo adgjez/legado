@@ -3,6 +3,8 @@ package io.legado.app.ui.main.my
 import android.content.SharedPreferences
 import android.content.res.XmlResourceParser
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
@@ -33,9 +35,7 @@ import io.legado.app.ui.file.FileManageActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
-import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
-import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
@@ -77,7 +77,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
     private val subSearchItems by lazy(LazyThreadSafetyMode.NONE) { buildSubSearchItems() }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initTopBar()
+        setSupportToolbar(binding.titleBar.toolbar)
         requireContext().putPrefBoolean(PreferKey.webService, WebService.isRun)
         initSearchView()
         applySearchBarStyle()
@@ -102,6 +102,16 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
         super.onPause()
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu) {
+        menuInflater.inflate(R.menu.main_my, menu)
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem) {
+        when (item.itemId) {
+            R.id.menu_help -> showHelp("appHelp")
+        }
+    }
+
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
             PreferKey.webService -> {
@@ -118,18 +128,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
             }
 
             "recordLog" -> LogUtils.upLevel()
-        }
-    }
-
-    private fun initTopBar() {
-        binding.topBar.applyStatusBarPadding(withInitialPadding = true)
-        binding.topBar.setMode(MainTopBarView.Mode.READ_RECORD)
-        binding.topBar.setSearchEntryVisible(false)
-        binding.topBar.setTitle(getString(R.string.my))
-        binding.topBar.moreButton.setImageResource(R.drawable.ic_help)
-        binding.topBar.moreButton.contentDescription = getString(R.string.help)
-        binding.topBar.moreButton.setOnClickListener {
-            showHelp("appHelp")
         }
     }
 

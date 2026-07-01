@@ -8,7 +8,6 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.util.AttributeSet
-import android.view.Gravity
 import android.view.Menu
 import android.view.View
 import android.widget.ImageView
@@ -16,12 +15,7 @@ import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.annotation.StyleRes
 import androidx.appcompat.widget.Toolbar
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.alpha
-import androidx.core.view.isVisible
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.children
 import com.google.android.material.appbar.AppBarLayout
@@ -29,13 +23,8 @@ import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.transparentNavBar
-import io.legado.app.ui.widget.compose.ComposeTitleBarTitle
-import io.legado.app.ui.widget.compose.LegadoComposeTheme
-import io.legado.app.ui.widget.compose.TitleBarTitleState
 import io.legado.app.utils.activity
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import splitties.views.bottomPadding
@@ -52,39 +41,22 @@ class TitleBar @JvmOverloads constructor(
         get() = toolbar.menu
 
     var title: CharSequence?
-        get() = titleTextValue
+        get() = toolbar.title
         set(title) {
-            if (titleTextValue != title) {
-                titleTextValue = title
-                toolbar.title = null
-                updateComposeTitle()
+            if (toolbar.title != title) {
+                toolbar.title = title
                 post { applyTitleTypeface() }
             }
         }
 
     var subtitle: CharSequence?
-        get() = subtitleTextValue
+        get() = toolbar.subtitle
         set(subtitle) {
-            if (subtitleTextValue != subtitle) {
-                subtitleTextValue = subtitle
-                toolbar.subtitle = null
-                updateComposeTitle()
+            if (toolbar.subtitle != subtitle) {
+                toolbar.subtitle = subtitle
                 post { applyTitleTypeface() }
             }
         }
-
-    private val composeTitleState = mutableStateOf(
-        TitleBarTitleState("", "", Color.BLACK, Color.DKGRAY, 20f, 14f)
-    )
-    private var composeTitleView: ComposeView? = null
-    private var composeTitleEnabled = false
-    private var titleTextValue: CharSequence? = null
-    private var subtitleTextValue: CharSequence? = null
-    private var titleTextColorOverride: Int? = null
-    private var subtitleTextColorOverride: Int? = null
-    private var titleTextSizeSp = 20f
-    private var subtitleTextSizeSp = 14f
-    private var titleThemeMode = 0
 
     private val displayHomeAsUp: Boolean
     private val navigationIconTint: ColorStateList?
@@ -106,21 +78,18 @@ class TitleBar @JvmOverloads constructor(
         fitStatusBar = a.getBoolean(R.styleable.TitleBar_fitStatusBar, true)
         fitNavigationBar = a.getBoolean(R.styleable.TitleBar_fitNavigationBar, false)
         opaque = a.getBoolean(R.styleable.TitleBar_opaque, false)
-        titleThemeMode = a.getInt(R.styleable.TitleBar_themeMode, 0)
 
         val navigationIcon = a.getDrawable(R.styleable.TitleBar_navigationIcon)
         val navigationContentDescription =
             a.getText(R.styleable.TitleBar_navigationContentDescription)
         val titleText = a.getString(R.styleable.TitleBar_title)
         val subtitleText = a.getString(R.styleable.TitleBar_subtitle)
-        val hasContentLayout = a.hasValue(R.styleable.TitleBar_contentLayout)
 
-        when (titleThemeMode) {
+        when (a.getInt(R.styleable.TitleBar_themeMode, 0)) {
             1 -> inflate(context, R.layout.view_title_bar_dark, this)
             else -> inflate(context, R.layout.view_title_bar, this)
         }
         toolbar = findViewById(R.id.toolbar)
-        installComposeTitle(!hasContentLayout)
 
         toolbar.apply {
             navigationIcon?.let {
@@ -129,25 +98,25 @@ class TitleBar @JvmOverloads constructor(
             }
 
             if (a.hasValue(R.styleable.TitleBar_titleTextAppearance)) {
-                this@TitleBar.setTitleTextAppearance(
+                this.setTitleTextAppearance(
+                    context,
                     a.getResourceId(R.styleable.TitleBar_titleTextAppearance, 0)
                 )
             }
 
             if (a.hasValue(R.styleable.TitleBar_titleTextColor)) {
-                this@TitleBar.setTitleTextColor(a.getColor(R.styleable.TitleBar_titleTextColor, -0x1))
+                this.setTitleTextColor(a.getColor(R.styleable.TitleBar_titleTextColor, -0x1))
             }
 
             if (a.hasValue(R.styleable.TitleBar_subtitleTextAppearance)) {
-                this@TitleBar.setSubTitleTextAppearance(
+                this.setSubtitleTextAppearance(
+                    context,
                     a.getResourceId(R.styleable.TitleBar_subtitleTextAppearance, 0)
                 )
             }
 
             if (a.hasValue(R.styleable.TitleBar_subtitleTextColor)) {
-                this@TitleBar.setSubTitleTextColor(
-                    a.getColor(R.styleable.TitleBar_subtitleTextColor, -0x1)
-                )
+                this.setSubtitleTextColor(a.getColor(R.styleable.TitleBar_subtitleTextColor, -0x1))
             }
 
 
@@ -182,20 +151,17 @@ class TitleBar @JvmOverloads constructor(
             }
 
             if (!titleText.isNullOrBlank()) {
-                this@TitleBar.title = titleText
+                this.title = titleText
             }
 
             if (!subtitleText.isNullOrBlank()) {
-                this@TitleBar.subtitle = subtitleText
+                this.subtitle = subtitleText
             }
 
-            if (hasContentLayout) {
+            if (a.hasValue(R.styleable.TitleBar_contentLayout)) {
                 inflate(context, a.getResourceId(R.styleable.TitleBar_contentLayout, 0), this)
             }
         }
-        toolbar.title = null
-        toolbar.subtitle = null
-        updateComposeTitle()
         applyTitleTypeface()
 
         if (!isInEditMode) {
@@ -245,70 +211,13 @@ class TitleBar @JvmOverloads constructor(
     }
 
     fun setTitle(titleId: Int) {
-        title = context.getText(titleId)
+        toolbar.setTitle(titleId)
         post { applyTitleTypeface() }
     }
 
     fun setSubTitle(subtitleId: Int) {
-        subtitle = context.getText(subtitleId)
+        toolbar.setSubtitle(subtitleId)
         post { applyTitleTypeface() }
-    }
-
-    private fun installComposeTitle(enabled: Boolean) {
-        composeTitleEnabled = enabled
-        if (!enabled) return
-        composeTitleView = ComposeView(context).apply {
-            isClickable = false
-            isFocusable = false
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent {
-                LegadoComposeTheme {
-                    ComposeTitleBarTitle(state = composeTitleState.value)
-                }
-            }
-        }
-        toolbar.addView(
-            composeTitleView,
-            Toolbar.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                marginStart = toolbar.titleMarginStart
-                marginEnd = toolbar.titleMarginEnd
-            }
-        )
-    }
-
-    private fun updateComposeTitle() {
-        val titleText = titleTextValue?.toString().orEmpty()
-        val subtitleText = subtitleTextValue?.toString().orEmpty()
-        composeTitleState.value = TitleBarTitleState(
-            title = titleText,
-            subtitle = subtitleText,
-            titleColor = titleTextColorOverride ?: defaultTitleColor(),
-            subtitleColor = subtitleTextColorOverride ?: defaultSubtitleColor(),
-            titleSizeSp = titleTextSizeSp,
-            subtitleSizeSp = subtitleTextSizeSp
-        )
-        composeTitleView?.isVisible = composeTitleEnabled &&
-            (titleText.isNotBlank() || subtitleText.isNotBlank())
-    }
-
-    private fun defaultTitleColor(): Int {
-        return if (titleThemeMode == 1) {
-            Color.WHITE
-        } else {
-            context.primaryTextColor
-        }
-    }
-
-    private fun defaultSubtitleColor(): Int {
-        return if (titleThemeMode == 1) {
-            ColorUtils.setAlphaComponent(Color.WHITE, 0xB3)
-        } else {
-            context.secondaryTextColor
-        }
     }
 
     private fun applyTitleTypeface() {
@@ -320,25 +229,19 @@ class TitleBar @JvmOverloads constructor(
     }
 
     fun setTitleTextColor(@ColorInt color: Int) {
-        titleTextColorOverride = color
         toolbar.setTitleTextColor(color)
-        updateComposeTitle()
     }
 
     fun setTitleTextAppearance(@StyleRes resId: Int) {
         toolbar.setTitleTextAppearance(context, resId)
-        updateTextAppearance(resId, subtitle = false)
     }
 
     fun setSubTitleTextColor(@ColorInt color: Int) {
-        subtitleTextColorOverride = color
         toolbar.setSubtitleTextColor(color)
-        updateComposeTitle()
     }
 
     fun setSubTitleTextAppearance(@StyleRes resId: Int) {
         toolbar.setSubtitleTextAppearance(context, resId)
-        updateTextAppearance(resId, subtitle = true)
     }
 
     fun setTextColor(@ColorInt color: Int) {
@@ -354,33 +257,6 @@ class TitleBar @JvmOverloads constructor(
         toolbar.menu.children.forEach {
             it.icon?.colorFilter = colorFilter
         }
-    }
-
-    private fun updateTextAppearance(@StyleRes resId: Int, subtitle: Boolean) {
-        if (resId == 0) return
-        val attrs = intArrayOf(android.R.attr.textSize, android.R.attr.textColor)
-        val typedArray = context.obtainStyledAttributes(resId, attrs)
-        try {
-            val textSizePx = typedArray.getDimensionPixelSize(0, 0)
-            if (textSizePx > 0) {
-                val textSizeSp = textSizePx / resources.displayMetrics.scaledDensity
-                if (subtitle) {
-                    subtitleTextSizeSp = textSizeSp
-                } else {
-                    titleTextSizeSp = textSizeSp
-                }
-            }
-            typedArray.getColorStateList(1)?.defaultColor?.let { color ->
-                if (subtitle) {
-                    subtitleTextColorOverride = color
-                } else {
-                    titleTextColorOverride = color
-                }
-            }
-        } finally {
-            typedArray.recycle()
-        }
-        updateComposeTitle()
     }
 
     override fun setBackgroundColor(color: Int) {
@@ -413,9 +289,6 @@ class TitleBar @JvmOverloads constructor(
             activity?.let {
                 it.setSupportActionBar(toolbar)
                 it.supportActionBar?.setDisplayHomeAsUpEnabled(displayHomeAsUp)
-                toolbar.title = null
-                toolbar.subtitle = null
-                updateComposeTitle()
             }
         }
     }

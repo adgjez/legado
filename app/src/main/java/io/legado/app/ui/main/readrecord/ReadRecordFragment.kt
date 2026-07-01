@@ -153,6 +153,8 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        setSupportToolbar(binding.titleBar.toolbar)
+        binding.titleBar.visibility = View.GONE
         binding.scrollView.applyMainBottomBarPadding(withInitialPadding = true)
         binding.llRecordHeader.applyStatusBarPadding(withInitialPadding = true)
         binding.topBar.applyStatusBarPadding(withInitialPadding = true)

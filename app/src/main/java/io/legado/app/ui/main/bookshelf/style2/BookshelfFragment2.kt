@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Rect
 import android.os.Bundle
 import android.view.View
+import androidx.appcompat.widget.SearchView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,11 +60,9 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfSnapshotStore
 import io.legado.app.ui.main.bookshelf.compose.buildBookshelfItems
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.updateBookshelfItemUpdating
-import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.compose.ComposeLazyGridFastScroller
 import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.utils.applyMainBottomBarPadding
-import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
@@ -89,6 +88,7 @@ import kotlin.math.max
  * 书架界面
  */
 class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2),
+    SearchView.OnQueryTextListener,
     BaseBooksAdapter.CallBack {
 
     constructor(position: Int) : this() {
@@ -126,16 +126,8 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private var composeListItemStyle by mutableIntStateOf(AppConfig.bookshelfListItemStyle)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.topBar.applyStatusBarPadding(withInitialPadding = true)
-        binding.topBar.setMode(MainTopBarView.Mode.BOOKSHELF)
-        binding.topBar.setTitle(getString(R.string.bookshelf))
-        binding.topBar.setSearchHint(getString(R.string.search_book_key))
-        binding.topBar.moreButton.setOnClickListener {
-            showModernBookshelfMenu(it)
-        }
-        binding.topBar.searchButton.setOnClickListener {
-            SearchActivity.start(requireContext(), key = null)
-        }
+        setSupportToolbar(binding.titleBar.toolbar)
+        installModernBookshelfOverflow(binding.titleBar.toolbar)
         initRecyclerView()
         initComposeBookshelf()
         initBookGroupData()
@@ -420,7 +412,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private fun initBooksData() {
         if (groupId == BookGroup.IdRoot) {
             if (isAdded) {
-                binding.topBar.setTitle(getString(R.string.bookshelf))
+                binding.titleBar.title = getString(R.string.bookshelf)
                 binding.refreshLayout.isEnabled = true
                 enableRefresh = true
                 onlyUpdateRead = false
@@ -429,7 +421,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             bookGroups.firstOrNull {
                 groupId == it.groupId
             }?.let {
-                binding.topBar.setTitle("${getString(R.string.bookshelf)}(${it.groupName})")
+                binding.titleBar.title = "${getString(R.string.bookshelf)}(${it.groupName})"
                 binding.refreshLayout.isEnabled = it.enableRefresh
                 enableRefresh = it.enableRefresh
                 onlyUpdateRead = it.onlyUpdateRead
@@ -527,6 +519,15 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     fun switchToGroupId(targetGroupId: Long) {
         switchGroup(targetGroupId)
+    }
+
+    override fun onQueryTextSubmit(query: String?): Boolean {
+        SearchActivity.start(requireContext(), query)
+        return false
+    }
+
+    override fun onQueryTextChange(newText: String?): Boolean {
+        return false
     }
 
     override fun gotoTop() {

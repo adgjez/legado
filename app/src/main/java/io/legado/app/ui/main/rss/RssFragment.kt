@@ -2,6 +2,9 @@ package io.legado.app.ui.main.rss
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
+import android.view.SubMenu
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -54,9 +57,9 @@ import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.transaction
 import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.RoundedTagBarView
 import kotlinx.coroutines.Dispatchers.IO
@@ -87,13 +90,13 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         RssAdapter(requireContext(), this, this, viewLifecycleOwner.lifecycle)
     }
     private val searchView: SearchView by lazy {
-        binding.root.findViewById(R.id.search_view)
+        binding.titleBar.findViewById(R.id.search_view)
     }
 
     private var groupsFlowJob: Job? = null
     private var rssFlowJob: Job? = null
     private val groups = linkedSetOf<String>()
-    private var classicGroupPopup: ModernActionPopup.Handle? = null
+    private var groupsMenu: SubMenu? = null
     private var rssWebView: WebView? = null
     private var selectedRssSource: RssSource? = null
     private val rssSources = mutableListOf<RssSource>()
@@ -108,36 +111,12 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
     private var pendingRenderCurrentSort = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initClassicTopBar()
+        setSupportToolbar(binding.titleBar.toolbar)
+        binding.titleBar.applyStatusBarPadding(withInitialPadding = true)
         applyWebContainerBottomPadding()
         initSearchView()
         initGroupData()
         applyRssMode()
-    }
-
-    private fun initClassicTopBar() {
-        binding.classicTopBar.applyStatusBarPadding(withInitialPadding = true)
-        binding.classicTopBar.setMode(io.legado.app.ui.widget.MainTopBarView.Mode.RSS)
-        binding.classicTopBar.setSearchEntryVisible(false)
-        binding.classicTopBar.setTitle(getString(R.string.rss))
-        binding.classicTopBar.searchButton.setImageResource(R.drawable.ic_history)
-        binding.classicTopBar.searchButton.contentDescription = getString(R.string.history)
-        binding.classicTopBar.searchButton.setOnClickListener {
-            showDialogFragment<ReadRecordDialog>()
-        }
-        binding.classicTopBar.starButton.setOnClickListener {
-            startActivity<RssFavoritesActivity>()
-        }
-        binding.classicTopBar.refreshButton.setImageResource(R.drawable.ic_groups)
-        binding.classicTopBar.refreshButton.contentDescription = getString(R.string.group)
-        binding.classicTopBar.refreshButton.setOnClickListener {
-            showClassicGroupPopup(it)
-        }
-        binding.classicTopBar.loginButton.setImageResource(R.drawable.ic_settings)
-        binding.classicTopBar.loginButton.contentDescription = getString(R.string.setting)
-        binding.classicTopBar.loginButton.setOnClickListener {
-            startActivity<RssSourceActivity>()
-        }
     }
 
     override fun onResume() {
@@ -154,6 +133,26 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         }
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu) {
+        menuInflater.inflate(R.menu.main_rss, menu)
+        groupsMenu = menu.findItem(R.id.menu_group)?.subMenu
+        menu.findItem(R.id.menu_rss_star)?.isVisible = !usingModernRss
+        menu.findItem(R.id.menu_rss_config)?.isVisible = !usingModernRss
+        upGroupsMenu()
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem) {
+        super.onCompatOptionsItemSelected(item)
+        when (item.itemId) {
+            R.id.menu_read_record -> showDialogFragment<ReadRecordDialog>()
+            R.id.menu_rss_config -> startActivity<RssSourceActivity>()
+            R.id.menu_rss_star -> startActivity<RssFavoritesActivity>()
+            else -> if (!usingModernRss && item.groupId == R.id.menu_group_text) {
+                searchView.setQuery("group:${item.title}", true)
+            }
+        }
+    }
+
     override fun onPause() {
         super.onPause()
         searchView.clearFocus()
@@ -166,8 +165,6 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         rssFlowJob?.cancel()
         rssFlowJob = null
         pendingRenderCurrentSort = false
-        classicGroupPopup?.dismiss()
-        classicGroupPopup = null
         rssWebView?.let { webView ->
             binding.rssWebContainer.removeView(webView)
             webView.stopLoading()
@@ -181,7 +178,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
 
     private fun applyRssMode() {
         usingModernRss = AppConfig.modernRssPage
-        binding.classicTopBarContainer.isGone = usingModernRss
+        binding.titleBar.isGone = usingModernRss
         binding.topBar.isVisible = usingModernRss
         binding.topBar.showTags(false)
         binding.rssFragmentContainer.isGone = true
@@ -195,6 +192,14 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         } else {
             initClassicRecycler()
             observeClassicRssSources()
+        }
+        activity?.invalidateOptionsMenu()
+    }
+
+    private fun upGroupsMenu() = groupsMenu?.transaction { subMenu ->
+        subMenu.removeGroup(R.id.menu_group_text)
+        groups.forEach {
+            subMenu.add(R.id.menu_group_text, Menu.NONE, Menu.NONE, it)
         }
     }
 
@@ -361,17 +366,9 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
             ).conflate().collect {
                 groups.clear()
                 groups.addAll(it)
+                upGroupsMenu()
             }
         }
-    }
-
-    private fun showClassicGroupPopup(anchor: View) {
-        val actions = groups.map { group ->
-            ModernActionPopup.Action(group) {
-                searchView.setQuery("group:$group", true)
-            }
-        }
-        classicGroupPopup = ModernActionPopup.show(anchor, actions, classicGroupPopup)
     }
 
     private fun observeClassicRssSources(searchKey: String? = currentSearchKey) {

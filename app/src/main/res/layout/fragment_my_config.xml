@@ -5,10 +5,12 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <io.legado.app.ui.widget.MainTopBarView
-        android:id="@+id/top_bar"
+    <io.legado.app.ui.widget.TitleBar
+        android:id="@+id/title_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
+        android:layout_height="wrap_content"
+        app:attachToActivity="false"
+        app:title="@string/my" />
 
     <include layout="@layout/view_search" />
 
