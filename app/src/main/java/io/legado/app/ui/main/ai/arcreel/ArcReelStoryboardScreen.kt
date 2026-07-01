@@ -26,6 +26,7 @@ import coil.request.ImageRequest
 import io.legado.app.help.ai.*
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
+import kotlinx.coroutines.launch
 
 /**
  * ArcReel 分镜查看器 — 展示完整的剧本分镜，包含场景卡片和插画

@@ -52,6 +52,7 @@ object AiConsistencyManager {
         )
         return AiChatService.chatStream(
             messages = messages,
+            onPartial = {},
             includeStructuredBlocks = false,
             useAllTools = false,
             modelConfigOverride = AppConfig.aiSummaryModelConfig
@@ -83,6 +84,7 @@ object AiConsistencyManager {
         )
         return AiChatService.chatStream(
             messages = messages,
+            onPartial = {},
             includeStructuredBlocks = false,
             useAllTools = false,
             modelConfigOverride = AppConfig.aiSummaryModelConfig
@@ -125,6 +127,7 @@ object AiConsistencyManager {
         )
         val raw = AiChatService.chatStream(
             messages = messages,
+            onPartial = {},
             includeStructuredBlocks = false,
             useAllTools = false,
             modelConfigOverride = AppConfig.aiSummaryModelConfig

@@ -213,7 +213,7 @@ object ArcReelPipeline {
                 )
                 sceneImages = batchResults
                     .filter { it.imageUrl != null }
-                    .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }
+                    .associate { Pair(result.scenes.getOrNull(it.index)?.sceneId ?: it.index, it.imageUrl!!) }
             }
             storyboards.add(ChapterStoryboard(chapterIdx, "第${chapterIdx + 1}章", result, sceneImages))
         }
@@ -304,7 +304,7 @@ object ArcReelPipeline {
             )
             sceneImages = batchResults
                 .filter { it.imageUrl != null }
-                .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }
+                .associate { Pair(result.scenes.getOrNull(it.index)?.sceneId ?: it.index, it.imageUrl!!) }
         }
 
         val newStoryboard = ChapterStoryboard(chapterIndex, chapterTitle, result, sceneImages)
@@ -351,6 +351,7 @@ object ArcReelPipeline {
             )
             AiChatService.chatStream(
                 messages = messages,
+                onPartial = {},
                 includeStructuredBlocks = false,
                 useAllTools = false,
                 modelConfigOverride = AppConfig.aiSummaryModelConfig
@@ -368,6 +369,7 @@ object ArcReelPipeline {
             )
             AiChatService.chatStream(
                 messages = messages,
+                onPartial = {},
                 includeStructuredBlocks = false,
                 useAllTools = false,
                 modelConfigOverride = AppConfig.aiSummaryModelConfig
