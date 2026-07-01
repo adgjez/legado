@@ -212,7 +212,9 @@ fun AppManagementLazyColumn(
         ComposeLazyListFastScroller(
             state = state,
             enabled = showFastScroller,
-            modifier = Modifier.align(Alignment.CenterEnd)
+            modifier = Modifier.align(Alignment.CenterEnd),
+            touchTargetWidth = 28.dp,
+            dragHotZoneWidth = 26.dp
         )
     }
 }
