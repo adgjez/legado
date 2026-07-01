@@ -1,6 +1,7 @@
 package io.legado.app.ui.widget
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -29,6 +30,8 @@ import io.legado.app.ui.widget.compose.ComposeThemeImageState
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.MainTopBarAction
 import io.legado.app.ui.widget.compose.MainTopBarActionState
+import io.legado.app.ui.widget.compose.MainTopBarAnchor
+import io.legado.app.ui.widget.compose.MainTopBarAnchorBounds
 import io.legado.app.ui.widget.compose.MainTopBarTagBarState
 import io.legado.app.ui.widget.compose.MainTopBarTagItem
 import io.legado.app.ui.widget.compose.MainTopBarUiState
@@ -69,6 +72,12 @@ class MainTopBarView @JvmOverloads constructor(
     }
     private val contentLayer = ComposeView(context).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+    }
+    private val proxyLayer = FrameLayout(context).apply {
+        visibility = View.INVISIBLE
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
     }
     private val backdropGlass = StableLiquidGlassView(context).apply {
         visibility = View.GONE
@@ -133,12 +142,20 @@ class MainTopBarView @JvmOverloads constructor(
             )
         )
         surfaceLayout.addView(
+            proxyLayer,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        surfaceLayout.addView(
             contentLayer,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
         )
+        installProxyAnchors()
         titleSelect.onStateChanged = ::requestRender
         searchEntry.onStateChanged = ::requestRender
         titleText.onStateChanged = ::requestRender
@@ -349,12 +366,83 @@ class MainTopBarView @JvmOverloads constructor(
                         onTitleLongClick = { titleSelect.performLongClick() },
                         onSearchEntryClick = { searchEntry.performClick() },
                         onActionClick = ::dispatchActionClick,
+                        onAnchorBoundsChanged = ::updateProxyAnchorBounds,
                         onTagClick = ::dispatchTagClick,
                         onTagLongClick = ::dispatchTagLongClick
                     )
                 }
             }
         }
+    }
+
+    private fun installProxyAnchors() {
+        titleSelect.suppressDrawing = true
+        searchEntry.suppressDrawing = true
+        proxyLayer.addProxy(titleSelect)
+        proxyLayer.addProxy(searchEntry)
+        listOf(
+            searchButton,
+            filterButton,
+            starButton,
+            refreshButton,
+            loginButton,
+            moreButton,
+            filterToggleButton
+        ).forEach { button ->
+            button.suppressDrawing = true
+            proxyLayer.addProxy(button)
+        }
+    }
+
+    private fun FrameLayout.addProxy(view: View) {
+        if (view.parent === this) return
+        if (view.parent is ViewGroup) {
+            (view.parent as ViewGroup).removeView(view)
+        }
+        addView(
+            view,
+            FrameLayout.LayoutParams(
+                1,
+                1
+            )
+        )
+    }
+
+    private fun updateProxyAnchorBounds(anchor: MainTopBarAnchor, bounds: MainTopBarAnchorBounds) {
+        val view = when (anchor) {
+            MainTopBarAnchor.TITLE -> titleSelect
+            MainTopBarAnchor.SEARCH_ENTRY -> searchEntry
+            MainTopBarAnchor.SEARCH -> searchButton
+            MainTopBarAnchor.FILTER -> filterButton
+            MainTopBarAnchor.STAR -> starButton
+            MainTopBarAnchor.REFRESH -> refreshButton
+            MainTopBarAnchor.LOGIN -> loginButton
+            MainTopBarAnchor.MORE -> moreButton
+            MainTopBarAnchor.FILTER_TOGGLE -> filterToggleButton
+        }
+        val width = (bounds.right - bounds.left).coerceAtLeast(1)
+        val height = (bounds.bottom - bounds.top).coerceAtLeast(1)
+        val params = view.layoutParams as? FrameLayout.LayoutParams
+        if (params == null) {
+            view.layoutParams = FrameLayout.LayoutParams(width, height).apply {
+                leftMargin = bounds.left
+                topMargin = bounds.top
+            }
+            return
+        }
+        if (
+            params.width == width &&
+            params.height == height &&
+            params.leftMargin == bounds.left &&
+            params.topMargin == bounds.top
+        ) {
+            return
+        }
+        params.width = width
+        params.height = height
+        params.leftMargin = bounds.left
+        params.topMargin = bounds.top
+        view.layoutParams = params
     }
 
     private fun dispatchActionClick(action: MainTopBarAction) {
@@ -659,13 +747,28 @@ class MainTopBarView @JvmOverloads constructor(
             loginButton,
             filterToggleButton
         ).forEach { button ->
-            val params = button.layoutParams as? LayoutParams
-            if (params == null) {
-                button.layoutParams = LayoutParams(sizePx, sizePx)
-            } else if (params.width != sizePx || params.height != sizePx) {
-                params.width = sizePx
-                params.height = sizePx
-                button.layoutParams = params
+            when (val params = button.layoutParams) {
+                is FrameLayout.LayoutParams -> {
+                    if (params.width <= 1 || params.height <= 1) {
+                        params.width = sizePx
+                        params.height = sizePx
+                        button.layoutParams = params
+                    }
+                }
+                is LayoutParams -> {
+                    if (params.width != sizePx || params.height != sizePx) {
+                        params.width = sizePx
+                        params.height = sizePx
+                        button.layoutParams = params
+                    }
+                }
+                else -> {
+                    button.layoutParams = if (button.parent === proxyLayer) {
+                        FrameLayout.LayoutParams(sizePx, sizePx)
+                    } else {
+                        LayoutParams(sizePx, sizePx)
+                    }
+                }
             }
         }
     }
@@ -710,6 +813,13 @@ class MainTopBarView @JvmOverloads constructor(
 
     class StateAwareLinearLayout(context: Context) : LinearLayout(context) {
         var onStateChanged: (() -> Unit)? = null
+        var suppressDrawing: Boolean = false
+
+        override fun draw(canvas: Canvas) {
+            if (!suppressDrawing) {
+                super.draw(canvas)
+            }
+        }
 
         override fun setVisibility(visibility: Int) {
             if (visibility == getVisibility()) {
@@ -776,7 +886,14 @@ class MainTopBarView @JvmOverloads constructor(
         var onStateChanged: (() -> Unit)? = null
         var iconRes: Int = iconRes
             private set
+        var suppressDrawing: Boolean = false
         private var imageResourceApplied = false
+
+        override fun draw(canvas: Canvas) {
+            if (!suppressDrawing) {
+                super.draw(canvas)
+            }
+        }
 
         override fun setImageResource(resId: Int) {
             if (imageResourceApplied && iconRes == resId) return

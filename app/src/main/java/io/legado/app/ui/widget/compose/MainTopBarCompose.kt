@@ -8,10 +8,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,6 +45,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
@@ -68,6 +68,7 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.utils.ColorUtils
+import kotlin.math.roundToInt
 
 enum class MainTopBarAction {
     SEARCH,
@@ -78,6 +79,26 @@ enum class MainTopBarAction {
     MORE,
     FILTER_TOGGLE
 }
+
+enum class MainTopBarAnchor {
+    TITLE,
+    SEARCH_ENTRY,
+    SEARCH,
+    FILTER,
+    STAR,
+    REFRESH,
+    LOGIN,
+    MORE,
+    FILTER_TOGGLE
+}
+
+@Immutable
+data class MainTopBarAnchorBounds(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
+)
 
 @Immutable
 data class MainTopBarActionState(
@@ -133,6 +154,7 @@ fun ComposeMainTopBar(
     onTitleLongClick: () -> Boolean,
     onSearchEntryClick: () -> Unit,
     onActionClick: (MainTopBarAction) -> Unit,
+    onAnchorBoundsChanged: (MainTopBarAnchor, MainTopBarAnchorBounds) -> Unit,
     onTagClick: (TopBarTagSlot, Int) -> Unit,
     onTagLongClick: (TopBarTagSlot, Int) -> Boolean,
     modifier: Modifier = Modifier
@@ -167,7 +189,8 @@ fun ComposeMainTopBar(
             onTitleClick = onTitleClick,
             onTitleLongClick = onTitleLongClick,
             onSearchEntryClick = onSearchEntryClick,
-            onActionClick = onActionClick
+            onActionClick = onActionClick,
+            onAnchorBoundsChanged = onAnchorBoundsChanged
         )
         if (isRegular) {
             val filterToggle = state.action(MainTopBarAction.FILTER_TOGGLE)
@@ -196,7 +219,8 @@ fun ComposeMainTopBar(
                         isRegular = true,
                         textColor = textColor,
                         marginStart = 6.dp,
-                        onActionClick = onActionClick
+                        onActionClick = onActionClick,
+                        onAnchorBoundsChanged = onAnchorBoundsChanged
                     )
                 }
             }
@@ -263,7 +287,8 @@ private fun MainTopTitleRow(
     onTitleClick: () -> Unit,
     onTitleLongClick: () -> Boolean,
     onSearchEntryClick: () -> Unit,
-    onActionClick: (MainTopBarAction) -> Unit
+    onActionClick: (MainTopBarAction) -> Unit,
+    onAnchorBoundsChanged: (MainTopBarAnchor, MainTopBarAnchorBounds) -> Unit
 ) {
     val density = LocalDensity.current
     val controlHeight = if (isRegular) {
@@ -287,7 +312,8 @@ private fun MainTopTitleRow(
                 bodyFont = bodyFont,
                 height = controlHeight,
                 modifier = Modifier.weight(1f),
-                onClick = onSearchEntryClick
+                onClick = onSearchEntryClick,
+                onAnchorBoundsChanged = onAnchorBoundsChanged
             )
         } else {
             Box(
@@ -298,6 +324,7 @@ private fun MainTopTitleRow(
                     modifier = Modifier
                         .height(controlHeight)
                         .then(if (titleMaxWidth != null) Modifier.widthIn(max = titleMaxWidth) else Modifier)
+                        .topBarAnchor(MainTopBarAnchor.TITLE, onAnchorBoundsChanged)
                         .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
                         .combinedClickable(
                             enabled = state.titleEnabled,
@@ -340,7 +367,8 @@ private fun MainTopTitleRow(
                     isRegular = isRegular,
                     textColor = textColor,
                     marginStart = marginStart,
-                    onActionClick = onActionClick
+                    onActionClick = onActionClick,
+                    onAnchorBoundsChanged = onAnchorBoundsChanged
                 )
             }
     }
@@ -356,12 +384,14 @@ private fun SearchEntry(
     bodyFont: FontFamily,
     height: Dp,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onAnchorBoundsChanged: (MainTopBarAnchor, MainTopBarAnchorBounds) -> Unit
 ) {
     val context = LocalContext.current
     Row(
         modifier = modifier
             .height(height)
+            .topBarAnchor(MainTopBarAnchor.SEARCH_ENTRY, onAnchorBoundsChanged)
             .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
             .background(Color(context.backgroundColor).copy(alpha = 0.42f))
             .clickable(
@@ -398,7 +428,8 @@ private fun TopBarActionButton(
     isRegular: Boolean,
     textColor: Color,
     marginStart: Dp,
-    onActionClick: (MainTopBarAction) -> Unit
+    onActionClick: (MainTopBarAction) -> Unit,
+    onAnchorBoundsChanged: (MainTopBarAnchor, MainTopBarAnchorBounds) -> Unit
 ) {
     if (!state.visible) return
     val size = if (isRegular) {
@@ -419,6 +450,7 @@ private fun TopBarActionButton(
         modifier = Modifier
             .padding(start = marginStart)
             .size(size)
+            .topBarAnchor(state.action.anchor(), onAnchorBoundsChanged)
             .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
             .clickable(
                 enabled = state.enabled,
@@ -494,10 +526,42 @@ private fun FilterBarVisibility(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(160)),
-        exit = shrinkVertically(tween(150, easing = FastOutSlowInEasing)) + fadeOut(tween(120))
+        enter = fadeIn(tween(90, easing = FastOutSlowInEasing)),
+        exit = fadeOut(tween(90, easing = FastOutSlowInEasing))
     ) {
         content()
+    }
+}
+
+private fun Modifier.topBarAnchor(
+    anchor: MainTopBarAnchor,
+    onAnchorBoundsChanged: (MainTopBarAnchor, MainTopBarAnchorBounds) -> Unit
+): Modifier {
+    return onGloballyPositioned { coordinates ->
+        val position = coordinates.positionInRoot()
+        val left = position.x.roundToInt()
+        val top = position.y.roundToInt()
+        onAnchorBoundsChanged(
+            anchor,
+            MainTopBarAnchorBounds(
+                left = left,
+                top = top,
+                right = left + coordinates.size.width,
+                bottom = top + coordinates.size.height
+            )
+        )
+    }
+}
+
+private fun MainTopBarAction.anchor(): MainTopBarAnchor {
+    return when (this) {
+        MainTopBarAction.SEARCH -> MainTopBarAnchor.SEARCH
+        MainTopBarAction.FILTER -> MainTopBarAnchor.FILTER
+        MainTopBarAction.STAR -> MainTopBarAnchor.STAR
+        MainTopBarAction.REFRESH -> MainTopBarAnchor.REFRESH
+        MainTopBarAction.LOGIN -> MainTopBarAnchor.LOGIN
+        MainTopBarAction.MORE -> MainTopBarAnchor.MORE
+        MainTopBarAction.FILTER_TOGGLE -> MainTopBarAnchor.FILTER_TOGGLE
     }
 }
 
