@@ -1,6 +1,5 @@
 package io.legado.app.ui.widget
 
-import android.animation.LayoutTransition
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -94,6 +93,7 @@ class MainTopBarView @JvmOverloads constructor(
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
     private var statusBarInsetTop: Int = 0
+    private var filterVisibilityGeneration = 0
     private val topBarEaseOut = PathInterpolator(0.22f, 0.61f, 0.36f, 1.00f)
     private val topBarEaseInOut = PathInterpolator(0.45f, 0.00f, 0.20f, 1.00f)
     /** 覆盖式宿主(顶栏浮在列表之上，如发现页)置 true，使默认样式顶栏不透明，避免列表透出。 */
@@ -392,9 +392,7 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     private fun applyRegularStyle(config: TopBarConfig.Config) {
-        if (contentLayout.layoutTransition == null) {
-            contentLayout.layoutTransition = createTopBarLayoutTransition()
-        }
+        contentLayout.layoutTransition = null
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         val vertical = 5.dp
         contentLayout.setPadding(horizontal, statusBarInsetTop + vertical, horizontal, vertical)
@@ -595,19 +593,34 @@ class MainTopBarView @JvmOverloads constructor(
         val oldToggleVisible = filterToggleButton.isVisible
         val oldSelectsVisible = selectsBar.isVisible
         val oldTagsVisible = tagsBar.isVisible
+        var targetSelectsVisible = selectsBarRequested
+        var targetTagsVisible = tagsBarRequested
+        var hidingFilterBars = false
         if (isRegularStyle()) {
             val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
             filterToggleButton.isVisible = hasFilters &&
                 !(filtersExpanded && config.hideFilterToggleWhenExpanded)
             animateFilterToggle(filtersExpanded)
-            setFilterBarVisible(selectsBar, filtersExpanded && selectsBarRequested, oldSelectsVisible)
-            setFilterBarVisible(tagsBar, filtersExpanded && tagsBarRequested, oldTagsVisible)
+            targetSelectsVisible = filtersExpanded && selectsBarRequested
+            targetTagsVisible = filtersExpanded && tagsBarRequested
+            hidingFilterBars = (oldSelectsVisible && !targetSelectsVisible) ||
+                (oldTagsVisible && !targetTagsVisible)
+            setFilterBarVisible(selectsBar, targetSelectsVisible, oldSelectsVisible)
+            setFilterBarVisible(tagsBar, targetTagsVisible, oldTagsVisible)
         } else {
+            filterVisibilityGeneration++
             filterToggleButton.isVisible = false
             selectsBar.isVisible = selectsBarRequested
             tagsBar.isVisible = tagsBarRequested
+            selectsBar.resetFilterBarAnimationState()
+            tagsBar.resetFilterBarAnimationState()
         }
         primaryFilterRow.isVisible = (isRegularStyle() && primaryBarRequested) || filterToggleButton.isVisible
+        if (hidingFilterBars) {
+            scheduleFilterBarVisibilityFinalization()
+        } else {
+            filterVisibilityGeneration++
+        }
         if (
             oldRowVisible != primaryFilterRow.isVisible ||
             oldToggleVisible != filterToggleButton.isVisible ||
@@ -630,7 +643,7 @@ class MainTopBarView @JvmOverloads constructor(
         }
         filterToggleButton.animate()
             .rotation(targetRotation)
-            .setDuration(260L)
+            .setDuration(160L)
             .setInterpolator(topBarEaseOut)
             .start()
     }
@@ -643,47 +656,69 @@ class MainTopBarView @JvmOverloads constructor(
         view.animate().cancel()
         if (!isAttachedToWindow) {
             view.isVisible = visible
-            view.alpha = 1f
-            view.translationY = 0f
-            view.scaleY = 1f
+            view.resetFilterBarAnimationState()
             return
         }
         if (visible) {
             if (!wasVisible) {
                 view.alpha = 0f
-                view.translationY = (-4).dp.toFloat()
+                view.translationY = (-6).dp.toFloat()
                 view.isVisible = true
             } else {
                 view.isVisible = true
             }
+            view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
             view.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(260L)
+                .setDuration(140L)
                 .setInterpolator(topBarEaseOut)
+                .withEndAction {
+                    view.resetFilterBarAnimationState()
+                }
                 .start()
         } else if (wasVisible) {
+            view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
             view.animate()
                 .alpha(0f)
-                .translationY((-2).dp.toFloat())
-                .setDuration(150L)
+                .translationY((-4).dp.toFloat())
+                .setDuration(110L)
                 .setInterpolator(topBarEaseInOut)
                 .withEndAction {
-                    if (!shouldFilterBarBeVisible(view)) {
-                        view.isVisible = false
-                        view.alpha = 1f
-                        view.translationY = 0f
-                        requestLayout()
-                        invalidate()
-                        notifyHeightChangedAfterLayout()
-                    }
+                    view.setLayerType(View.LAYER_TYPE_NONE, null)
                 }
                 .start()
         } else {
             view.isVisible = false
-            view.alpha = 1f
-            view.translationY = 0f
+            view.resetFilterBarAnimationState()
         }
+    }
+
+    private fun scheduleFilterBarVisibilityFinalization() {
+        val generation = ++filterVisibilityGeneration
+        postDelayed({
+            if (generation != filterVisibilityGeneration) return@postDelayed
+            var changed = false
+            listOf(selectsBar, tagsBar).forEach { bar ->
+                if (!shouldFilterBarBeVisible(bar) && bar.isVisible) {
+                    bar.isVisible = false
+                    bar.resetFilterBarAnimationState()
+                    changed = true
+                }
+            }
+            if (changed) {
+                requestLayout()
+                invalidate()
+                notifyHeightChangedAfterLayout()
+            }
+        }, 112L)
+    }
+
+    private fun View.resetFilterBarAnimationState() {
+        animate().cancel()
+        setLayerType(View.LAYER_TYPE_NONE, null)
+        alpha = 1f
+        translationY = 0f
     }
 
     private fun shouldFilterBarBeVisible(view: View): Boolean {
@@ -703,28 +738,6 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
-
-    private fun createTopBarLayoutTransition(): LayoutTransition {
-        return LayoutTransition().apply {
-            setAnimateParentHierarchy(false)
-            enableTransitionType(LayoutTransition.CHANGING)
-            setDuration(LayoutTransition.APPEARING, 220L)
-            setDuration(LayoutTransition.DISAPPEARING, 160L)
-            setDuration(LayoutTransition.CHANGE_APPEARING, 300L)
-            setDuration(LayoutTransition.CHANGE_DISAPPEARING, 240L)
-            setDuration(LayoutTransition.CHANGING, 300L)
-            setStartDelay(LayoutTransition.APPEARING, 0L)
-            setStartDelay(LayoutTransition.DISAPPEARING, 0L)
-            setStartDelay(LayoutTransition.CHANGE_APPEARING, 0L)
-            setStartDelay(LayoutTransition.CHANGE_DISAPPEARING, 0L)
-            setStartDelay(LayoutTransition.CHANGING, 0L)
-            setInterpolator(LayoutTransition.APPEARING, topBarEaseOut)
-            setInterpolator(LayoutTransition.DISAPPEARING, topBarEaseInOut)
-            setInterpolator(LayoutTransition.CHANGE_APPEARING, topBarEaseOut)
-            setInterpolator(LayoutTransition.CHANGE_DISAPPEARING, topBarEaseInOut)
-            setInterpolator(LayoutTransition.CHANGING, topBarEaseOut)
-        }
-    }
 
     private class ContentMeasuredFrameLayout(context: Context) : FrameLayout(context) {
 
