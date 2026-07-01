@@ -97,8 +97,26 @@ object EpubCoreProvider {
     }
 
     @Synchronized
+    fun imageResolverOrNull(book: Book): EpubImageResolver? {
+        return runCatching {
+            open(book).facade.imageResolver()
+        }.onFailure {
+            AppLog.putDebug("EPUB core image resolver unavailable: ${it.localizedMessage}", it)
+        }.getOrNull()
+    }
+
+    @Synchronized
     fun typefaceResolver(book: Book): EpubTypefaceResolver {
         return open(book).facade.typefaceResolver()
+    }
+
+    @Synchronized
+    fun typefaceResolverOrNull(book: Book): EpubTypefaceResolver? {
+        return runCatching {
+            open(book).facade.typefaceResolver()
+        }.onFailure {
+            AppLog.putDebug("EPUB core typeface resolver unavailable: ${it.localizedMessage}", it)
+        }.getOrNull()
     }
 
     @Synchronized

@@ -2521,10 +2521,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.epubReadView.renderer.textColor = ReadBookConfig.textColor
         binding.epubReadView.renderer.imageResolver = ReadBook.book
             ?.takeIf { it.isEpub }
-            ?.let { EpubCoreProvider.imageResolver(it) }
+            ?.let { EpubCoreProvider.imageResolverOrNull(it) }
         binding.epubReadView.renderer.typefaceResolver = ReadBook.book
             ?.takeIf { it.isEpub }
-            ?.let { EpubCoreProvider.typefaceResolver(it) }
+            ?.let { EpubCoreProvider.typefaceResolverOrNull(it) }
         binding.epubReadView.renderer.textPaint = TextPaint().apply {
             isAntiAlias = true
             color = ReadBookConfig.textColor
