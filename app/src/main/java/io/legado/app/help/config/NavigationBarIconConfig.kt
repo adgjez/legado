@@ -602,17 +602,21 @@ object NavigationBarIconConfig {
             entry.config.name.normalizeFileName().ifBlank { "navigation_${System.currentTimeMillis()}" }
         }
         val dir = entry.localDir ?: localDir(entry.config.isNightMode, dirName).apply { mkdirs() }
+        val wallpaperName = copyBottomWallpaperIntoPackage(source, dir)
         val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
-        config.wallpaperPath = source.absolutePath
+        config.wallpaperPath = wallpaperName
         return addOrUpdate(config, entry.copy(dirName = dirName, localDir = dir))
     }
 
     fun clearBottomWallpaper(entry: Entry): Entry {
         if (entry.dirName == DEFAULT_DIR_NAME) return entry
-        entry.config.wallpaperPath?.let { name ->
-            val file = File(name)
-            val resolved = if (file.isAbsolute) file else File(entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName), name)
-            resolved.takeIf { it.exists() }?.delete()
+        val dir = entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName)
+        entry.config.wallpaperPath?.let { value ->
+            val file = File(value)
+            val resolved = if (file.isAbsolute) file else File(dir, value)
+            if (isPackagedBottomWallpaper(resolved, dir)) {
+                resolved.takeIf { it.exists() }?.delete()
+            }
         }
         val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
         config.wallpaperPath = null
@@ -1305,15 +1309,32 @@ object NavigationBarIconConfig {
         if (!source.exists() || !source.isFile) {
             return null
         }
-        dir.listFiles()
-            ?.filter { it.isFile && it.name.startsWith("bottom_bar_wallpaper.") }
-            ?.forEach { it.delete() }
+        return copyBottomWallpaperIntoPackage(source, dir)
+    }
+
+    private fun copyBottomWallpaperIntoPackage(source: File, dir: File): String {
+        dir.mkdirs()
         val suffix = source.extension.takeIf { it.isNotBlank() } ?: "jpg"
         val target = File(dir, "bottom_bar_wallpaper.$suffix")
-        if (source.absolutePath != target.absolutePath) {
+        if (source.canonicalFile != target.canonicalFile) {
             source.copyTo(target, overwrite = true)
         }
+        deletePackagedBottomWallpapers(dir, target)
         return target.name
+    }
+
+    private fun deletePackagedBottomWallpapers(dir: File, keepFile: File? = null) {
+        val keepCanonical = keepFile?.takeIf { it.exists() }?.canonicalFile
+        dir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("bottom_bar_wallpaper.") }
+            ?.filter { keepCanonical == null || it.canonicalFile != keepCanonical }
+            ?.forEach { it.delete() }
+    }
+
+    private fun isPackagedBottomWallpaper(file: File, dir: File): Boolean {
+        if (!file.name.startsWith("bottom_bar_wallpaper.")) return false
+        return runCatching { file.canonicalFile.parentFile == dir.canonicalFile }
+            .getOrDefault(false)
     }
 
     private fun resetActiveIfNeeded(entry: Entry) {
