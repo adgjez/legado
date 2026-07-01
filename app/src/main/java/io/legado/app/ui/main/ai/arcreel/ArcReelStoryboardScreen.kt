@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.ai.arcreel
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -73,6 +74,30 @@ fun ArcReelStoryboardScreen(
                     fontSize = 13.sp,
                     color = style.colors.secondaryText
                 )
+            }
+            IconButton(onClick = {
+                val shareText = buildString {
+                    appendLine("${chapter.chapterTitle} - 分镜剧本")
+                    appendLine("=".repeat(30))
+                    chapter.result.scenes.forEachIndexed { index, scene ->
+                        appendLine()
+                        appendLine("场景 ${index + 1}: ${scene.sceneTitle}")
+                        appendLine("地点: ${scene.location}")
+                        appendLine("时间: ${scene.timeOfDay}")
+                        appendLine("角色: ${scene.characters.joinToString("、")}")
+                        appendLine("描述: ${scene.description}")
+                        if (scene.dialogue.isNotBlank()) {
+                            appendLine("对话: ${scene.dialogue}")
+                        }
+                    }
+                }
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, shareText)
+                }
+                context.startActivity(Intent.createChooser(intent, "分享分镜"))
+            }) {
+                Text("↗", fontSize = 18.sp, color = style.colors.primaryText)
             }
         }
 
@@ -318,6 +343,29 @@ fun ArcReelGalleryScreen(
                 Text("←", fontSize = 20.sp, color = style.colors.primaryText)
             }
             Text("场景图库", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = style.colors.primaryText)
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = {
+                val shareText = buildString {
+                    appendLine("场景图库")
+                    appendLine("=".repeat(20))
+                    items.forEach { item ->
+                        appendLine()
+                        appendLine("名称: ${item.name}")
+                        appendLine("描述: ${item.description}")
+                        appendLine("类型: ${typeLabel(item.type)}")
+                        if (item.imageUrl != null) {
+                            appendLine("图片: ${item.imageUrl}")
+                        }
+                    }
+                }
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, shareText)
+                }
+                context.startActivity(Intent.createChooser(intent, "分享图库"))
+            }) {
+                Text("↗", fontSize = 18.sp, color = style.colors.primaryText)
+            }
         }
 
         // 分类筛选
@@ -363,38 +411,66 @@ fun ArcReelGalleryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     rowItems.forEach { item ->
-                        Card(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(style.metrics.cardRadius),
-                            colors = CardDefaults.cardColors(containerColor = style.colors.cardSurface)
-                        ) {
-                            Column {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(160.dp)
-                                        .clip(RoundedCornerShape(topStart = style.metrics.cardRadius, topEnd = style.metrics.cardRadius))
-                                        .background(style.colors.stroke),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (item.imageUrl != null) {
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(LocalContext.current)
-                                                .data(item.imageUrl)
-                                                .crossfade(true)
-                                                .build(),
-                                            contentDescription = item.name,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Text("无图片", fontSize = 13.sp, color = style.colors.secondaryText)
+                        Box(modifier = Modifier.weight(1f)) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(style.metrics.cardRadius),
+                                colors = CardDefaults.cardColors(containerColor = style.colors.cardSurface)
+                            ) {
+                                Column {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(160.dp)
+                                            .clip(RoundedCornerShape(topStart = style.metrics.cardRadius, topEnd = style.metrics.cardRadius))
+                                            .background(style.colors.stroke),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (item.imageUrl != null) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(LocalContext.current)
+                                                    .data(item.imageUrl)
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = item.name,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Text("无图片", fontSize = 13.sp, color = style.colors.secondaryText)
+                                        }
+                                    }
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(item.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = style.colors.primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(item.description.take(50), fontSize = 11.sp, color = style.colors.secondaryText, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(typeLabel(item.type), fontSize = 10.sp, color = style.colors.accent)
                                     }
                                 }
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text(item.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = style.colors.primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(item.description.take(50), fontSize = 11.sp, color = style.colors.secondaryText, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text(typeLabel(item.type), fontSize = 10.sp, color = style.colors.accent)
+                            }
+                            if (item.imageUrl != null) {
+                                IconButton(
+                                    onClick = {
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, "${item.name}\n${item.imageUrl}")
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "分享图片"))
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(32.dp)
+                                ) {
+                                    Text(
+                                        "↗",
+                                        fontSize = 14.sp,
+                                        color = style.colors.primaryText,
+                                        modifier = Modifier
+                                            .background(
+                                                style.colors.cardSurface.copy(alpha = 0.8f),
+                                                RoundedCornerShape(bottomStart = 8.dp)
+                                            )
+                                            .padding(start = 6.dp, bottom = 4.dp)
+                                    )
                                 }
                             }
                         }

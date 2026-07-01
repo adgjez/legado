@@ -101,18 +101,24 @@ object ArcReelPipeline {
 
         // Phase 1: 角色设计
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_CHARACTERS, 0f, "正在分析角色...")
+        saveProgress(project.id, ArcReelProject.PipelinePhase.EXTRACTING_CHARACTERS, 0f, "正在分析角色...")
         val characters = AiCharacterDesignService.extractCharacters(designInput)
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_CHARACTERS, 1f, "已提取 ${characters.size} 个角色")
+        saveProgress(project.id, ArcReelProject.PipelinePhase.EXTRACTING_CHARACTERS, 1f, "已提取 ${characters.size} 个角色")
 
         // Phase 2: 场景设计
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_SCENES, 0f, "正在分析场景...")
+        saveProgress(project.id, ArcReelProject.PipelinePhase.EXTRACTING_SCENES, 0f, "正在分析场景...")
         val scenes = AiCharacterDesignService.extractScenes(designInput)
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_SCENES, 1f, "已提取 ${scenes.size} 个场景")
+        saveProgress(project.id, ArcReelProject.PipelinePhase.EXTRACTING_SCENES, 1f, "已提取 ${scenes.size} 个场景")
 
         // Phase 3: 道具设计
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_PROPS, 0f, "正在分析道具...")
+        saveProgress(project.id, ArcReelProject.PipelinePhase.EXTRACTING_PROPS, 0f, "正在分析道具...")
         val props = AiCharacterDesignService.extractProps(designInput)
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_PROPS, 1f, "已提取 ${props.size} 个道具")
+        saveProgress(project.id, ArcReelProject.PipelinePhase.EXTRACTING_PROPS, 1f, "已提取 ${props.size} 个道具")
 
         current = current.copy(
             characters = characters,
@@ -247,6 +253,7 @@ object ArcReelPipeline {
         }
 
         updatePhase(ArcReelProject.PipelinePhase.COMPLETED, 1f, "完成")
+        saveProgress(project.id, ArcReelProject.PipelinePhase.COMPLETED, 1f, "完成")
         return current.copy(
             storyboards = storyboards,
             storyboard = storyboards.firstOrNull()?.result,
@@ -339,6 +346,10 @@ object ArcReelPipeline {
 
     private fun updatePhase(phase: ArcReelProject.PipelinePhase, progress: Float, message: String) {
         _state.value = PipelineState(phase, progress, message)
+    }
+
+    private suspend fun saveProgress(projectId: String, phase: ArcReelProject.PipelinePhase, progress: Float, message: String) {
+        ArcReelProjectRepository.savePipelineProgress(projectId, phase, progress, message)
     }
 
     private suspend fun extractWorldStyle(input: AiCharacterDesignService.DesignInput): String {

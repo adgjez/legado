@@ -42,7 +42,8 @@ import kotlinx.coroutines.launch
 fun ArcReelMainScreen(
     project: ArcReelProject,
     onBack: () -> Unit,
-    onStartPipeline: suspend (ArcReelProject) -> ArcReelProject,
+    onStartPipeline: suspend (ArcReelProject, Boolean) -> ArcReelProject,
+    onSaveProject: (ArcReelProject) -> Unit = {},
     onViewStoryboard: (ChapterStoryboard) -> Unit,
     onViewCharacters: () -> Unit,
     onViewGallery: () -> Unit
@@ -53,6 +54,7 @@ fun ArcReelMainScreen(
     val pipelineState by ArcReelPipeline.state.collectAsState()
     var currentProject by remember { mutableStateOf(project) }
     var isRunning by remember { mutableStateOf(false) }
+    var generateVideos by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -64,6 +66,7 @@ fun ArcReelMainScreen(
         ArcReelTopBar(
             title = currentProject.name,
             onBack = onBack,
+            onSave = { onSaveProject(currentProject) },
             style = style
         )
 
@@ -82,11 +85,13 @@ fun ArcReelMainScreen(
                 PipelineProgressCard(
                     state = pipelineState,
                     isRunning = isRunning,
+                    generateVideos = generateVideos,
+                    onToggleVideos = { generateVideos = it },
                     style = style,
                     onStart = {
                         isRunning = true
                         scope.launch {
-                            currentProject = onStartPipeline(currentProject)
+                            currentProject = onStartPipeline(currentProject, generateVideos)
                             isRunning = false
                         }
                     }
@@ -159,7 +164,7 @@ fun ArcReelMainScreen(
 }
 
 @Composable
-private fun ArcReelTopBar(title: String, onBack: () -> Unit, style: AiComposeStyle) {
+private fun ArcReelTopBar(title: String, onBack: () -> Unit, onSave: () -> Unit = {}, style: AiComposeStyle) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -178,6 +183,9 @@ private fun ArcReelTopBar(title: String, onBack: () -> Unit, style: AiComposeSty
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+        IconButton(onClick = onSave) {
+            Text("💾", fontSize = 16.sp)
+        }
     }
 }
 
@@ -233,6 +241,8 @@ private fun ProjectInfoCard(project: ArcReelProject, style: AiComposeStyle) {
 private fun PipelineProgressCard(
     state: PipelineState,
     isRunning: Boolean,
+    generateVideos: Boolean,
+    onToggleVideos: (Boolean) -> Unit,
     style: AiComposeStyle,
     onStart: () -> Unit
 ) {
@@ -257,6 +267,36 @@ private fun PipelineProgressCard(
                         Text("开始生成", color = Color.White)
                     }
                 }
+            }
+
+            // 视频生成开关
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("生成视频", fontSize = 14.sp, color = style.colors.primaryText)
+                Switch(
+                    checked = generateVideos,
+                    onCheckedChange = onToggleVideos,
+                    colors = SwitchDefaults.colors(checkedTrackColor = style.colors.accent)
+                )
+            }
+
+            // 费用预估
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("预估费用", fontSize = 12.sp, color = style.colors.secondaryText)
+                Text(
+                    estimateCostLabel(generateVideos),
+                    fontSize = 12.sp,
+                    color = style.colors.accent
+                )
             }
 
             AnimatedVisibility(visible = isRunning || state.progress > 0f) {
@@ -549,4 +589,9 @@ private fun phaseLabel(phase: ArcReelProject.PipelinePhase): String = when (phas
     ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS -> "正在生成场景插画..."
     ArcReelProject.PipelinePhase.GENERATING_VIDEO -> "正在生成视频..."
     ArcReelProject.PipelinePhase.COMPLETED -> "完成"
+}
+
+private fun estimateCostLabel(generateVideos: Boolean): String {
+    val baseText = "约 5-10 张图片"
+    return if (generateVideos) "$baseText + 1 段视频" else baseText
 }

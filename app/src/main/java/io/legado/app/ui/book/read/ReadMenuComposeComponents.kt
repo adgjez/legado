@@ -96,7 +96,8 @@ data class ReadMenuTitleBarActions(
     val onEffectiveReplacesClick: () -> Unit,
     val onLogClick: () -> Unit,
     val onHelpClick: () -> Unit,
-    val onArcReelClick: () -> Unit = {}
+    val onArcReelClick: () -> Unit = {},
+    val onMultiChapterArcReelClick: () -> Unit = {}
 )
 
 data class ReadMenuActionBarState(
@@ -234,7 +235,8 @@ fun ReadMenuTitleBar(
                             onEffectiveReplacesClick = actions.onEffectiveReplacesClick,
                             onLogClick = actions.onLogClick,
                             onHelpClick = actions.onHelpClick,
-                            onArcReelClick = actions.onArcReelClick
+                            onArcReelClick = actions.onArcReelClick,
+                            onMultiChapterArcReelClick = actions.onMultiChapterArcReelClick
                         )
                         popupHandle = ModernActionPopup.show(
                             context,
@@ -815,7 +817,8 @@ private fun buildOverflowActions(
     onEffectiveReplacesClick: () -> Unit,
     onLogClick: () -> Unit,
     onHelpClick: () -> Unit,
-    onArcReelClick: () -> Unit = {}
+    onArcReelClick: () -> Unit = {},
+    onMultiChapterArcReelClick: () -> Unit = {}
 ): List<ModernActionPopup.Action> {
     val actions = mutableListOf<ModernActionPopup.Action>()
     actions.add(ModernActionPopup.Action(title = "添加书签", invoke = onAddBookmarkClick))
@@ -856,6 +859,7 @@ private fun buildOverflowActions(
     }
     actions.add(ModernActionPopup.Action(title = "起效的替换", invoke = onEffectiveReplacesClick))
     actions.add(ModernActionPopup.Action(title = "ArcReel 影视化", invoke = onArcReelClick))
+    actions.add(ModernActionPopup.Action(title = "多章节 ArcReel", invoke = onMultiChapterArcReelClick))
     actions.add(ModernActionPopup.Action(title = "日志", invoke = onLogClick))
     actions.add(ModernActionPopup.Action(title = "帮助", invoke = onHelpClick))
     return actions

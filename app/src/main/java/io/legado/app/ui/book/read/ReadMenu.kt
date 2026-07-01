@@ -405,7 +405,8 @@ class ReadMenu @JvmOverloads constructor(
                             onEffectiveReplacesClick = { callBack.showEffectiveReplaces() },
                             onLogClick = { callBack.showLog() },
                             onHelpClick = { callBack.showHelp() },
-                            onArcReelClick = { callBack.openArcReel() }
+                            onArcReelClick = { callBack.openArcReel() },
+                            onMultiChapterArcReelClick = { callBack.openMultiChapterArcReel() }
                         ),
                         style = style,
                         modifier = Modifier.fillMaxWidth()
@@ -799,6 +800,7 @@ class ReadMenu @JvmOverloads constructor(
         fun showParagraphRuleQuickDialog() = Unit
         fun openBookCharacters() = Unit
         fun openArcReel() = Unit
+        fun openMultiChapterArcReel() = Unit
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit
         fun loginCustomReadMenuButton(id: Long) = Unit

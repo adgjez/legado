@@ -3161,6 +3161,34 @@ class ReadBookActivity : BaseReadBookActivity(),
         ArcReelLauncher.launch(this, book, content)
     }
 
+    override fun openMultiChapterArcReel() {
+        val book = ReadBook.book ?: run {
+            toastOnUi("当前书籍不存在")
+            return
+        }
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl).take(10)
+        if (chapters.isEmpty()) {
+            toastOnUi("无法获取章节列表")
+            return
+        }
+        lifecycleScope.launch {
+            val chapterContents = mutableListOf<Pair<BookChapter, String>>()
+            for (chapter in chapters) {
+                try {
+                    val content = BookHelp.getContent(book, chapter) ?: continue
+                    if (content.isNotBlank()) {
+                        chapterContents.add(chapter to content)
+                    }
+                } catch (_: Exception) { }
+            }
+            if (chapterContents.isEmpty()) {
+                toastOnUi("无法获取章节内容")
+                return@launch
+            }
+            ArcReelLauncher.launchWithChapters(this@ReadBookActivity, book, chapterContents)
+        }
+    }
+
     override fun showSearchSetting() {
         showDialogFragment<MoreConfigDialog>()
     }
