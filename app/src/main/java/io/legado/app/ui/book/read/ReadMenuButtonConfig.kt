@@ -24,6 +24,7 @@ object ReadMenuButtonConfig {
         const val AI_SUMMARY = "aiSummary"
         const val PARAGRAPH_RULES = "paragraphRules"
         const val CHARACTERS = "characters"
+        const val ARC_REEL = "arcReel"
 
         val ids = setOf(
             SEARCH,
@@ -37,7 +38,8 @@ object ReadMenuButtonConfig {
             READ_ASSISTANT,
             AI_SUMMARY,
             PARAGRAPH_RULES,
-            CHARACTERS
+            CHARACTERS,
+            ARC_REEL
         )
     }
 
@@ -132,7 +134,8 @@ object ReadMenuButtonConfig {
             builtin(Builtin.CHARACTERS),
             builtin(Builtin.PARAGRAPH_RULES),
             builtin(Builtin.READ_ASSISTANT),
-            builtin(Builtin.AI_SUMMARY)
+            builtin(Builtin.AI_SUMMARY),
+            builtin(Builtin.ARC_REEL)
         )
     }
 }

@@ -761,6 +761,7 @@ private fun readMenuButtonTitle(
             ReadMenuButtonConfig.Builtin.AI_SUMMARY -> "AI"
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> "段落"
             ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
+            ReadMenuButtonConfig.Builtin.ARC_REEL -> "ArcReel"
             else -> ref.id
         }
     }
@@ -789,6 +790,7 @@ private fun readMenuButtonIconRes(
         ReadMenuButtonConfig.Builtin.AI_SUMMARY -> R.drawable.ic_bottom_ai
         ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
         ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
+        ReadMenuButtonConfig.Builtin.ARC_REEL -> R.drawable.ic_bottom_ai_s
         else -> R.drawable.ic_custom
     }
 }

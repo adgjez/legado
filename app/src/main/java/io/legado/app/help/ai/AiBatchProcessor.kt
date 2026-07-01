@@ -69,7 +69,8 @@ object AiBatchProcessor {
             )
 
             try {
-                val result = AiChapterSummaryService.summarize(
+                val result = withRetry(config.retryCount, config.retryDelayMs) {
+                    AiChapterSummaryService.summarize(
                     input = input,
                     forceRefresh = forceRefresh,
                     onPartial = {},
@@ -243,7 +244,7 @@ object AiBatchProcessor {
     }
 
     private class Semaphore(private val maxPermits: Int) {
-        private var permits = maxPermits
+        private var permits = if (maxPermits > 0) maxPermits else 1
         private val lock = Any()
 
         suspend fun acquire() {

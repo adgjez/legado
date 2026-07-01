@@ -92,6 +92,7 @@ object ArcReelPipeline {
         generateImages: Boolean = true,
         generateVideos: Boolean = false
     ): ArcReelProject {
+        require(contentText.isNotBlank()) { "内容不能为空" }
         var current = project.copy(status = ArcReelProject.ProjectStatus.DESIGNING)
         val designInput = AiCharacterDesignService.DesignInput(
             bookName = project.bookName,
@@ -101,17 +102,20 @@ object ArcReelPipeline {
 
         // Phase 1: 角色设计
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_CHARACTERS, 0f, "正在分析角色...")
-        val characters = AiCharacterDesignService.extractCharacters(designInput)
+        val characters = runCatching { AiCharacterDesignService.extractCharacters(designInput) }
+            .getOrElse { e -> updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_CHARACTERS, 0f, "角色提取失败: ${e.message}"); return current }
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_CHARACTERS, 1f, "已提取 ${characters.size} 个角色")
 
         // Phase 2: 场景设计
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_SCENES, 0f, "正在分析场景...")
-        val scenes = AiCharacterDesignService.extractScenes(designInput)
+        val scenes = runCatching { AiCharacterDesignService.extractScenes(designInput) }
+            .getOrElse { e -> updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_SCENES, 0f, "场景提取失败: ${e.message}"); return current }
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_SCENES, 1f, "已提取 ${scenes.size} 个场景")
 
         // Phase 3: 道具设计
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_PROPS, 0f, "正在分析道具...")
-        val props = AiCharacterDesignService.extractProps(designInput)
+        val props = runCatching { AiCharacterDesignService.extractProps(designInput) }
+            .getOrElse { e -> updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_PROPS, 0f, "道具提取失败: ${e.message}"); return current }
         updatePhase(ArcReelProject.PipelinePhase.EXTRACTING_PROPS, 1f, "已提取 ${props.size} 个道具")
 
         current = current.copy(
@@ -126,18 +130,20 @@ object ArcReelPipeline {
         if (generateImages && characters.isNotEmpty()) {
             updatePhase(ArcReelProject.PipelinePhase.GENERATING_CHARACTER_IMAGES, 0f, "正在生成角色形象图...")
             val prompts = characters.map { it.imagePromptCN.ifBlank { it.imagePrompt } }
-            val batchResults = AiImageService.generateBatch(
-                prompts = prompts,
-                provider = imageProvider,
-                maxConcurrent = 3,
-                onProgress = { done, total, _ ->
-                    updatePhase(
-                        ArcReelProject.PipelinePhase.GENERATING_CHARACTER_IMAGES,
-                        done.toFloat() / total.coerceAtLeast(1),
-                        "角色形象图 $done/$total"
-                    )
-                }
-            )
+            val batchResults = runCatching {
+                AiImageService.generateBatch(
+                    prompts = prompts,
+                    provider = imageProvider,
+                    maxConcurrent = 3,
+                    onProgress = { done, total, _ ->
+                        updatePhase(
+                            ArcReelProject.PipelinePhase.GENERATING_CHARACTER_IMAGES,
+                            done.toFloat() / total.coerceAtLeast(1),
+                            "角色形象图 $done/$total"
+                        )
+                    }
+                )
+            }.getOrElse { e -> updatePhase(ArcReelProject.PipelinePhase.GENERATING_CHARACTER_IMAGES, 0f, "角色图生成失败: ${e.message}"); return current }
             val charWithImages = characters.mapIndexed { index, char ->
                 val url = batchResults.getOrNull(index)?.imageUrl
                 char.copy(generatedImageUrl = url)
@@ -154,18 +160,20 @@ object ArcReelPipeline {
         if (generateImages && scenes.isNotEmpty()) {
             updatePhase(ArcReelProject.PipelinePhase.GENERATING_SCENE_IMAGES, 0f, "正在生成场景概念图...")
             val prompts = scenes.map { it.imagePromptCN.ifBlank { it.imagePrompt } }
-            val batchResults = AiImageService.generateBatch(
-                prompts = prompts,
-                provider = imageProvider,
-                maxConcurrent = 3,
-                onProgress = { done, total, _ ->
-                    updatePhase(
-                        ArcReelProject.PipelinePhase.GENERATING_SCENE_IMAGES,
-                        done.toFloat() / total.coerceAtLeast(1),
-                        "场景概念图 $done/$total"
-                    )
-                }
-            )
+            val batchResults = runCatching {
+                AiImageService.generateBatch(
+                    prompts = prompts,
+                    provider = imageProvider,
+                    maxConcurrent = 3,
+                    onProgress = { done, total, _ ->
+                        updatePhase(
+                            ArcReelProject.PipelinePhase.GENERATING_SCENE_IMAGES,
+                            done.toFloat() / total.coerceAtLeast(1),
+                            "场景概念图 $done/$total"
+                        )
+                    }
+                )
+            }.getOrElse { e -> updatePhase(ArcReelProject.PipelinePhase.GENERATING_SCENE_IMAGES, 0f, "场景图生成失败: ${e.message}"); return current }
             val scenesWithImages = scenes.mapIndexed { index, scene ->
                 val url = batchResults.getOrNull(index)?.imageUrl
                 scene.copy(generatedImageUrl = url)
@@ -193,24 +201,34 @@ object ArcReelPipeline {
                 content = content,
                 existingCharacters = existingChars
             )
-            val result = AiStoryboardService.generateStoryboard(input)
+            val result = runCatching {
+                AiStoryboardService.generateStoryboard(input)
+            }.getOrElse { e ->
+                updatePhase(ArcReelProject.PipelinePhase.GENERATING_STORYBOARD, (index + 1).toFloat() / chapterContents.size, "分镜失败: ${e.message}")
+                continue
+            }
 
             // 为分镜场景生成插画（使用批量生成）
             var sceneImages = emptyMap<Int, String>()
             if (generateImages && result.scenes.isNotEmpty()) {
                 val prompts = result.scenes.map { it.visualPrompt.ifBlank { it.description } }
-                val batchResults = AiImageService.generateBatch(
-                    prompts = prompts,
-                    provider = imageProvider,
-                    maxConcurrent = 3,
-                    onProgress = { done, total, _ ->
-                        updatePhase(
-                            ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS,
-                            done.toFloat() / total.coerceAtLeast(1),
-                            "场景插画 $done/$total"
-                        )
-                    }
-                )
+                val batchResults = runCatching {
+                    AiImageService.generateBatch(
+                        prompts = prompts,
+                        provider = imageProvider,
+                        maxConcurrent = 3,
+                        onProgress = { done, total, _ ->
+                            updatePhase(
+                                ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS,
+                                done.toFloat() / total.coerceAtLeast(1),
+                                "场景插画 $done/$total"
+                            )
+                        }
+                    )
+                }.getOrElse { e ->
+                    updatePhase(ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS, 0f, "场景插画生成失败: ${e.message}")
+                    emptyList()
+                }
                 sceneImages = batchResults
                     .filter { it.imageUrl != null }
                     .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }
@@ -239,7 +257,9 @@ object ArcReelPipeline {
                             localPath = result.localPath
                         ))
                     }
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    updatePhase(ArcReelProject.PipelinePhase.GENERATING_VIDEO, 0f, "视频生成失败: ${e.message}")
+                }
             }
         }
 
@@ -288,17 +308,27 @@ object ArcReelPipeline {
             content = content,
             existingCharacters = existingChars
         )
-        val result = AiStoryboardService.generateStoryboard(input)
+        val result = runCatching {
+            AiStoryboardService.generateStoryboard(input)
+        }.getOrElse { e ->
+            updatePhase(ArcReelProject.PipelinePhase.GENERATING_STORYBOARD, 0f, "分镜生成失败: ${e.message}")
+            return project
+        }
 
         var sceneImages = emptyMap<Int, String>()
         if (generateImages && result.scenes.isNotEmpty()) {
             updatePhase(ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS, 0f, "正在生成场景插画...")
             val prompts = result.scenes.map { it.visualPrompt.ifBlank { it.description } }
-            val batchResults = AiImageService.generateBatch(
-                prompts = prompts,
-                provider = imageProvider,
-                maxConcurrent = 3
-            )
+            val batchResults = runCatching {
+                AiImageService.generateBatch(
+                    prompts = prompts,
+                    provider = imageProvider,
+                    maxConcurrent = 3
+                )
+            }.getOrElse { e ->
+                updatePhase(ArcReelProject.PipelinePhase.GENERATING_SCENE_SHOTS, 0f, "场景插画生成失败: ${e.message}")
+                emptyList()
+            }
             sceneImages = batchResults
                 .filter { it.imageUrl != null }
                 .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }

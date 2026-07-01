@@ -659,6 +659,9 @@ class ReadMenu @JvmOverloads constructor(
             ReadMenuButtonConfig.Builtin.CHARACTERS -> runMenuOut {
                 callBack.openBookCharacters()
             }
+            ReadMenuButtonConfig.Builtin.ARC_REEL -> runMenuOut {
+                callBack.openArcReel()
+            }
         }
     }
 
@@ -797,6 +800,7 @@ class ReadMenu @JvmOverloads constructor(
         fun openReadAssistant() = Unit
         fun showParagraphRuleQuickDialog() = Unit
         fun openBookCharacters() = Unit
+        fun openArcReel() = Unit
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit
         fun loginCustomReadMenuButton(id: Long) = Unit

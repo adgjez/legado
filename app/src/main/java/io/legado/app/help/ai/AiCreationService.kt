@@ -390,6 +390,7 @@ object AiCreationService {
         width: Int = DEFAULT_VIDEO_WIDTH,
         height: Int = DEFAULT_VIDEO_HEIGHT
     ): VideoResult {
+        require(prompt.isNotBlank()) { "视频生成提示词不能为空" }
         val result = textToVideo(
             prompt = prompt,
             numFrames = numFrames,

@@ -306,6 +306,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.AI_SUMMARY))
             add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES))
             add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.CHARACTERS))
+            add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.ARC_REEL))
         }
     }
 
@@ -589,6 +590,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.AI_SUMMARY -> "AI总结"
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> getString(R.string.paragraph_rule)
             ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
+            ReadMenuButtonConfig.Builtin.ARC_REEL -> "ArcReel"
             else -> ref.id
         }
     }
@@ -608,6 +610,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.AI_SUMMARY -> R.drawable.ic_bottom_ai
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
             ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
+            ReadMenuButtonConfig.Builtin.ARC_REEL -> R.drawable.ic_bottom_ai_s
             else -> R.drawable.ic_custom
         }
     }
