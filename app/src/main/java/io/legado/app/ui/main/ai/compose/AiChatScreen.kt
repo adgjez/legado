@@ -121,6 +121,7 @@ data class AiChatScreenActions(
     val onSelectModel: () -> Unit,
     val onOpenImageGallery: (() -> Unit)? = null,
     val onOpenCreationPlatform: (() -> Unit)? = null,
+    val onOpenArcReel: (() -> Unit)? = null,
     val onOpenWindowAbilities: (() -> Unit)? = null,
     val onOpenWorldBooks: (() -> Unit)? = null,
     val onToggleAutoSpeak: (() -> Unit)? = null,
@@ -733,6 +734,9 @@ private fun AiChatTopBar(
                         }
                         actions.onOpenCreationPlatform?.let { openCreation ->
                             add(AiTopMenuAction("AI 创作", openCreation))
+                        }
+                        actions.onOpenArcReel?.let { openArcReel ->
+                            add(AiTopMenuAction("ArcReel 影视化", openArcReel))
                         }
                     },
                     onDismiss = { menuExpanded = false }

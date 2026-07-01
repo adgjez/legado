@@ -64,6 +64,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.TTS
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiReadAloudRoleState
+import io.legado.app.help.ai.ArcReelLauncher
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
@@ -3141,6 +3142,23 @@ class ReadBookActivity : BaseReadBookActivity(),
         startActivity<BookCharacterManageActivity> {
             putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, book.bookUrl)
         }
+    }
+
+    override fun openArcReel() {
+        val book = ReadBook.book ?: run {
+            toastOnUi("当前书籍不存在")
+            return
+        }
+        val textChapter = ReadBook.curTextChapter ?: run {
+            toastOnUi(R.string.chapter_list)
+            return
+        }
+        val content = textChapter.getContent().trim()
+        if (content.isBlank()) {
+            toastOnUi(R.string.content_empty)
+            return
+        }
+        ArcReelLauncher.launch(this, book, content)
     }
 
     override fun showSearchSetting() {

@@ -59,6 +59,8 @@ import io.legado.app.data.entities.BookCharacter
 import io.legado.app.databinding.ActivityAiChatBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.help.ai.ArcReelLauncher
+import io.legado.app.ui.main.ai.arcreel.ArcReelActivity
 import io.legado.app.ui.main.ai.creation.AiCreationActivity
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterProfileMeta
@@ -116,6 +118,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onSelectModel = ::showModelSelectorDialog,
                     onOpenImageGallery = ::openImageGallery,
                     onOpenCreationPlatform = ::openCreationPlatform,
+                    onOpenArcReel = ::openArcReel,
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
                     onOpenWorldBooks = { showCompanionWorldBookDialog() },
                     onToggleAutoSpeak = ::toggleAutoSpeak,
@@ -285,6 +288,10 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
 
     private fun openCreationPlatform() {
         startActivity(android.content.Intent(this, AiCreationActivity::class.java))
+    }
+
+    private fun openArcReel() {
+        startActivity(android.content.Intent(this, ArcReelActivity::class.java))
     }
 
     private fun selectCompanion(companionId: String) {
