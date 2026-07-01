@@ -21,7 +21,8 @@ import io.legado.app.utils.ColorUtils
 
 class RoundedTagBarView @JvmOverloads constructor(
     context: Context,
-    attrs: AttributeSet? = null
+    attrs: AttributeSet? = null,
+    private val visualEnabled: Boolean = true
 ) : FrameLayout(context, attrs) {
 
     enum class DisplayMode { CHIP, LIGHT, TEXT }
@@ -38,20 +39,22 @@ class RoundedTagBarView @JvmOverloads constructor(
         val displayMode: DisplayMode
     )
 
-    private val layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
-    private val adapter = TagAdapter()
-    private val recyclerView = RecyclerView(context).apply {
-        layoutManager = this@RoundedTagBarView.layoutManager
-        adapter = this@RoundedTagBarView.adapter
-        overScrollMode = OVER_SCROLL_NEVER
-        itemAnimator = null
-        clipToPadding = false
-        isHorizontalScrollBarEnabled = false
-        isHorizontalFadingEdgeEnabled = false
-        isVerticalFadingEdgeEnabled = false
-        setFadingEdgeLength(0)
-        val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_recycler_padding_vertical)
-        setPadding(0, verticalPadding, 0, verticalPadding)
+    private val layoutManager by lazy { LinearLayoutManager(context, RecyclerView.HORIZONTAL, false) }
+    private val adapter by lazy { TagAdapter() }
+    private val recyclerView by lazy {
+        RecyclerView(context).apply {
+            layoutManager = this@RoundedTagBarView.layoutManager
+            adapter = this@RoundedTagBarView.adapter
+            overScrollMode = OVER_SCROLL_NEVER
+            itemAnimator = null
+            clipToPadding = false
+            isHorizontalScrollBarEnabled = false
+            isHorizontalFadingEdgeEnabled = false
+            isVerticalFadingEdgeEnabled = false
+            setFadingEdgeLength(0)
+            val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_recycler_padding_vertical)
+            setPadding(0, verticalPadding, 0, verticalPadding)
+        }
     }
     private var items = emptyList<Item>()
     private var selectedIndex = RecyclerView.NO_POSITION
@@ -64,24 +67,36 @@ class RoundedTagBarView @JvmOverloads constructor(
     private var onStateChanged: (() -> Unit)? = null
 
     init {
-        clipToOutline = true
-        applyTopBarStyle(force = true)
-        val horizontalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_horizontal)
-        val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_vertical)
-        setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
-        addView(
-            recyclerView,
-            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        )
+        if (visualEnabled) {
+            clipToOutline = true
+            applyTopBarStyle(force = true)
+            val horizontalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_horizontal)
+            val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_vertical)
+            setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+            addView(
+                recyclerView,
+                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            )
+        }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         applyTopBarStyle()
+        if (shouldUpdateVisuals()) {
+            adapter.notifyDataSetChanged()
+            if (selectedIndex != RecyclerView.NO_POSITION) {
+                scrollToIndex(selectedIndex, smooth = false)
+            }
+        }
     }
 
     fun applyTopBarStyle(force: Boolean = false) {
         val signature = "${TopBarConfig.currentSignature(AppConfig.isNightTheme)}|$displayMode|$backgroundOverrideColor"
+        if (!shouldUpdateVisuals()) {
+            styleSignature = null
+            return
+        }
         if (!force && styleSignature == signature) return
         styleSignature = signature
         val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
@@ -146,7 +161,9 @@ class RoundedTagBarView @JvmOverloads constructor(
     fun setSelectedBackgroundVisible(visible: Boolean) {
         if (selectedBackgroundVisible == visible) return
         selectedBackgroundVisible = visible
-        adapter.notifyDataSetChanged()
+        if (shouldUpdateVisuals()) {
+            adapter.notifyDataSetChanged()
+        }
         notifyStateChanged()
     }
 
@@ -158,9 +175,11 @@ class RoundedTagBarView @JvmOverloads constructor(
         }
         this.items = items.toList()
         this.selectedIndex = normalizeIndex(selectedIndex)
-        adapter.notifyDataSetChanged()
+        if (shouldUpdateVisuals()) {
+            adapter.notifyDataSetChanged()
+        }
         notifyStateChanged()
-        if (this.selectedIndex != RecyclerView.NO_POSITION) {
+        if (shouldUpdateVisuals() && this.selectedIndex != RecyclerView.NO_POSITION) {
             scrollToIndex(this.selectedIndex, smooth = false)
         }
     }
@@ -168,19 +187,21 @@ class RoundedTagBarView @JvmOverloads constructor(
     fun setSelectedIndex(index: Int, smooth: Boolean = true) {
         val newIndex = normalizeIndex(index)
         if (selectedIndex == newIndex) {
-            if (newIndex != RecyclerView.NO_POSITION) {
+            if (shouldUpdateVisuals() && newIndex != RecyclerView.NO_POSITION) {
                 scrollToIndex(newIndex, smooth)
             }
             return
         }
         val oldIndex = selectedIndex
         selectedIndex = newIndex
-        if (oldIndex in items.indices) {
-            adapter.notifyItemChanged(oldIndex)
-        }
-        if (newIndex != RecyclerView.NO_POSITION) {
-            adapter.notifyItemChanged(newIndex)
-            scrollToIndex(newIndex, smooth)
+        if (shouldUpdateVisuals()) {
+            if (oldIndex in items.indices) {
+                adapter.notifyItemChanged(oldIndex)
+            }
+            if (newIndex != RecyclerView.NO_POSITION) {
+                adapter.notifyItemChanged(newIndex)
+                scrollToIndex(newIndex, smooth)
+            }
         }
         notifyStateChanged()
     }
@@ -224,6 +245,10 @@ class RoundedTagBarView @JvmOverloads constructor(
 
     private fun notifyStateChanged() {
         onStateChanged?.invoke()
+    }
+
+    private fun shouldUpdateVisuals(): Boolean {
+        return visualEnabled && (isAttachedToWindow || parent != null)
     }
 
     private fun normalizeIndex(index: Int): Int {

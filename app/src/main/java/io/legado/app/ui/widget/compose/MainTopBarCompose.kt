@@ -15,6 +15,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -363,7 +364,7 @@ private fun SearchEntry(
             .height(height)
             .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
             .background(Color(context.backgroundColor).copy(alpha = 0.42f))
-            .combinedClickable(
+            .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -391,7 +392,6 @@ private fun SearchEntry(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TopBarActionButton(
     state: MainTopBarActionState,
@@ -400,46 +400,52 @@ private fun TopBarActionButton(
     marginStart: Dp,
     onActionClick: (MainTopBarAction) -> Unit
 ) {
-    AnimatedVisibility(
-        visible = state.visible,
-        enter = fadeIn(tween(120)),
-        exit = fadeOut(tween(90))
-    ) {
-        val size = if (isRegular) {
-            dimensionResource(R.dimen.top_bar_regular_action_size)
-        } else {
-            dimensionResource(R.dimen.bookshelf_action_button_size)
-        }
-        val rotation = animateFloatAsState(
+    if (!state.visible) return
+    val size = if (isRegular) {
+        dimensionResource(R.dimen.top_bar_regular_action_size)
+    } else {
+        dimensionResource(R.dimen.bookshelf_action_button_size)
+    }
+    val rotationDegrees = if (state.action == MainTopBarAction.FILTER_TOGGLE) {
+        animateFloatAsState(
             targetValue = state.rotationDegrees,
             animationSpec = tween(220, easing = FastOutSlowInEasing),
             label = "mainTopBarActionRotation"
-        )
-        Box(
-            modifier = Modifier
-                .padding(start = marginStart)
-                .size(size)
-                .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
-                .combinedClickable(
-                    enabled = state.enabled,
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { onActionClick(state.action) }
-                )
-                .alpha(state.alpha),
-            contentAlignment = Alignment.Center
-        ) {
-            LegacyTopBarIcon(
-                iconRes = state.iconRes,
-                contentDescription = state.contentDescription,
-                tint = textColor,
-                modifier = Modifier
-                    .size(if (isRegular) 20.dp else 19.dp)
-                    .graphicsLayer {
-                        rotationZ = rotation.value
-                    }
+        ).value
+    } else {
+        state.rotationDegrees
+    }
+    Box(
+        modifier = Modifier
+            .padding(start = marginStart)
+            .size(size)
+            .clip(RoundedCornerShape(dimensionResource(R.dimen.ui_action_radius)))
+            .clickable(
+                enabled = state.enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { onActionClick(state.action) }
             )
-        }
+            .alpha(state.alpha),
+        contentAlignment = Alignment.Center
+    ) {
+        val iconModifier = Modifier
+            .size(if (isRegular) 20.dp else 19.dp)
+            .then(
+                if (rotationDegrees != 0f || state.action == MainTopBarAction.FILTER_TOGGLE) {
+                    Modifier.graphicsLayer {
+                        rotationZ = rotationDegrees
+                    }
+                } else {
+                    Modifier
+                }
+            )
+        LegacyTopBarIcon(
+            iconRes = state.iconRes,
+            contentDescription = state.contentDescription,
+            tint = textColor,
+            modifier = iconModifier
+        )
     }
 }
 
@@ -453,16 +459,32 @@ private fun LegacyTopBarIcon(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            AppCompatImageView(context).apply {
+            LegacyTopBarIconView(context).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
         },
         update = { imageView ->
-            imageView.setImageResource(iconRes)
-            imageView.imageTintList = ColorStateList.valueOf(tint.toArgb())
-            imageView.contentDescription = contentDescription
+            val tintArgb = tint.toArgb()
+            if (imageView.appliedIconRes != iconRes) {
+                imageView.appliedIconRes = iconRes
+                imageView.setImageResource(iconRes)
+            }
+            if (imageView.appliedTintArgb != tintArgb) {
+                imageView.appliedTintArgb = tintArgb
+                imageView.imageTintList = ColorStateList.valueOf(tintArgb)
+            }
+            if (imageView.appliedContentDescription != contentDescription) {
+                imageView.appliedContentDescription = contentDescription
+                imageView.contentDescription = contentDescription
+            }
         }
     )
+}
+
+private class LegacyTopBarIconView(context: android.content.Context) : AppCompatImageView(context) {
+    var appliedIconRes: Int = 0
+    var appliedTintArgb: Int = Int.MIN_VALUE
+    var appliedContentDescription: String? = null
 }
 
 @Composable
@@ -513,7 +535,7 @@ private fun ComposeTopBarTagBar(
     val listState = rememberLazyListState()
     LaunchedEffect(state.selectedIndex, state.items.size) {
         if (state.selectedIndex in state.items.indices) {
-            listState.animateScrollToItem(state.selectedIndex)
+            listState.scrollToItem(state.selectedIndex)
         }
     }
     Box(

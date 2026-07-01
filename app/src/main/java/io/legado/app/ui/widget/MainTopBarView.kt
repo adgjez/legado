@@ -55,9 +55,9 @@ class MainTopBarView @JvmOverloads constructor(
     val starButton = actionButton(R.drawable.ic_star, R.string.favorite)
     val refreshButton = actionButton(R.drawable.ic_refresh_black_24dp, R.string.refresh)
     val loginButton = actionButton(R.drawable.ic_bottom_person, R.string.login)
-    val primaryBar = RoundedTagBarView(context)
-    val selectsBar = RoundedTagBarView(context)
-    val tagsBar = RoundedTagBarView(context)
+    val primaryBar = RoundedTagBarView(context, visualEnabled = false)
+    val selectsBar = RoundedTagBarView(context, visualEnabled = false)
+    val tagsBar = RoundedTagBarView(context, visualEnabled = false)
 
     private val filterToggleButton = actionButton(R.drawable.ic_expand_more, R.string.screen)
     private val surfaceLayout = ContentMeasuredFrameLayout(context)
@@ -76,11 +76,23 @@ class MainTopBarView @JvmOverloads constructor(
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
+    private val backgroundUiState = mutableStateOf(
+        TopBarBackgroundUiState(
+            imageState = ComposeThemeImageState(
+                file = null,
+                fallbackColor = Color.TRANSPARENT
+            ),
+            cornerRadiusDp = 0f
+        )
+    )
     private val uiState = mutableStateOf<MainTopBarUiState?>(null)
 
     private var backdropGlassActive = false
     private var mode = Mode.BOOKSHELF
+    private var modeApplied = false
     private var styleSignature: String? = null
+    private var configSignature: String? = null
+    private var configCache: TopBarConfig.Config? = null
     private var primaryBarRequested = false
     private var selectsBarRequested = false
     private var tagsBarRequested = false
@@ -90,6 +102,9 @@ class MainTopBarView @JvmOverloads constructor(
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
     private var statusBarInsetTop: Int = 0
     private var initialized = false
+    private var heightChangeNotifyPosted = false
+    private var renderSuppressed = false
+    private var renderPending = false
 
     var overlayOpaqueBackground = false
         set(value) {
@@ -124,15 +139,15 @@ class MainTopBarView @JvmOverloads constructor(
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
         )
-        titleSelect.onStateChanged = ::renderContent
-        searchEntry.onStateChanged = ::renderContent
-        titleText.onStateChanged = ::renderContent
-        searchEntryText.onStateChanged = ::renderContent
+        titleSelect.onStateChanged = ::requestRender
+        searchEntry.onStateChanged = ::requestRender
+        titleText.onStateChanged = ::requestRender
+        searchEntryText.onStateChanged = ::requestRender
         listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton, filterToggleButton).forEach { proxy ->
-            proxy.onStateChanged = ::renderContent
+            proxy.onStateChanged = ::requestRender
         }
         listOf(primaryBar, selectsBar, tagsBar).forEach { tagBar ->
-            tagBar.setOnStateChangedListener(::renderContent)
+            tagBar.setOnStateChangedListener(::requestRender)
         }
         filterToggleButton.setOnClickListener {
             filtersExpanded = !filtersExpanded
@@ -143,6 +158,7 @@ class MainTopBarView @JvmOverloads constructor(
         titleText.includeFontPadding = false
         searchEntryText.textSize = 14f
         searchEntryText.includeFontPadding = false
+        installBackgroundContent()
         installComposeContent()
         initialized = true
         setMode(Mode.BOOKSHELF)
@@ -154,23 +170,32 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     fun setMode(mode: Mode) {
+        if (modeApplied && this.mode == mode) {
+            applyTopBarStyle()
+            return
+        }
         this.mode = mode
-        moreButton.isVisible = mode == Mode.BOOKSHELF || mode == Mode.READ_RECORD
-        searchButton.isVisible = mode == Mode.DISCOVERY || mode == Mode.RSS
-        filterButton.isVisible = mode == Mode.DISCOVERY
-        starButton.isVisible = mode == Mode.RSS
-        refreshButton.isVisible = mode == Mode.RSS
-        loginButton.isVisible = mode == Mode.DISCOVERY || mode == Mode.RSS
-        titleText.textSize = if (mode == Mode.BOOKSHELF) 24f else 20f
+        modeApplied = true
+        batchProxyUpdates(renderAfter = false) {
+            moreButton.isVisible = mode == Mode.BOOKSHELF || mode == Mode.READ_RECORD
+            searchButton.isVisible = mode == Mode.DISCOVERY || mode == Mode.RSS
+            filterButton.isVisible = mode == Mode.DISCOVERY
+            starButton.isVisible = mode == Mode.RSS
+            refreshButton.isVisible = mode == Mode.RSS
+            loginButton.isVisible = mode == Mode.DISCOVERY || mode == Mode.RSS
+            titleText.textSize = if (mode == Mode.BOOKSHELF) 24f else 20f
+        }
         applyTopBarStyle(force = true)
     }
 
     fun setTitle(text: CharSequence) {
+        if (titleText.text?.toString() == text.toString()) return
         titleText.text = text
         renderContent()
     }
 
     fun setSearchHint(text: CharSequence) {
+        if (searchEntryText.text?.toString() == text.toString()) return
         searchEntryText.text = text
         renderContent()
     }
@@ -188,7 +213,7 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     fun isRegularStyle(): Boolean {
-        return TopBarConfig.currentConfig(context, AppConfig.isNightTheme).style == TopBarConfig.STYLE_REGULAR
+        return currentTopBarConfig().style == TopBarConfig.STYLE_REGULAR
     }
 
     fun isOverlayMode(): Boolean {
@@ -203,8 +228,12 @@ class MainTopBarView @JvmOverloads constructor(
         val active = source != null && supportsBackdropBlur()
         backdropGlassActive = active
         if (active) {
-            val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
-            val radius = if (isRegularStyle()) TopBarConfig.cornerRadius(context, config) else 0f
+            val config = currentTopBarConfig()
+            val radius = if (config.style == TopBarConfig.STYLE_REGULAR) {
+                TopBarConfig.cornerRadius(context, config)
+            } else {
+                0f
+            }
             val density = resources.displayMetrics.density
             backdropGlass.visibility = View.VISIBLE
             backdropGlass.setCornerRadius(radius)
@@ -223,6 +252,8 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun refreshStyle() {
         styleSignature = null
+        configSignature = null
+        configCache = null
         listOf(primaryBar, selectsBar, tagsBar).forEach { it.applyTopBarStyle(force = true) }
         applyTopBarStyle(force = true)
         requestLayout()
@@ -239,27 +270,30 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     fun setFiltersExpanded(expanded: Boolean) {
-        if (filtersExpanded == expanded) {
-            renderContent()
-            return
-        }
+        if (filtersExpanded == expanded) return
         filtersExpanded = expanded
         renderContent()
     }
 
     fun showSelects(show: Boolean) {
+        val previousRequested = selectsBarRequested
+        val previousExpanded = filtersExpanded
         selectsBarRequested = show
         if (!show) {
             filtersExpanded = tagsBarRequested && filtersExpanded
         }
+        if (previousRequested == selectsBarRequested && previousExpanded == filtersExpanded) return
         renderContent()
     }
 
     fun showTags(show: Boolean) {
+        val previousRequested = tagsBarRequested
+        val previousExpanded = filtersExpanded
         tagsBarRequested = show
         if (!show) {
             filtersExpanded = selectsBarRequested && filtersExpanded
         }
+        if (previousRequested == tagsBarRequested && previousExpanded == filtersExpanded) return
         renderContent()
     }
 
@@ -270,11 +304,13 @@ class MainTopBarView @JvmOverloads constructor(
         refresh: Boolean? = null,
         login: Boolean? = null
     ) {
-        search?.let { searchButton.isVisible = it }
-        filter?.let { filterButton.isVisible = it }
-        star?.let { starButton.isVisible = it }
-        refresh?.let { refreshButton.isVisible = it }
-        login?.let { loginButton.isVisible = it }
+        batchProxyUpdates(renderAfter = false) {
+            search?.let { searchButton.isVisible = it }
+            filter?.let { filterButton.isVisible = it }
+            star?.let { starButton.isVisible = it }
+            refresh?.let { refreshButton.isVisible = it }
+            login?.let { loginButton.isVisible = it }
+        }
         renderContent()
     }
 
@@ -289,6 +325,17 @@ class MainTopBarView @JvmOverloads constructor(
         super.onSizeChanged(w, h, oldw, oldh)
         if (h != oldh) {
             notifyHeightChangedAfterLayout()
+        }
+    }
+
+    private fun installBackgroundContent() {
+        backgroundLayer.setContent {
+            val state = backgroundUiState.value
+            ComposeThemeImageLayer(
+                state = state.imageState,
+                cornerRadius = state.cornerRadiusDp.dp,
+                stableWidthScale = true
+            )
         }
     }
 
@@ -339,20 +386,42 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     private fun applyTopBarStyle(force: Boolean = false, resetFilters: Boolean = force) {
-        val signature = "${TopBarConfig.currentSignature(AppConfig.isNightTheme)}|$mode"
+        val topBarConfigSignature = currentTopBarConfigSignature()
+        val signature = currentTopBarSignature(topBarConfigSignature)
         if (!force && styleSignature == signature) return
         val signatureChanged = styleSignature != signature
+        val config = currentTopBarConfig(topBarConfigSignature)
         styleSignature = signature
-        val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
         if (resetFilters && (force || signatureChanged)) {
             filtersExpanded = config.style == TopBarConfig.STYLE_REGULAR && config.expandFiltersByDefault
         }
-        if (config.style == TopBarConfig.STYLE_REGULAR) {
-            applyRegularStyle(config)
-        } else {
-            applyDefaultStyle()
+        batchProxyUpdates(renderAfter = false) {
+            if (config.style == TopBarConfig.STYLE_REGULAR) {
+                applyRegularStyle(config)
+            } else {
+                applyDefaultStyle()
+            }
         }
         renderContent()
+    }
+
+    private fun currentTopBarSignature(topBarConfigSignature: String = currentTopBarConfigSignature()): String {
+        return "$topBarConfigSignature|$mode"
+    }
+
+    private fun currentTopBarConfigSignature(): String {
+        return TopBarConfig.currentSignature(AppConfig.isNightTheme)
+    }
+
+    private fun currentTopBarConfig(signature: String = currentTopBarConfigSignature()): TopBarConfig.Config {
+        val cached = configCache
+        if (cached != null && configSignature == signature) {
+            return cached
+        }
+        return TopBarConfig.currentConfig(context, AppConfig.isNightTheme).also {
+            configSignature = signature
+            configCache = it
+        }
     }
 
     private fun applyDefaultStyle() {
@@ -395,14 +464,20 @@ class MainTopBarView @JvmOverloads constructor(
 
     private fun renderContent() {
         if (!initialized) return
-        uiState.value = buildUiState()
-        requestLayout()
-        invalidate()
-        notifyHeightChangedAfterLayout()
+        val next = buildUiState()
+        val previous = uiState.value
+        if (previous == next) return
+        uiState.value = next
+        if (previous == null || previous.layoutKey() != next.layoutKey()) {
+            requestLayout()
+            notifyHeightChangedAfterLayout()
+        } else {
+            invalidate()
+        }
     }
 
     private fun buildUiState(): MainTopBarUiState {
-        val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+        val config = currentTopBarConfig()
         val isRegular = config.style == TopBarConfig.STYLE_REGULAR
         val hasFilters = selectsBarRequested || tagsBarRequested
         val filterToggleVisible = isRegular && hasFilters &&
@@ -505,7 +580,11 @@ class MainTopBarView @JvmOverloads constructor(
                 fallbackColor = Color.TRANSPARENT
             )
         } else {
-            val file = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
+            val file = if (config.wallpaperPath.isNullOrBlank()) {
+                null
+            } else {
+                TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
+            }
             val alpha = config.wallpaperAlpha.coerceIn(0, 100) / 100f
             ComposeThemeImageState(
                 file = file,
@@ -518,12 +597,37 @@ class MainTopBarView @JvmOverloads constructor(
                 )
             )
         }
-        backgroundLayer.setContent {
-            ComposeThemeImageLayer(
-                state = state,
-                cornerRadius = (radius / resources.displayMetrics.density).dp,
-                stableWidthScale = true
-            )
+        val next = TopBarBackgroundUiState(
+            imageState = state,
+            cornerRadiusDp = radius / resources.displayMetrics.density
+        )
+        if (backgroundUiState.value != next) {
+            backgroundUiState.value = next
+        }
+    }
+
+    private fun requestRender() {
+        if (renderSuppressed) {
+            renderPending = true
+        } else {
+            renderContent()
+        }
+    }
+
+    private inline fun batchProxyUpdates(renderAfter: Boolean = true, block: () -> Unit) {
+        val wasSuppressed = renderSuppressed
+        renderSuppressed = true
+        try {
+            block()
+        } finally {
+            renderSuppressed = wasSuppressed
+            if (!wasSuppressed) {
+                val shouldRender = renderPending
+                renderPending = false
+                if (renderAfter && shouldRender) {
+                    renderContent()
+                }
+            }
         }
     }
 
@@ -537,7 +641,12 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     private fun notifyHeightChangedAfterLayout() {
-        post { onHeightChanged?.invoke() }
+        if (heightChangeNotifyPosted) return
+        heightChangeNotifyPosted = true
+        post {
+            heightChangeNotifyPosted = false
+            onHeightChanged?.invoke()
+        }
     }
 
     private fun updateActionProxyMetrics(sizePx: Int) {
@@ -550,10 +659,14 @@ class MainTopBarView @JvmOverloads constructor(
             loginButton,
             filterToggleButton
         ).forEach { button ->
-            val params = button.layoutParams as? LayoutParams ?: LayoutParams(sizePx, sizePx)
-            params.width = sizePx
-            params.height = sizePx
-            button.layoutParams = params
+            val params = button.layoutParams as? LayoutParams
+            if (params == null) {
+                button.layoutParams = LayoutParams(sizePx, sizePx)
+            } else if (params.width != sizePx || params.height != sizePx) {
+                params.width = sizePx
+                params.height = sizePx
+                button.layoutParams = params
+            }
         }
     }
 
@@ -632,12 +745,16 @@ class MainTopBarView @JvmOverloads constructor(
             private set
 
         override fun setMaxWidth(maxPixels: Int) {
-            maxWidthOverride = maxPixels.takeIf { it > 0 }
+            val next = maxPixels.takeIf { it > 0 }
+            if (maxWidthOverride == next) return
+            maxWidthOverride = next
             super.setMaxWidth(maxPixels)
             onStateChanged?.invoke()
         }
 
         override fun setTextSize(size: Float) {
+            val currentSp = textSize / resources.displayMetrics.scaledDensity
+            if (kotlin.math.abs(currentSp - size) < 0.01f) return
             super.setTextSize(size)
             onStateChanged?.invoke()
         }
@@ -659,14 +776,18 @@ class MainTopBarView @JvmOverloads constructor(
         var onStateChanged: (() -> Unit)? = null
         var iconRes: Int = iconRes
             private set
+        private var imageResourceApplied = false
 
         override fun setImageResource(resId: Int) {
+            if (imageResourceApplied && iconRes == resId) return
             iconRes = resId
+            imageResourceApplied = true
             super.setImageResource(resId)
             onStateChanged?.invoke()
         }
 
         override fun setContentDescription(contentDescription: CharSequence?) {
+            if (getContentDescription()?.toString() == contentDescription?.toString()) return
             super.setContentDescription(contentDescription)
             onStateChanged?.invoke()
         }
@@ -697,5 +818,44 @@ class MainTopBarView @JvmOverloads constructor(
             super.setAlpha(alpha)
             onStateChanged?.invoke()
         }
+    }
+
+    private data class TopBarBackgroundUiState(
+        val imageState: ComposeThemeImageState,
+        val cornerRadiusDp: Float
+    )
+
+    private data class TopBarLayoutKey(
+        val mode: Mode,
+        val style: String,
+        val statusBarInsetTopPx: Int,
+        val titleTextSizeSp: Float,
+        val searchEntryRequested: Boolean,
+        val primaryVisible: Boolean,
+        val selectsVisible: Boolean,
+        val tagsVisible: Boolean,
+        val primaryDisplayMode: RoundedTagBarView.DisplayMode,
+        val selectsDisplayMode: RoundedTagBarView.DisplayMode,
+        val tagsDisplayMode: RoundedTagBarView.DisplayMode,
+        val filterToggleVisible: Boolean
+    )
+
+    private fun MainTopBarUiState.layoutKey(): TopBarLayoutKey {
+        return TopBarLayoutKey(
+            mode = mode,
+            style = config.style,
+            statusBarInsetTopPx = statusBarInsetTopPx,
+            titleTextSizeSp = titleTextSizeSp,
+            searchEntryRequested = searchEntryRequested,
+            primaryVisible = primaryBar.visible,
+            selectsVisible = selectsBar.visible,
+            tagsVisible = tagsBar.visible,
+            primaryDisplayMode = primaryBar.displayMode,
+            selectsDisplayMode = selectsBar.displayMode,
+            tagsDisplayMode = tagsBar.displayMode,
+            filterToggleVisible = actions.firstOrNull {
+                it.action == MainTopBarAction.FILTER_TOGGLE
+            }?.visible == true
+        )
     }
 }
