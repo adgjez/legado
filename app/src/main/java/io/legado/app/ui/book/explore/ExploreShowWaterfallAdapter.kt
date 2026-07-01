@@ -22,7 +22,7 @@ import io.legado.app.utils.visible
 
 class ExploreShowWaterfallAdapter(
     context: Context,
-    private val callBack: ExploreShowAdapter.CallBack,
+    private val callBack: ExploreShowBookCallback,
     private val columns: Int
 ) : RecyclerAdapter<SearchBook, ItemSearchWaterfallBinding>(context) {
 

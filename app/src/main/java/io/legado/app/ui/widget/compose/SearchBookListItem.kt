@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,7 +26,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
@@ -39,6 +38,8 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfListPalette
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.BookIntroUtils
+
+private val NormalSearchBookListItemHeight = 136.dp
 
 @Composable
 fun SearchBookListItem(
@@ -61,11 +62,10 @@ fun SearchBookListItem(
         rounded = rounded,
         compact = false,
         renderConfig = renderConfig,
-        modifier = modifier,
+        modifier = if (rounded) modifier else modifier.height(NormalSearchBookListItemHeight),
         onClick = onClick,
         onLongClick = { onPreview(coverBounds.value) }
     ) { metrics ->
-        val coverHeight = metrics.coverWidth * (4f / 3f)
         Box(modifier = Modifier.width(metrics.coverWidth)) {
             BookCoverImage(
                 book = book,
@@ -95,7 +95,6 @@ fun SearchBookListItem(
             rounded = rounded,
             palette = palette,
             showOriginCount = showOriginCount,
-            maxTextHeight = if (rounded) null else coverHeight,
             modifier = Modifier.weight(1f)
         )
     }
@@ -108,15 +107,10 @@ private fun SearchBookListText(
     rounded: Boolean,
     palette: BookshelfListPalette,
     showOriginCount: Boolean,
-    maxTextHeight: Dp?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    Column(
-        modifier = modifier.then(
-            maxTextHeight?.let { Modifier.heightIn(max = it) } ?: Modifier
-        )
-    ) {
+    Column(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = book.name,

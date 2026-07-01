@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,15 +24,18 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,6 +58,9 @@ private val BUBBLE_ITEM_MIN_HEIGHT = 86.dp
 private val BUBBLE_PREVIEW_BOX = 64.dp
 
 @Composable
+private fun bubbleActionButtonMinHeight() = (38f * LocalDensity.current.fontScale.coerceAtLeast(1f)).dp
+
+@Composable
 internal fun BubbleManageScreen(
     entries: List<BubblePackageManager.Entry>,
     summary: String,
@@ -65,11 +73,16 @@ internal fun BubbleManageScreen(
 ) {
     val palette = rememberAppManagementPalette()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(palette.settings.page)
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(
+            fontFamily = palette.settings.bodyFontFamily
+        )
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(palette.settings.page)
+        ) {
         // Summary
         if (summary.isNotBlank()) {
             Text(
@@ -117,7 +130,8 @@ internal fun BubbleManageScreen(
             minHeight = 48.dp
         )
 
-        Spacer(modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+            Spacer(modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+        }
     }
 }
 
@@ -140,7 +154,7 @@ private fun BubbleItemRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(BUBBLE_ITEM_MIN_HEIGHT),
+                .heightIn(min = BUBBLE_ITEM_MIN_HEIGHT),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Preview
@@ -226,8 +240,10 @@ private fun ActionTextButton(
     onClick: () -> Unit
 ) {
     val actionRadius = palette.actionRadius ?: LocalContext.current.composeActionRadius()
+    val minHeight = bubbleActionButtonMinHeight()
     Surface(
         modifier = Modifier
+            .defaultMinSize(minHeight = minHeight)
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp),
         shape = RoundedCornerShape(actionRadius),
@@ -239,8 +255,11 @@ private fun ActionTextButton(
             text = text,
             color = if (accent) palette.accent else palette.primaryText,
             fontSize = 13.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier
+                .defaultMinSize(minHeight = minHeight)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

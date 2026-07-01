@@ -14,7 +14,7 @@ import io.legado.app.ui.widget.image.CoverImageView
 
 class ExploreShowGridAdapter(
     context: Context,
-    private val callBack: ExploreShowAdapter.CallBack,
+    private val callBack: ExploreShowBookCallback,
     private val spanCount: Int = 3
 ) : RecyclerAdapter<SearchBook, ItemBookshelfGrid2Binding>(context) {
 

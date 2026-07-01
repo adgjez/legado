@@ -42,7 +42,6 @@ import com.bumptech.glide.Glide
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -87,9 +86,8 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.ui.book.explore.ExploreShowAdapter
 import io.legado.app.ui.book.explore.ExploreShowActivity
-import io.legado.app.ui.book.explore.ExploreShowGridAdapter
+import io.legado.app.ui.book.explore.ExploreShowBookCallback
 import io.legado.app.ui.book.explore.ExploreShowWaterfallAdapter
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.book.search.SearchActivity
@@ -153,7 +151,7 @@ import kotlin.random.Random
 class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_explore),
     MainFragmentInterface,
     ExploreAdapter.CallBack,
-    ExploreShowAdapter.CallBack {
+    ExploreShowBookCallback {
 
     constructor(position: Int) : this() {
         val bundle = Bundle()
@@ -1666,7 +1664,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val layoutMode = AppConfig.discoveryPageLayout
         composeDiscoverLayoutMode.intValue = layoutMode
         composeDiscoverListStyle.intValue = AppConfig.bookshelfListItemStyle
-        val useComposeList = layoutMode == 1 || layoutMode == 3
+        val useComposeList = layoutMode != 2
         binding.composeDiscoverBooks.isVisible = useComposeList
         binding.rvDiscoverBooks.isGone = useComposeList
         applyDiscoverBookContainerMargins(useComposeList)
@@ -1679,16 +1677,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
         if (!force && discoverBookLayoutMode == layoutMode && discoverBookAdapter != null) return
         discoverBookLayoutMode = layoutMode
-        binding.rvDiscoverBooks.layoutManager = when (layoutMode) {
-            3 -> GridLayoutManager(requireContext(), 3)
-            2 -> StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
-            else -> LinearLayoutManager(requireContext())
-        }
-        discoverBookAdapter = when (layoutMode) {
-            3 -> ExploreShowGridAdapter(requireContext(), this)
-            2 -> ExploreShowWaterfallAdapter(requireContext(), this, 2)
-            else -> ExploreShowAdapter(requireContext(), this)
-        }.also { adapter ->
+        binding.rvDiscoverBooks.layoutManager =
+            StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
+        discoverBookAdapter = ExploreShowWaterfallAdapter(requireContext(), this, 2).also { adapter ->
             binding.rvDiscoverBooks.adapter = adapter
             if (discoverBooks.isNotEmpty()) {
                 adapter.setItems(discoverBooks.toList())
