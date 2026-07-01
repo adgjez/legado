@@ -26,18 +26,18 @@ object BookIntroUtils {
     }
 
     private fun String.unwrapTaggedIntro(tag: String): String? {
-        val startTag = "<$tag>"
-        val endTag = "</$tag>"
-        if (!startsWith(startTag, ignoreCase = true)) return null
-        val end = Regex(Regex.escape(endTag), RegexOption.IGNORE_CASE)
+        val start = Regex("^\\s*<${Regex.escape(tag)}\\b[^>]*>", RegexOption.IGNORE_CASE)
+            .find(this)
+            ?: return null
+        val end = Regex("</\\s*${Regex.escape(tag)}\\s*>", RegexOption.IGNORE_CASE)
             .findAll(this)
             .lastOrNull()
             ?.range
             ?.first
             ?: -1
         return substring(
-            startTag.length.coerceAtMost(length),
-            if (end > startTag.length) end else length
+            (start.range.last + 1).coerceAtMost(length),
+            if (end > start.range.last) end else length
         )
     }
 

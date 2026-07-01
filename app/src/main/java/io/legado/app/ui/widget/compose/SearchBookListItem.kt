@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -24,6 +26,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
@@ -62,6 +65,7 @@ fun SearchBookListItem(
         onClick = onClick,
         onLongClick = { onPreview(coverBounds.value) }
     ) { metrics ->
+        val coverHeight = metrics.coverWidth * (4f / 3f)
         Box(modifier = Modifier.width(metrics.coverWidth)) {
             BookCoverImage(
                 book = book,
@@ -91,6 +95,7 @@ fun SearchBookListItem(
             rounded = rounded,
             palette = palette,
             showOriginCount = showOriginCount,
+            maxTextHeight = if (rounded) null else coverHeight,
             modifier = Modifier.weight(1f)
         )
     }
@@ -103,15 +108,20 @@ private fun SearchBookListText(
     rounded: Boolean,
     palette: BookshelfListPalette,
     showOriginCount: Boolean,
+    maxTextHeight: Dp?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier.then(
+            maxTextHeight?.let { Modifier.heightIn(max = it) } ?: Modifier
+        )
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = book.name,
                 color = palette.primaryText,
-                fontSize = 16.sp,
+                fontSize = if (rounded) 16.sp else 15.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = palette.titleFontFamily,
                 maxLines = 1,
@@ -137,48 +147,51 @@ private fun SearchBookListText(
                 }
             }
         }
-        Spacer(modifier = Modifier.size(if (rounded) 4.dp else 2.dp))
+        Spacer(modifier = Modifier.size(if (rounded) 4.dp else 1.dp))
         Text(
             text = context.getString(R.string.author_show, book.author),
             color = palette.secondaryText,
-            fontSize = 13.sp,
+            fontSize = if (rounded) 13.sp else 12.sp,
             fontFamily = palette.bodyFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         val kinds = remember(book.kind) { book.getKindList() }
         if (kinds.isNotEmpty()) {
-            Spacer(modifier = Modifier.size(if (rounded) 4.dp else 2.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(if (rounded) 6.dp else 4.dp),
-                verticalArrangement = Arrangement.spacedBy(if (rounded) 4.dp else 2.dp)
-            ) {
-                kinds.take(if (rounded) 4 else 3).forEach { kind ->
-                    Text(
-                        text = kind,
-                        color = palette.accent,
-                        fontSize = 11.sp,
-                        fontFamily = palette.bodyFontFamily,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(if (rounded) palette.actionRadius else 6.dp))
-                            .background(palette.accent.copy(alpha = 0.12f))
-                            .padding(
-                                horizontal = if (rounded) 8.dp else 6.dp,
-                                vertical = if (rounded) 3.dp else 1.dp
-                            )
-                    )
+            Spacer(modifier = Modifier.size(if (rounded) 4.dp else 1.dp))
+            if (rounded) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    kinds.take(4).forEach { kind ->
+                        SearchBookKindChip(
+                            text = kind,
+                            rounded = true,
+                            palette = palette
+                        )
+                    }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    kinds.take(3).forEach { kind ->
+                        SearchBookKindChip(
+                            text = kind,
+                            rounded = false,
+                            palette = palette,
+                            modifier = Modifier.widthIn(max = 72.dp)
+                        )
+                    }
                 }
             }
         }
         val lasted = book.latestChapterTitle
         if (!lasted.isNullOrBlank()) {
-            Spacer(modifier = Modifier.size(if (rounded) 5.dp else 3.dp))
+            Spacer(modifier = Modifier.size(if (rounded) 5.dp else 2.dp))
             Text(
                 text = context.getString(R.string.lasted_show, lasted),
                 color = palette.secondaryText,
-                fontSize = 13.sp,
+                fontSize = if (rounded) 13.sp else 12.sp,
                 fontFamily = palette.bodyFontFamily,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -186,16 +199,40 @@ private fun SearchBookListText(
         }
         val intro = remember(book.intro) { BookIntroUtils.listIntro(book.intro) }
         if (!intro.isNullOrBlank()) {
-            Spacer(modifier = Modifier.size(if (rounded) 7.dp else 4.dp))
+            Spacer(modifier = Modifier.size(if (rounded) 7.dp else 2.dp))
             Text(
                 text = intro,
                 color = if (rounded) palette.secondaryText else palette.primaryText,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
+                fontSize = if (rounded) 13.sp else 12.sp,
+                lineHeight = if (rounded) 18.sp else 16.sp,
                 fontFamily = palette.bodyFontFamily,
-                maxLines = 3,
+                maxLines = if (rounded) 3 else if (kinds.isNotEmpty() && !lasted.isNullOrBlank()) 1 else 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
     }
+}
+
+@Composable
+private fun SearchBookKindChip(
+    text: String,
+    rounded: Boolean,
+    palette: BookshelfListPalette,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text,
+        color = palette.accent,
+        fontSize = 11.sp,
+        fontFamily = palette.bodyFontFamily,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(RoundedCornerShape(if (rounded) palette.actionRadius else 6.dp))
+            .background(palette.accent.copy(alpha = 0.12f))
+            .padding(
+                horizontal = if (rounded) 8.dp else 6.dp,
+                vertical = if (rounded) 3.dp else 1.dp
+            )
+    )
 }
