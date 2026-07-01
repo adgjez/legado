@@ -52,6 +52,7 @@ object AiCreationService {
 
     private var apiKey: String = ""
 
+    @Synchronized
     fun setApiKey(key: String) {
         val trimmed = key.trim()
         AppConfig.aiAgnesApiKey = trimmed
@@ -60,6 +61,7 @@ object AiCreationService {
 
     fun hasApiKey(): Boolean = apiKey.isNotBlank()
 
+    @Synchronized
     fun loadApiKey() {
         val providerKey = AppConfig.aiProviderList
             .firstOrNull { it.baseUrl.contains("agnes-ai", ignoreCase = true) }
@@ -124,7 +126,8 @@ object AiCreationService {
                     payload
                 )
             }
-            val root = JSONObject(payload)
+            val root = runCatching { JSONObject(payload) }
+                .getOrElse { throw AiCreationException("图片生成失败: 服务端返回非JSON格式", payload) }
             val data = root.optJSONArray("data")?.optJSONObject(0)
             return ImageResult(url = data?.optString("url")?.takeIf { it.isNotBlank() })
         }
@@ -212,7 +215,8 @@ object AiCreationService {
                     payload
                 )
             }
-            val root = JSONObject(payload)
+            val root = runCatching { JSONObject(payload) }
+                .getOrElse { throw AiCreationException("视频任务创建失败: 服务端返回非JSON格式", payload) }
             val taskId = root.optString("task_id").takeIf { it.isNotBlank() }
                 ?: root.optString("id").takeIf { it.isNotBlank() }
                 ?: throw AiCreationException("视频任务创建失败: 未获取到任务ID", payload)
@@ -273,7 +277,8 @@ object AiCreationService {
                         "已轮询 ${attempt + 1} 次 / ${elapsed}秒，任务ID: $taskId", payload
                     )
                 }
-                val root = JSONObject(payload)
+                val root = runCatching { JSONObject(payload) }
+                    .getOrElse { throw AiCreationException("视频查询失败: 服务端返回非JSON格式", payload) }
                 lastStatus = root.optString("status", lastStatus)
                 // 优先用 API 返回的 progress，否则用时间估算
                 val apiProgress = root.optInt("progress", -1)

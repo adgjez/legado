@@ -127,7 +127,7 @@ object AiImageService {
             }
             response.use {
                 status = "${it.code} ${it.message}"
-                val text = it.body.string()
+                val text = it.body?.string().orEmpty()
                 if (!it.isSuccessful) error(text.ifBlank { status })
                 val root = JSONObject(text)
                 imageFromOpenAiResponse(root)?.let { source ->
@@ -180,7 +180,7 @@ object AiImageService {
             }
             response.use {
                 status = "${it.code} ${it.message}"
-                val text = it.body.string()
+                val text = it.body?.string().orEmpty()
                 if (!it.isSuccessful) error(text.ifBlank { status })
                 val output = JSONObject(text).optJSONArray("output") ?: error("Empty responses output")
                 for (index in 0 until output.length()) {
@@ -279,14 +279,18 @@ object AiImageService {
         }
     }
 
+    private val httpClientCache = java.util.concurrent.ConcurrentHashMap<Long, OkHttpClient>()
+
     private fun AiImageProviderConfig.httpClient(): OkHttpClient {
         val timeout = validTimeout()
-        return okHttpClient.newBuilder()
-            .connectTimeout(timeout, TimeUnit.MILLISECONDS)
-            .writeTimeout(timeout, TimeUnit.MILLISECONDS)
-            .readTimeout(timeout, TimeUnit.MILLISECONDS)
-            .callTimeout(timeout, TimeUnit.MILLISECONDS)
-            .build()
+        return httpClientCache.getOrPut(timeout) {
+            okHttpClient.newBuilder()
+                .connectTimeout(timeout, TimeUnit.MILLISECONDS)
+                .writeTimeout(timeout, TimeUnit.MILLISECONDS)
+                .readTimeout(timeout, TimeUnit.MILLISECONDS)
+                .callTimeout(timeout, TimeUnit.MILLISECONDS)
+                .build()
+        }
     }
 
     private fun logRequest(

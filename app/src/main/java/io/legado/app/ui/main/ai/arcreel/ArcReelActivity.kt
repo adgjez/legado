@@ -9,6 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import io.legado.app.help.ai.*
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -79,13 +81,15 @@ private fun ArcReelActivityContent(
                 onBack = onFinish,
                 onStartPipeline = { proj ->
                     val contents = chapterContents ?: listOf(0 to content)
-                    ArcReelPipeline.executeFullPipeline(
-                        project = proj,
-                        chapterContents = contents,
-                        contentText = content,
-                        generateImages = true,
-                        generateVideos = false
-                    ).also { project = it }
+                    withContext(Dispatchers.IO) {
+                        ArcReelPipeline.executeFullPipeline(
+                            project = proj,
+                            chapterContents = contents,
+                            contentText = content,
+                            generateImages = true,
+                            generateVideos = false
+                        )
+                    }.also { project = it }
                 },
                 onViewStoryboard = { chapter ->
                     selectedChapter = chapter

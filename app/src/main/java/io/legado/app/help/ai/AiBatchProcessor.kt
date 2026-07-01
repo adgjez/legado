@@ -227,6 +227,7 @@ object AiBatchProcessor {
         delayMs: Long,
         block: suspend () -> T
     ): T {
+        require(maxRetries >= 0) { "retryCount must be >= 0" }
         var lastError: Throwable? = null
         repeat(maxRetries + 1) { attempt ->
             try {

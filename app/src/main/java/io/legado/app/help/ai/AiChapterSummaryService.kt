@@ -165,15 +165,17 @@ object AiChapterSummaryService {
         )
     }
 
-    private fun buildChunkPrompt(
+    private suspend fun buildChunkPrompt(
         input: SummaryInput,
         content: String,
         chunkIndex: Int,
         chunkCount: Int
     ): String {
-        val existingCharacters = appDb.bookCharacterDao.characters(
-            BookCharacterIdentityMigrator.migrate(input.book).ifBlank { input.book.characterBookKey() }
-        )
+        val existingCharacters = withContext(IO) {
+            appDb.bookCharacterDao.characters(
+                BookCharacterIdentityMigrator.migrate(input.book).ifBlank { input.book.characterBookKey() }
+            )
+        }
             .take(80)
             .joinToString("\n") { character ->
                 "- ${character.name}: ${listOf(character.identity, character.skills, character.attributes, character.biography).filter { it.isNotBlank() }.joinToString("；").take(500)}"
