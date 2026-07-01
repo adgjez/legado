@@ -1,6 +1,9 @@
 package io.legado.app.ui.widget.compose
 
+import android.content.res.ColorStateList
+import android.widget.ImageView
 import androidx.annotation.DrawableRes
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -42,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
@@ -51,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.help.config.TopBarConfig
@@ -424,10 +429,10 @@ private fun TopBarActionButton(
                 .alpha(state.alpha),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = painterResource(state.iconRes),
+            LegacyTopBarIcon(
+                iconRes = state.iconRes,
                 contentDescription = state.contentDescription,
-                colorFilter = ColorFilter.tint(textColor),
+                tint = textColor,
                 modifier = Modifier
                     .size(if (isRegular) 20.dp else 19.dp)
                     .graphicsLayer {
@@ -436,6 +441,28 @@ private fun TopBarActionButton(
             )
         }
     }
+}
+
+@Composable
+private fun LegacyTopBarIcon(
+    @DrawableRes iconRes: Int,
+    contentDescription: String,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            AppCompatImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+        },
+        update = { imageView ->
+            imageView.setImageResource(iconRes)
+            imageView.imageTintList = ColorStateList.valueOf(tint.toArgb())
+            imageView.contentDescription = contentDescription
+        }
+    )
 }
 
 @Composable
