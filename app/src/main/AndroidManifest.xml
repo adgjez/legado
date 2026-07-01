@@ -152,6 +152,10 @@
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.main.ai.arcreel.ArcReelActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.book.read.ReadBookActivity"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:exported="true"
