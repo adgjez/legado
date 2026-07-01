@@ -134,7 +134,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             showModernBookshelfMenu(it)
         }
         binding.topBar.searchButton.setOnClickListener {
-            SearchActivity.start(requireContext())
+            SearchActivity.start(requireContext(), key = null)
         }
         initRecyclerView()
         initComposeBookshelf()
