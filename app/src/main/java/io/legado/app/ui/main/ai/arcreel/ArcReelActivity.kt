@@ -122,6 +122,14 @@ private fun ArcReelActivityContent(
                                 )
                             } catch (_: Exception) { null }
                         }
+                    },
+                    onGenerateVideo = { sceneId ->
+                        val scene = chapter.result.scenes.find { it.sceneId == sceneId }
+                        scene?.let {
+                            withContext(Dispatchers.IO) {
+                                AiCreationService.textToVideoWithProgress(prompt = it.visualPrompt)
+                            }
+                        }
                     }
                 )
             }
@@ -173,15 +181,4 @@ private fun parseChapterContents(json: String): List<Pair<Int, String>> {
             obj.getInt("index") to obj.getString("content")
         }
     } catch (_: Exception) { emptyList() }
-}
-
-private fun encodeChapterContents(chapters: List<Pair<Int, String>>): String {
-    return JSONArray().apply {
-        chapters.forEach { (index, content) ->
-            put(JSONObject().apply {
-                put("index", index)
-                put("content", content)
-            })
-        }
-    }.toString()
 }
