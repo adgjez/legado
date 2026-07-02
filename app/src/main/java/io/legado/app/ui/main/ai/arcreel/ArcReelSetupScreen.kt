@@ -12,9 +12,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -60,19 +60,19 @@ fun ArcReelSetupScreen(
         ERROR               // 错误
     }
 
-    var currentStep by remember { mutableStateOf(SetupStep.CHECKING) }
-    var progress by remember { mutableStateOf(0f) }
-    var message by remember { mutableStateOf("检查环境...") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var stepDetails by remember { mutableStateOf(listOf<SetupStepInfo>()) }
-    var retryTrigger by remember { mutableStateOf(0) }  // 递增触发重试
-
     data class SetupStepInfo(
         val label: String,
         val isCompleted: Boolean = false,
         val isActive: Boolean = false,
         val isError: Boolean = false
     )
+
+    var currentStep by remember { mutableStateOf(SetupStep.CHECKING) }
+    var progress by remember { mutableStateOf(0f) }
+    var message by remember { mutableStateOf("检查环境...") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var stepDetails by remember { mutableStateOf(listOf<SetupStepInfo>()) }
+    var retryTrigger by remember { mutableStateOf(0) }  // 递增触发重试
 
     fun updateSteps(stepIndex: Int, isCompleted: Boolean = false, isActive: Boolean = false, isError: Boolean = false) {
         val labels = listOf(
@@ -211,9 +211,9 @@ fun ArcReelSetupScreen(
             ) {
                 Icon(
                     imageVector = when (currentStep) {
-                        SetupStep.ERROR -> Icons.Default.Error
+                        SetupStep.ERROR -> Icons.Default.Warning
                         SetupStep.COMPLETED -> Icons.Default.CheckCircle
-                        else -> Icons.Default.Download
+                        else -> Icons.Default.Refresh
                     },
                     contentDescription = null,
                     tint = when (currentStep) {
@@ -391,7 +391,7 @@ private fun StepItem(
         ) {
             when {
                 isError -> Icon(
-                    Icons.Default.Error,
+                    Icons.Default.Warning,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(16.dp)
@@ -408,7 +408,7 @@ private fun StepItem(
                     strokeWidth = 2.dp
                 )
                 else -> Icon(
-                    Icons.Default.HourglassEmpty,
+                    Icons.Default.Schedule,
                     contentDescription = null,
                     tint = Color.White.copy(alpha = 0.5f),
                     modifier = Modifier.size(16.dp)

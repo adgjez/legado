@@ -118,11 +118,12 @@ object AiBatchProcessor {
             try {
                 val result = withRetry(config.retryCount, config.retryDelayMs) {
                     AiChapterSummaryService.summarize(
-                    input = input,
-                    forceRefresh = forceRefresh,
-                    onPartial = {},
-                    onStatus = {}
-                )
+                        input = input,
+                        forceRefresh = forceRefresh,
+                        onPartial = {},
+                        onStatus = {}
+                    )
+                }
                 results.add(AiChapterSummaryService.SummaryResult(
                     chapterIndex = input.chapterIndex,
                     summary = result.summary,

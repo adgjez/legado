@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -197,7 +198,7 @@ private fun ArcReelWebViewContent(
                                 override fun onReceivedError(
                                     view: WebView,
                                     request: WebResourceRequest,
-                                    error: android.webkit.WebResourceErrorCompat
+                                    error: WebResourceError
                                 ) {
                                     if (request.isForMainFrame) {
                                         errorMessage = "无法连接到 ArcReel 服务"
