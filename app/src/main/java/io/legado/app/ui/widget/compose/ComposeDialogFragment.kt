@@ -20,6 +20,7 @@ import splitties.systemservices.windowManager
 
 abstract class ComposeDialogFragment : DialogFragment() {
 
+    protected open val dialogTheme: Int = R.style.Theme_Legado_ComposeDialog_Center
     protected open val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
     protected open val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
     protected open val widthFraction: Float? = null
@@ -29,7 +30,7 @@ abstract class ComposeDialogFragment : DialogFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setStyle(STYLE_NO_TITLE, 0)
+        setStyle(STYLE_NO_TITLE, if (AppConfig.isEInkMode) 0 else dialogTheme)
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {

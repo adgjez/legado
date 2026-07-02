@@ -58,6 +58,7 @@ import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 
 class AutoReadDialog : ComposeDialogFragment() {
 
+    override val dialogTheme: Int = R.style.Theme_Legado_ComposeDialog_Bottom
     override val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
     override val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
     override val dialogGravity: Int = Gravity.BOTTOM

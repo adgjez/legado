@@ -5,13 +5,13 @@ import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ResolveInfo
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.text.TextPaint
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.Menu
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupWindow
@@ -19,46 +19,74 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.view.SupportMenuInflater
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
-import androidx.core.view.isVisible
-import androidx.recyclerview.widget.GridLayoutManager
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.ItemTextBinding
-import io.legado.app.databinding.PopupActionMenuBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.utils.getPrefString
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.visible
 import kotlin.math.ceil
 
 @SuppressLint("RestrictedApi")
 class TextActionMenu(private val context: Context, private val callBack: CallBack) :
     PopupWindow(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT) {
 
-    private val binding = PopupActionMenuBinding.inflate(LayoutInflater.from(context))
-    private val adapter = Adapter(context).apply {
-        setHasStableIds(true)
-    }
+    private val composeView = ComposeView(context)
     private val allMenuItems: List<MenuItemImpl>
-    private val pageMenuItems = arrayListOf<MenuItemImpl>()
+    private var menuActions by mutableStateOf<List<TextMenuAction>>(emptyList())
+    private var popupWidthPx by mutableIntStateOf(1)
+    private var popupHeightPx by mutableIntStateOf(1)
+    private var columns by mutableIntStateOf(1)
+    private var rows by mutableIntStateOf(1)
+    private var itemWidthPx by mutableIntStateOf(64.dpToPx())
+    private var pageCapacity by mutableIntStateOf(1)
     private var lastMaxMainWidth = 0
-    private var mainMenuLayoutManager: GridLayoutManager? = null
-    private var mainMenuItemOuterWidth = 70.dpToPx()
-    private var currentPageIndex = 0
-    private var currentPageCount = 1
-    private var currentPageCapacity = 1
-    private var lastTouchX = 0f
     private val itemTextPaint = TextPaint().apply {
         textSize = 12f * context.resources.displayMetrics.scaledDensity
         typeface = context.uiTypeface()
@@ -69,6 +97,50 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
     private val defaultOpenActionId: String
         get() = context.getPrefString(PreferKey.contentSelectDefaultOpen, "").orEmpty()
+
+    init {
+        contentView = composeView
+        isTouchable = true
+        isOutsideTouchable = false
+        isFocusable = false
+        setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            elevation = 0f
+        }
+
+        val myMenu = MenuBuilder(context)
+        val otherMenu = MenuBuilder(context)
+        SupportMenuInflater(context).inflate(R.menu.content_select_action, myMenu)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            onInitializeMenu(otherMenu)
+        }
+        allMenuItems = myMenu.visibleItems + otherMenu.visibleItems
+
+        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        composeView.setContent {
+            LegadoComposeTheme {
+                TextActionMenuContent(
+                    actions = menuActions,
+                    popupWidthPx = popupWidthPx,
+                    popupHeightPx = popupHeightPx,
+                    columns = columns,
+                    rows = rows,
+                    pageCapacity = pageCapacity,
+                    itemWidthPx = itemWidthPx,
+                    onActionClick = { action ->
+                        if (!callBack.onMenuItemSelected(action.itemId)) {
+                            onMenuItemSelected(action)
+                        }
+                        callBack.onMenuActionFinally()
+                    },
+                    onActionLongClick = {
+                        toggleSpeakMode()
+                    }
+                )
+            }
+        }
+        upMenu()
+    }
 
     private fun menuItemToActionId(itemId: Int): String? = when (itemId) {
         R.id.menu_web_search -> ContentSelectConfig.ACTION_WEB_SEARCH
@@ -83,47 +155,16 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         else -> null
     }
 
-    init {
-        @SuppressLint("InflateParams")
-        contentView = binding.root
-        binding.root.applyUiBodyTypefaceDeep(context.uiTypeface())
-
-        isTouchable = true
-        isOutsideTouchable = false
-        isFocusable = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            elevation = 14f.dpToPx()
-        }
-
-        val myMenu = MenuBuilder(context)
-        val otherMenu = MenuBuilder(context)
-        SupportMenuInflater(context).inflate(R.menu.content_select_action, myMenu)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            onInitializeMenu(otherMenu)
-        }
-        allMenuItems = myMenu.visibleItems + otherMenu.visibleItems
-        mainMenuLayoutManager = GridLayoutManager(context, 1)
-        binding.recyclerView.layoutManager = mainMenuLayoutManager
-        binding.recyclerView.adapter = adapter
-        setOnDismissListener {
-            showMainMenu()
-        }
-        binding.ivMenuPrev.setOnClickListener {
-            showPage(currentPageIndex - 1)
-        }
-        binding.ivMenuNext.setOnClickListener {
-            showPage(currentPageIndex + 1)
-        }
-        binding.recyclerView.setOnTouchListener { _, event ->
-            handlePageSwipe(event)
-            false
-        }
-        upMenu()
-    }
-
-    private fun filteredMenuItems(): List<MenuItemImpl> {
-        return allMenuItems.filter { item ->
-            menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
+    private fun filteredMenuActions(): List<TextMenuAction> {
+        return allMenuItems.mapNotNull { item ->
+            val actionId = menuItemToActionId(item.itemId) ?: return@mapNotNull null
+            if (!configuredActionIds.contains(actionId)) return@mapNotNull null
+            TextMenuAction(
+                itemId = item.itemId,
+                actionId = actionId,
+                title = item.title?.toString().orEmpty(),
+                intent = item.intent
+            )
         }
     }
 
@@ -133,111 +174,67 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
     private fun upMenuForWidth(maxMainWidth: Int) {
         lastMaxMainWidth = maxMainWidth
-        pageMenuItems.clear()
-        val filteredItems = filteredMenuItems()
+        val actions = filteredMenuActions()
         val maxWidth = (maxMainWidth - 16.dpToPx()).coerceAtLeast(140.dpToPx())
-        val contentMaxWidth = (maxWidth - 12.dpToPx()).coerceAtLeast(120.dpToPx())
-        val layout = gridMainMenu(filteredItems, contentMaxWidth)
-        pageMenuItems += filteredItems
-        currentPageCapacity = layout.capacity
-        currentPageCount = layout.pageCount
-        currentPageIndex = currentPageIndex.coerceIn(0, currentPageCount - 1)
-        applyMainMenuLayout(layout)
-        showPage(currentPageIndex)
+        val layout = calculateLayout(actions, maxWidth)
+        menuActions = actions
+        columns = layout.columns
+        rows = layout.rows
+        itemWidthPx = layout.itemWidth
+        pageCapacity = layout.capacity
+        popupWidthPx = layout.width
+        popupHeightPx = layout.height
+        width = layout.width
+        height = layout.height
+        composeView.layoutParams = ViewGroup.LayoutParams(layout.width, layout.height)
     }
 
-    private fun estimateItemWidth(item: MenuItemImpl): Int {
-        val textWidth = ceil(itemTextPaint.measureText(item.title?.toString().orEmpty())).toInt()
-        return maxOf(52.dpToPx(), textWidth + 24.dpToPx())
-            .coerceAtMost(maxMenuItemWidth()) + 6.dpToPx()
-    }
-
-    private fun maxMenuItemWidth(): Int = 132.dpToPx()
-
-    private fun pageButtonWidth(): Int = 40.dpToPx()
-
-    private fun mainRowHeight(): Int = 40.dpToPx()
-
-    private fun gridMainMenu(items: List<MenuItemImpl>, contentMaxWidth: Int): MainMenuLayout {
-        val initialColumns = mainMenuColumnCount(items.size, contentMaxWidth)
-        val needsPages = items.size > initialColumns * 2
-        val rowWidth = if (needsPages) {
-            (contentMaxWidth - pageButtonWidth() * 2).coerceAtLeast(96.dpToPx())
-        } else contentMaxWidth
-        val columns = mainMenuColumnCount(items.size.coerceAtMost(8), rowWidth)
-        val capacity = columns * 2
-        val pageCount = ceil(items.size.coerceAtLeast(1) / capacity.toFloat()).toInt().coerceAtLeast(1)
-        val rowCount = if (pageCount > 1) 2 else ceil(items.size / columns.toFloat()).toInt().coerceIn(1, 2)
-        val itemWidth = mainMenuItemWidth(items.take(capacity * pageCount), columns, rowWidth)
-        return MainMenuLayout(
-            rowCount = rowCount,
-            columnCount = columns,
-            itemWidth = itemWidth,
-            width = itemWidth * columns,
+    private fun calculateLayout(actions: List<TextMenuAction>, maxWidth: Int): MenuLayout {
+        val safeCount = actions.size.coerceAtLeast(1)
+        val columns = when {
+            safeCount <= 2 -> safeCount
+            safeCount <= 4 -> safeCount
+            else -> 4
+        }.coerceAtMost((maxWidth - horizontalPaddingPx()) / minItemWidthPx()).coerceAtLeast(1)
+        val needsPages = safeCount > columns * 2
+        val rows = if (needsPages) 2 else ceil(safeCount / columns.toFloat()).toInt().coerceIn(1, 2)
+        val capacity = (columns * 2).coerceAtLeast(1)
+        val itemWidth = actions
+            .take(capacity)
+            .maxOfOrNull(::estimateItemWidth)
+            ?.coerceIn(minItemWidthPx(), maxItemWidthPx())
+            ?: minItemWidthPx()
+        val menuWidth = (itemWidth * columns + horizontalPaddingPx())
+            .coerceAtMost(maxWidth)
+            .coerceAtLeast(minItemWidthPx() + horizontalPaddingPx())
+        val menuHeight = rows * itemHeightPx() + verticalPaddingPx() +
+            if (actions.size > capacity) indicatorHeightPx() else 0
+        return MenuLayout(
+            columns = columns,
+            rows = rows,
             capacity = capacity,
-            pageCount = pageCount
+            itemWidth = ((menuWidth - horizontalPaddingPx()) / columns).coerceAtLeast(minItemWidthPx()),
+            width = menuWidth,
+            height = menuHeight
         )
     }
 
-    private fun mainMenuColumnCount(itemCount: Int, rowWidth: Int): Int {
-        if (itemCount <= 0) return 1
-        val maxColumnsByWidth = (rowWidth / 58.dpToPx()).coerceIn(1, 4)
-        val idealColumns = if (itemCount <= 4) {
-            itemCount
-        } else {
-            ceil(itemCount / 2f).toInt()
-        }
-        return idealColumns.coerceIn(1, maxColumnsByWidth)
+    private fun estimateItemWidth(action: TextMenuAction): Int {
+        val textWidth = ceil(itemTextPaint.measureText(action.title)).toInt()
+        return textWidth + 24.dpToPx()
     }
 
-    private fun mainMenuItemWidth(items: List<MenuItemImpl>, columns: Int, rowWidth: Int): Int {
-        val measured = items.maxOfOrNull(::estimateItemWidth) ?: 64.dpToPx()
-        val maxCellWidth = (rowWidth / columns).coerceAtLeast(1)
-        return measured
-            .coerceAtLeast(64.dpToPx())
-            .coerceAtMost(maxCellWidth)
-    }
+    private fun minItemWidthPx(): Int = 56.dpToPx()
 
-    private fun applyMainMenuLayout(layout: MainMenuLayout) = binding.run {
-        mainMenuItemOuterWidth = layout.itemWidth
-        adapter.itemOuterWidth = layout.itemWidth
-        mainMenuLayoutManager?.spanCount = layout.columnCount
-        recyclerView.layoutParams = recyclerView.layoutParams.apply {
-            width = layout.width
-            height = layout.rowCount * mainRowHeight()
-        }
-    }
+    private fun maxItemWidthPx(): Int = 112.dpToPx()
 
-    private fun showMainMenu() = binding.run {
-        recyclerViewMore.gone()
-        recyclerView.visible()
-        showPage(currentPageIndex)
-    }
+    private fun itemHeightPx(): Int = 40.dpToPx()
 
-    private fun showPage(index: Int) = binding.run {
-        currentPageIndex = index.coerceIn(0, currentPageCount - 1)
-        val from = currentPageIndex * currentPageCapacity
-        val to = minOf(from + currentPageCapacity, pageMenuItems.size)
-        adapter.itemOuterWidth = mainMenuItemOuterWidth
-        adapter.setItems(if (from < to) pageMenuItems.subList(from, to) else emptyList())
-        ivMenuPrev.visible(currentPageCount > 1 && currentPageIndex > 0)
-        ivMenuNext.visible(currentPageCount > 1 && currentPageIndex < currentPageCount - 1)
-    }
+    private fun horizontalPaddingPx(): Int = 12.dpToPx()
 
-    private fun handlePageSwipe(event: MotionEvent) {
-        if (currentPageCount <= 1) return
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> lastTouchX = event.rawX
-            MotionEvent.ACTION_UP -> {
-                val delta = event.rawX - lastTouchX
-                val threshold = 28.dpToPx()
-                when {
-                    delta > threshold -> showPage(currentPageIndex - 1)
-                    delta < -threshold -> showPage(currentPageIndex + 1)
-                }
-            }
-        }
-    }
+    private fun verticalPaddingPx(): Int = 12.dpToPx()
+
+    private fun indicatorHeightPx(): Int = 16.dpToPx()
 
     fun show(
         view: View,
@@ -251,7 +248,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     ) {
         val defaultActionId = defaultOpenActionId
         if (defaultActionId.isNotEmpty() && configuredActionIds.contains(defaultActionId)) {
-            val defaultItem = filteredMenuItems().firstOrNull { menuItemToActionId(it.itemId) == defaultActionId }
+            val defaultItem = filteredMenuActions().firstOrNull { it.actionId == defaultActionId }
             if (defaultItem != null) {
                 if (!callBack.onMenuItemSelected(defaultItem.itemId)) {
                     onMenuItemSelected(defaultItem)
@@ -261,12 +258,8 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             }
         }
         upMenuForWidth(view.width)
-        contentView.measure(
-            View.MeasureSpec.UNSPECIFIED,
-            View.MeasureSpec.UNSPECIFIED,
-        )
-        val popupWidth = contentView.measuredWidth
-        val popupHeight = contentView.measuredHeight
+        val popupWidth = popupWidthPx
+        val popupHeight = popupHeightPx
         val margin = 8.dpToPx()
         val safeWindowHeight = (windowHeight - reservedBottom).coerceAtLeast(margin * 2)
         val spaceAbove = startTopY
@@ -283,63 +276,18 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
     }
 
-    inner class Adapter(context: Context) :
-        RecyclerAdapter<MenuItemImpl, ItemTextBinding>(context) {
-
-        var itemOuterWidth: Int = 70.dpToPx()
-
-        override fun getItemId(position: Int): Long {
-            return position.toLong()
-        }
-
-        override fun getViewBinding(parent: ViewGroup): ItemTextBinding {
-            return ItemTextBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemTextBinding,
-            item: MenuItemImpl,
-            payloads: MutableList<Any>
-        ) {
-            with(binding) {
-                val marginParams = textView.layoutParams as? ViewGroup.MarginLayoutParams
-                if (marginParams != null) {
-                    val horizontalMargin = marginParams.leftMargin + marginParams.rightMargin
-                    marginParams.width = (itemOuterWidth - horizontalMargin).coerceAtLeast(52.dpToPx())
-                    marginParams.height = 34.dpToPx()
-                    textView.layoutParams = marginParams
-                }
-                textView.text = item.title
-                textView.typeface = context.uiTypeface()
-                textView.maxWidth = itemOuterWidth.coerceAtMost(maxMenuItemWidth())
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemTextBinding) {
-            holder.itemView.setOnClickListener {
-                getItem(holder.layoutPosition)?.let {
-                    if (!callBack.onMenuItemSelected(it.itemId)) {
-                        onMenuItemSelected(it)
-                    }
-                }
-                callBack.onMenuActionFinally()
-            }
-            holder.itemView.setOnLongClickListener {
-                if (AppConfig.contentSelectSpeakMod == 0) {
-                    AppConfig.contentSelectSpeakMod = 1
-                    context.toastOnUi(R.string.content_select_speak_from_selection)
-                } else {
-                    AppConfig.contentSelectSpeakMod = 0
-                    context.toastOnUi(R.string.content_select_speak_selected)
-                }
-                true
-            }
+    private fun toggleSpeakMode() {
+        if (AppConfig.contentSelectSpeakMod == 0) {
+            AppConfig.contentSelectSpeakMod = 1
+            context.toastOnUi(R.string.content_select_speak_from_selection)
+        } else {
+            AppConfig.contentSelectSpeakMod = 0
+            context.toastOnUi(R.string.content_select_speak_selected)
         }
     }
 
-    private fun onMenuItemSelected(item: MenuItemImpl) {
-        when (item.itemId) {
+    private fun onMenuItemSelected(action: TextMenuAction) {
+        when (action.itemId) {
             R.id.menu_copy -> context.sendToClip(callBack.selectedText)
             R.id.menu_share_str -> context.share(callBack.selectedText)
             R.id.menu_browser -> {
@@ -360,13 +308,13 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
                 }
             }
 
-            else -> item.intent?.let {
+            else -> action.intent?.let {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     kotlin.runCatching {
                         it.putExtra(Intent.EXTRA_PROCESS_TEXT, callBack.selectedText)
                         context.startActivity(it)
                     }.onFailure { e ->
-                        AppLog.put("执行文本菜单操作出错\n$e", e, true)
+                        AppLog.put("Text action menu error\n$e", e, true)
                     }
                 }
             }
@@ -393,11 +341,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             .setClassName(info.activityInfo.packageName, info.activityInfo.name)
     }
 
-    /**
-     * Start with a menu Item order value that is high enough
-     * so that your "PROCESS_TEXT" menu items appear after the
-     * standard selection menu items like Cut, Copy, Paste.
-     */
     @RequiresApi(Build.VERSION_CODES.M)
     private fun onInitializeMenu(menu: Menu) {
         kotlin.runCatching {
@@ -409,7 +352,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
                 ).intent = createProcessTextIntentForResolveInfo(resolveInfo)
             }
         }.onFailure {
-            context.toastOnUi("获取文字操作菜单出错:${it.localizedMessage}")
+            context.toastOnUi("Text action menu init error:${it.localizedMessage}")
         }
     }
 
@@ -421,12 +364,162 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         fun onMenuActionFinally()
     }
 
-    private data class MainMenuLayout(
-        val rowCount: Int,
-        val columnCount: Int,
+    private data class MenuLayout(
+        val columns: Int,
+        val rows: Int,
+        val capacity: Int,
         val itemWidth: Int,
         val width: Int,
-        val capacity: Int,
-        val pageCount: Int
+        val height: Int
     )
+}
+
+private data class TextMenuAction(
+    val itemId: Int,
+    val actionId: String,
+    val title: String,
+    val intent: Intent?
+)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TextActionMenuContent(
+    actions: List<TextMenuAction>,
+    popupWidthPx: Int,
+    popupHeightPx: Int,
+    columns: Int,
+    rows: Int,
+    pageCapacity: Int,
+    itemWidthPx: Int,
+    onActionClick: (TextMenuAction) -> Unit,
+    onActionLongClick: () -> Unit
+) {
+    val style = rememberAppDialogStyle()
+    val density = LocalDensity.current
+    val pages = actions.chunked(pageCapacity.coerceAtLeast(1)).ifEmpty { listOf(emptyList()) }
+    val pagerState = rememberPagerState(pageCount = { pages.size })
+    LaunchedEffect(pages.size) {
+        val target = pagerState.currentPage.coerceAtMost((pages.size - 1).coerceAtLeast(0))
+        if (target != pagerState.currentPage) {
+            pagerState.scrollToPage(target)
+        }
+    }
+    val widthDp = with(density) { popupWidthPx.toDp() }
+    val heightDp = with(density) { popupHeightPx.toDp() }
+    val itemWidthDp = with(density) { itemWidthPx.toDp() }
+    val itemHeight = 34.dp
+    val shape = RoundedCornerShape(style.panelRadius)
+
+    Column(
+        modifier = Modifier
+            .width(widthDp)
+            .height(heightDp)
+            .shadow(12.dp, shape, clip = false)
+            .clip(shape)
+            .background(style.surface)
+            .border(1.dp, style.stroke, shape)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .width(widthDp - 12.dp)
+                .height((rows * 40).dp)
+        ) { page ->
+            val pageItems = pages[page]
+            Column(
+                modifier = Modifier.width(widthDp - 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                repeat(rows) { rowIndex ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        repeat(columns) { columnIndex ->
+                            val itemIndex = rowIndex * columns + columnIndex
+                            val action = pageItems.getOrNull(itemIndex)
+                            if (action == null) {
+                                Spacer(
+                                    modifier = Modifier
+                                        .width(itemWidthDp)
+                                        .height(itemHeight)
+                                )
+                            } else {
+                                TextActionChip(
+                                    action = action,
+                                    width = itemWidthDp,
+                                    height = itemHeight,
+                                    textColor = style.primaryText,
+                                    background = style.fieldSurface,
+                                    accent = style.accent,
+                                    onClick = { onActionClick(action) },
+                                    onLongClick = onActionLongClick
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (pages.size > 1) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(pages.size) { index ->
+                    val selected = pagerState.currentPage == index
+                    Box(
+                        modifier = Modifier
+                            .size(if (selected) 6.dp else 4.dp)
+                            .clip(CircleShape)
+                            .background(if (selected) style.accent else style.secondaryText.copy(alpha = 0.45f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TextActionChip(
+    action: TextMenuAction,
+    width: androidx.compose.ui.unit.Dp,
+    height: androidx.compose.ui.unit.Dp,
+    textColor: ComposeColor,
+    background: ComposeColor,
+    accent: ComposeColor,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+            .padding(horizontal = 3.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .border(1.dp, accent.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = action.title,
+            color = textColor,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.widthIn(max = width - 16.dp)
+        )
+    }
 }

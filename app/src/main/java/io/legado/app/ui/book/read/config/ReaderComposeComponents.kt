@@ -90,6 +90,7 @@ fun rememberReaderMenuDialogStyle(bgColor: Int): AppDialogStyle {
 
 abstract class ReaderBottomSheetComposeDialogFragment : ComposeDialogFragment() {
 
+    override val dialogTheme: Int = R.style.Theme_Legado_ComposeDialog_Bottom
     override val dialogGravity: Int = Gravity.BOTTOM
     override val dialogWindowAnimations: Int = R.style.AnimDialogBottom
     override val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
