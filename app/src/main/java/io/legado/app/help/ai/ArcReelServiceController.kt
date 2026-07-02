@@ -7,6 +7,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -52,6 +54,7 @@ object ArcReelServiceController {
     val state: StateFlow<ServiceState> = _state
 
     private val serverProcess = AtomicReference<Process?>(null)
+    private val mutex = Mutex()
 
     fun isInstalled(context: Context): Boolean {
         val arcReelDir = ArcReelEnvironment.arcReelDir(context)
@@ -141,7 +144,8 @@ object ArcReelServiceController {
     /**
      * 启动 ArcReel FastAPI 服务
      */
-    suspend fun start(context: Context): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun start(context: Context): Result<Unit> = mutex.withLock {
+        withContext(Dispatchers.IO) {
         try {
             if (isRunning()) {
                 _state.value = ServiceState(ServiceStatus.RUNNING, 1f, "服务已在运行", serverUrl = HEALTH_CHECK_URL)
@@ -216,22 +220,24 @@ object ArcReelServiceController {
             _state.value = ServiceState(ServiceStatus.ERROR, 0f, "启动失败", e.message)
             Result.failure(e)
         }
+        }
     }
 
     /**
      * 停止 ArcReel 服务
      */
-    suspend fun stop() = withContext(Dispatchers.IO) {
-        val process = serverProcess.getAndSet(null) ?: return@withContext
-        process.destroy()
-        // 等待进程退出
-        try {
-            process.waitFor(5, TimeUnit.SECONDS)
-        } catch (_: Exception) { }
-        if (process.isAlive) {
-            process.destroyForcibly()
+    suspend fun stop() = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val process = serverProcess.getAndSet(null) ?: return@withContext
+            process.destroy()
+            try {
+                process.waitFor(5, TimeUnit.SECONDS)
+            } catch (_: Exception) { }
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
+            _state.value = ServiceState(ServiceStatus.STOPPED, 0f, "服务已停止")
         }
-        _state.value = ServiceState(ServiceStatus.STOPPED, 0f, "服务已停止")
     }
 
     /**

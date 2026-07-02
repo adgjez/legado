@@ -32,6 +32,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.help.ai.ArcReelEnvironment
 import io.legado.app.help.ai.ArcReelServiceController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -106,6 +107,13 @@ private fun ArcReelWebViewContent(
                     isLoading = false
                 }
                 serviceReady = true
+
+                // 30秒超时：如果 WebView 仍未加载完成，显示错误
+                delay(30_000)
+                if (isLoading && errorMessage == null) {
+                    errorMessage = "页面加载超时，请检查 ArcReel 服务是否正常运行"
+                    isLoading = false
+                }
             } catch (e: Exception) {
                 errorMessage = "启动失败: ${e.message ?: "未知错误"}"
                 isLoading = false

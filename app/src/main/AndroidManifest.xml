@@ -153,12 +153,17 @@
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
             android:name=".ui.main.ai.arcreel.ArcReelActivity"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
             android:name=".ui.main.ai.arcreel.ArcReelWebViewActivity"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:hardwareAccelerated="true"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.main.ai.arcreel.ArcReelPipelineActivity"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="standard" />
         <activity
             android:name=".ui.book.read.ReadBookActivity"

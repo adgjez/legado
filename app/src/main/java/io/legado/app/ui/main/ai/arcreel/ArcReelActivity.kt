@@ -38,25 +38,57 @@ class ArcReelActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val bookName = intent.getStringExtra("bookName") ?: ""
+        val author = intent.getStringExtra("author") ?: ""
+        val bookUrl = intent.getStringExtra("bookUrl") ?: ""
+        val content = intent.getStringExtra("content") ?: ""
+        val chapterContentsJson = intent.getStringExtra("chapterContentsJson") ?: ""
+
         setContent {
             ArcReelEntryScreen(
+                bookName = bookName,
+                author = author,
+                bookUrl = bookUrl,
+                content = content,
+                chapterContentsJson = chapterContentsJson,
                 onFinish = { finish() }
             )
         }
     }
 }
 
+private fun makeWebViewIntent(context: android.content.Context, extras: Bundle) =
+    Intent(context, ArcReelWebViewActivity::class.java).apply { putExtras(extras) }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ArcReelEntryScreen(onFinish: () -> Unit) {
+private fun ArcReelEntryScreen(
+    bookName: String,
+    author: String,
+    bookUrl: String,
+    content: String,
+    chapterContentsJson: String,
+    onFinish: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var isChecking by remember { mutableStateOf(true) }
     var showSetup by remember { mutableStateOf(false) }
+    var showPipeline by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("检查 ArcReel 环境...") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var retryTrigger by remember { mutableStateOf(0) }
+
+    val extras = Bundle().apply {
+        putString("bookName", bookName)
+        putString("author", author)
+        putString("bookUrl", bookUrl)
+        putString("content", content)
+        if (chapterContentsJson.isNotEmpty()) {
+            putString("chapterContentsJson", chapterContentsJson)
+        }
+    }
 
     // 检查环境状态
     LaunchedEffect(retryTrigger) {
@@ -64,29 +96,21 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
         errorMessage = null
         withContext(Dispatchers.IO) {
             try {
-                // 检查环境是否已安装
                 if (!ArcReelEnvironment.isInstalled(context)) {
                     showSetup = true
                     isChecking = false
                     return@withContext
                 }
-
-                // 检查 ArcReel 服务是否已安装
                 if (!ArcReelServiceController.isInstalled(context)) {
                     showSetup = true
                     isChecking = false
                     return@withContext
                 }
-
                 message = "正在启动 ArcReel 服务..."
-                // 启动服务
                 val startResult = ArcReelServiceController.start(context)
                 if (startResult.isSuccess) {
-                    // 跳转 WebView（需要在主线程）
                     withContext(Dispatchers.Main) {
-                        context.startActivity(
-                            Intent(context, ArcReelWebViewActivity::class.java)
-                        )
+                        context.startActivity(makeWebViewIntent(context, extras))
                     }
                 } else {
                     errorMessage = "服务启动失败: ${startResult.exceptionOrNull()?.message ?: "未知错误"}"
@@ -127,9 +151,7 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
                     ArcReelSetupScreen(
                         onBack = onFinish,
                         onComplete = {
-                            context.startActivity(
-                                Intent(context, ArcReelWebViewActivity::class.java)
-                            )
+                            context.startActivity(makeWebViewIntent(context, extras))
                         }
                     )
                 }

@@ -5,6 +5,7 @@ import android.content.Intent
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.ui.main.ai.arcreel.ArcReelActivity
+import io.legado.app.ui.main.ai.arcreel.ArcReelPipelineActivity
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -42,6 +43,19 @@ object ArcReelLauncher {
             putExtra("bookUrl", book.bookUrl)
             putExtra("content", allContent)
             putExtra("chapterContentsJson", encodeChapterContents(chapterContents))
+        }
+        context.startActivity(intent)
+    }
+
+    /**
+     * 启动 AI 管道模式（角色设计、分镜、视频生成）
+     */
+    fun launchPipeline(context: Context, book: Book, content: String) {
+        val intent = Intent(context, ArcReelPipelineActivity::class.java).apply {
+            putExtra("bookName", book.name)
+            putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
+            putExtra("content", content)
         }
         context.startActivity(intent)
     }

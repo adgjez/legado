@@ -6,7 +6,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -47,6 +49,7 @@ object ArcReelEnvironment {
     private const val PROOT_BINARY_NAME = "proot"
     private const val ROOTFS_DIR_NAME = "ubuntu-rootfs"
     const val ARCREEL_DIR_NAME = "arcreel"
+    private const val COMMAND_TIMEOUT_MS = 300_000L  // 5分钟超时
 
     enum class EnvStatus {
         NOT_INSTALLED,
@@ -118,39 +121,41 @@ object ArcReelEnvironment {
     suspend fun execute(context: Context, command: String, workDir: String = "/root"): Result<String> =
         withContext(Dispatchers.IO) {
             try {
-                val proot = prootBinary(context).absolutePath
-                val rootfs = rootfsDir(context).absolutePath
-                val fullCommand = arrayOf(
-                    proot,
-                    "-r", rootfs,
-                    "-b", "/dev:/dev",
-                    "-b", "/proc:/proc",
-                    "-b", "/sys:/sys",
-                    "-w", workDir,
-                    "/usr/bin/env", "-i",
-                    "HOME=/root",
-                    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                    "LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/lib",
-                    "/bin/bash", "-c", command
-                )
+                withTimeout(COMMAND_TIMEOUT_MS) {
+                    val proot = prootBinary(context).absolutePath
+                    val rootfs = rootfsDir(context).absolutePath
+                    val fullCommand = arrayOf(
+                        proot,
+                        "-r", rootfs,
+                        "-b", "/dev:/dev",
+                        "-b", "/proc:/proc",
+                        "-b", "/sys:/sys",
+                        "-w", workDir,
+                        "/usr/bin/env", "-i",
+                        "HOME=/root",
+                        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        "LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/lib",
+                        "/bin/bash", "-c", command
+                    )
 
-                val process = Runtime.getRuntime().exec(fullCommand)
-                // 并发读取 stdout 和 stderr 防止管道死锁
-                val (stdout, stderr) = coroutineScope {
-                    val stdoutDeferred = async(Dispatchers.IO) {
-                        process.inputStream.bufferedReader().use { it.readText() }
+                    val process = Runtime.getRuntime().exec(fullCommand)
+                    // 并发读取 stdout 和 stderr 防止管道死锁
+                    val (stdout, stderr) = coroutineScope {
+                        val stdoutDeferred = async(Dispatchers.IO) {
+                            process.inputStream.bufferedReader().use { it.readText() }
+                        }
+                        val stderrDeferred = async(Dispatchers.IO) {
+                            process.errorStream.bufferedReader().use { it.readText() }
+                        }
+                        Pair(stdoutDeferred.await(), stderrDeferred.await())
                     }
-                    val stderrDeferred = async(Dispatchers.IO) {
-                        process.errorStream.bufferedReader().use { it.readText() }
-                    }
-                    Pair(stdoutDeferred.await(), stderrDeferred.await())
-                }
-                val exitCode = process.waitFor()
+                    val exitCode = process.waitFor()
 
-                if (exitCode == 0) {
-                    Result.success(stdout)
-                } else {
-                    Result.failure(RuntimeException("Exit code $exitCode: $stderr"))
+                    if (exitCode == 0) {
+                        Result.success(stdout)
+                    } else {
+                        Result.failure(RuntimeException("Exit code $exitCode: $stderr"))
+                    }
                 }
             } catch (e: Exception) {
                 Result.failure(e)
@@ -391,6 +396,11 @@ object ArcReelEnvironment {
                     if (contentLength > 0) {
                         onProgress(totalBytesRead.toFloat() / contentLength)
                     }
+                    // 检查协程取消
+                    if (!isActive) {
+                        response.close()
+                        throw kotlinx.coroutines.CancellationException("下载已取消")
+                    }
                 }
             }
         }
@@ -411,7 +421,13 @@ object ArcReelEnvironment {
                     else -> {
                         val name = longName ?: entry.name
                         longName = null
-                        val entryFile = File(destDir, name.trimStart('/'))
+                        val trimmedName = name.trimStart('/')
+                        // 路径遍历防护
+                        if (trimmedName.contains("..")) {
+                            entry = readTarEntry(gzStream)
+                            continue
+                        }
+                        val entryFile = File(destDir, trimmedName)
                         when {
                             entry.isDirectory -> entryFile.mkdirs()
                             entry.isSymlink -> {

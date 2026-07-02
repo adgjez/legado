@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.help.ai.ArcReelEnvironment
 import io.legado.app.help.ai.ArcReelServiceController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -100,8 +102,10 @@ fun ArcReelSetupScreen(
                 currentStep = SetupStep.INSTALLING_ENV
                 updateSteps(0, isActive = true)
                 message = "正在下载 Ubuntu 环境..."
+                if (!isActive) return@withContext
 
                 val envResult = ArcReelEnvironment.install(context)
+                if (!isActive) return@withContext
                 if (envResult.isFailure) {
                     errorMessage = envResult.exceptionOrNull()?.message ?: "环境安装失败"
                     currentStep = SetupStep.ERROR
@@ -110,28 +114,37 @@ fun ArcReelSetupScreen(
                 }
                 updateSteps(0, isCompleted = true)
 
-                // Step 2: 安装 ArcReel
+                // Step 2: 安装 ArcReel（apt + git + pip）
                 currentStep = SetupStep.INSTALLING_ARCREEL
                 updateSteps(1, isActive = true)
-                message = "正在安装 Python 依赖..."
+                message = "正在更新 apt 源和安装依赖..."
+                if (!isActive) return@withContext
 
                 val installResult = ArcReelServiceController.install(context)
+                if (!isActive) return@withContext
                 if (installResult.isFailure) {
                     errorMessage = installResult.exceptionOrNull()?.message ?: "ArcReel 安装失败"
                     currentStep = SetupStep.ERROR
                     updateSteps(1, isError = true)
                     return@withContext
                 }
+                // 逐步标记完成，避免瞬间跳跃
                 updateSteps(1, isCompleted = true)
+                delay(300)
+                if (!isActive) return@withContext
                 updateSteps(2, isCompleted = true)
+                delay(300)
+                if (!isActive) return@withContext
                 updateSteps(3, isCompleted = true)
 
                 // Step 3: 启动服务
                 currentStep = SetupStep.STARTING
                 updateSteps(4, isActive = true)
                 message = "正在启动 ArcReel 服务..."
+                if (!isActive) return@withContext
 
                 val startResult = ArcReelServiceController.start(context)
+                if (!isActive) return@withContext
                 if (startResult.isFailure) {
                     errorMessage = startResult.exceptionOrNull()?.message ?: "服务启动失败"
                     currentStep = SetupStep.ERROR
