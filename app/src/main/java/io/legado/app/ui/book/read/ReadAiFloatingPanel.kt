@@ -181,6 +181,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 onToggleFullscreen = ::toggleFullscreen,
                 onSelectModel = ::selectModel,
                 onOpenAbilities = ::showWindowAbilityDialog,
+                onOpenVideoPipeline = ::openVideoPipeline,
                 onOpenSkills = ::showWindowSkillDialog,
                 onOpenMcp = ::showWindowMcpDialog,
                 onOpenWorldBooks = ::showReadAiWorldBookDialog,
@@ -834,6 +835,28 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
     }
 
+    private fun openVideoPipeline() {
+        val readActivity = context as? ReadBookActivity ?: return
+        val chapterText = readActivity.readBook?.curText() ?: ""
+        val bookName = readActivity.readBook?.book?.name ?: ""
+        val chapterName = readActivity.readBook?.curTextChapterName ?: ""
+        val chapterIndex = (readActivity.readBook?.durChapterIndex ?: 0) + 1
+
+        if (chapterText.isBlank()) {
+            context.toastOnUi("当前章节无文本内容")
+            return
+        }
+
+        // 启动视频流水线 Activity
+        val intent = Intent(context, VideoPipelineActivity::class.java).apply {
+            putExtra(VideoPipelineActivity.EXTRA_NOVEL_TEXT, chapterText)
+            putExtra(VideoPipelineActivity.EXTRA_NOVEL_TITLE, bookName)
+            putExtra(VideoPipelineActivity.EXTRA_CHAPTER_NAME, chapterName)
+            putExtra(VideoPipelineActivity.EXTRA_EPISODE, chapterIndex)
+        }
+        context.startActivity(intent)
+    }
+
     private fun openWorldBookManage() {
         context.startActivity(
             Intent(context, AiWorldBookManageActivity::class.java)
@@ -1278,6 +1301,7 @@ private fun ReadAiPanelContent(
     onToggleFullscreen: () -> Unit,
     onSelectModel: () -> Unit,
     onOpenAbilities: () -> Unit,
+    onOpenVideoPipeline: () -> Unit,
     onOpenSkills: () -> Unit,
     onOpenMcp: () -> Unit,
     onOpenWorldBooks: () -> Unit,
@@ -1394,6 +1418,7 @@ private fun ReadAiPanelContent(
                                 add(ReadAiMenuAction("MCP", onOpenMcp))
                                 add(ReadAiMenuAction("世界书", onOpenWorldBooks))
                                 add(ReadAiMenuAction("窗口能力", onOpenAbilities))
+                                add(ReadAiMenuAction("🎬 生成视频", onOpenVideoPipeline))
                                 add(ReadAiMenuAction(stringResource(R.string.ai_current_model), onSelectModel))
                             },
                             onDismiss = { menuExpanded = false }

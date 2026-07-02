@@ -1856,4 +1856,20 @@ object AiChatService {
         "```legado-search-results\\s*\\n([\\s\\S]*?)\\n```",
         setOf(RegexOption.MULTILINE)
     )
+
+    /**
+     * 结构化输出：发送 prompt 给 LLM 并返回纯文本响应。
+     * 供流水线模块（ScriptGenerator）调用，不走 agent/tool 流程。
+     */
+    suspend fun generateStructured(
+        prompt: String,
+        systemPrompt: String = ""
+    ): String {
+        val messages = mutableListOf<AiChatMessage>()
+        if (systemPrompt.isNotBlank()) {
+            messages.add(AiChatMessage(role = "system", content = systemPrompt))
+        }
+        messages.add(AiChatMessage(role = "user", content = prompt))
+        return chat(messages)
+    }
 }

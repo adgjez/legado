@@ -327,6 +327,10 @@
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.main.ai.pipeline.VideoPipelineActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.book.character.BookCharacterManageActivity"
             android:launchMode="standard" />
         <activity
