@@ -182,7 +182,7 @@ object ArcReelEnvironment {
 
             // 尝试下载 proot 二进制（多个镜像源）
             _state.value = _state.value.copy(message = "下载 proot 二进制...")
-            var lastError: Exception? = null
+            var lastError: Throwable? = null
             var downloaded = false
 
             for ((index, url) in PROOT_STATIC_URLS.withIndex()) {
