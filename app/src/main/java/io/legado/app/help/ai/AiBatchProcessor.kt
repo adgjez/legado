@@ -45,6 +45,53 @@ object AiBatchProcessor {
     private val _progress = MutableStateFlow(BatchProgress(0, 0, 0))
     val progress: StateFlow<BatchProgress> = _progress
 
+    // ── 重试和并发控制 ──
+
+    private suspend fun <T> withRetry(
+        maxRetries: Int,
+        delayMs: Long,
+        block: suspend () -> T
+    ): T {
+        require(maxRetries >= 0) { "retryCount must be >= 0" }
+        var lastError: Throwable? = null
+        repeat(maxRetries + 1) { attempt ->
+            try {
+                return block()
+            } catch (e: Exception) {
+                lastError = e
+                if (attempt < maxRetries) {
+                    delay(delayMs * (attempt + 1))
+                }
+            }
+        }
+        throw lastError ?: RuntimeException("Unknown retry error")
+    }
+
+    private class Semaphore(private val maxPermits: Int) {
+        private var permits = if (maxPermits > 0) maxPermits else 1
+        private val lock = Any()
+
+        suspend fun acquire() {
+            while (true) {
+                synchronized(lock) {
+                    if (permits > 0) {
+                        permits--
+                        return
+                    }
+                }
+                delay(200)
+            }
+        }
+
+        fun release() {
+            synchronized(lock) {
+                if (permits < maxPermits) permits++
+            }
+        }
+    }
+
+    // ── 批量处理方法 ──
+
     /**
      * 批量处理章节摘要
      */
@@ -222,50 +269,6 @@ object AiBatchProcessor {
             totalTimeMs = System.currentTimeMillis() - startTime
         )
     }
-
-    private suspend fun <T> withRetry(
-        maxRetries: Int,
-        delayMs: Long,
-        block: suspend () -> T
-    ): T {
-        require(maxRetries >= 0) { "retryCount must be >= 0" }
-        var lastError: Throwable? = null
-        repeat(maxRetries + 1) { attempt ->
-            try {
-                return block()
-            } catch (e: Exception) {
-                lastError = e
-                if (attempt < maxRetries) {
-                    delay(delayMs * (attempt + 1))
-                }
-            }
-        }
-        throw lastError!!
-    }
-
-    private class Semaphore(private val maxPermits: Int) {
-        private var permits = if (maxPermits > 0) maxPermits else 1
-        private val lock = Any()
-
-        suspend fun acquire() {
-            while (true) {
-                synchronized(lock) {
-                    if (permits > 0) {
-                        permits--
-                        return
-                    }
-                }
-                delay(200)
-            }
-        }
-
-        fun release() {
-            synchronized(lock) {
-                if (permits < maxPermits) permits++
-            }
-        }
-    }
-}
 
 /**
  * 扩展 AiChapterSummaryService 以支持 BatchProcessor
