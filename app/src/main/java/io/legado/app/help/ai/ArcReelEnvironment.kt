@@ -26,9 +26,12 @@ import java.util.zip.GZIPInputStream
  */
 object ArcReelEnvironment {
 
-    // Ubuntu 24.04 (Noble) arm64 base tarball
-    private const val UBUNTU_ROOTFS_URL =
-        "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz"
+    // Ubuntu 24.04 (Noble) arm64 base tarball（多个镜像源）
+    private val UBUNTU_ROOTFS_URLS = listOf(
+        "https://mirrors.ustc.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz",
+        "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz",
+        "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz",
+    )
 
     // proot arm64 预编译二进制
     // 从 Termux 官方包仓库下载 .deb 包，然后提取 proot 二进制
@@ -300,12 +303,30 @@ object ArcReelEnvironment {
         return try {
             val tarball = File(envDir(context), "ubuntu-rootfs.tar.gz")
 
-            // 下载 rootfs tarball
-            downloadFile(UBUNTU_ROOTFS_URL, tarball.absolutePath) { progress ->
-                _state.value = _state.value.copy(
-                    progress = 0.1f + progress * 0.7f,
-                    message = "下载 Ubuntu rootfs: ${(progress * 100).toInt()}%"
-                )
+            // 下载 rootfs tarball（尝试多个镜像源）
+            var lastError: Throwable? = null
+            var downloaded = false
+
+            for ((index, url) in UBUNTU_ROOTFS_URLS.withIndex()) {
+                tarball.delete()
+                val result = runCatching {
+                    downloadFile(url, tarball.absolutePath) { progress ->
+                        _state.value = _state.value.copy(
+                            progress = 0.1f + progress * 0.7f,
+                            message = "下载 Ubuntu rootfs (源${index + 1}): ${(progress * 100).toInt()}%"
+                        )
+                    }
+                }
+                if (result.isSuccess && tarball.length() > 1000000) {
+                    downloaded = true
+                    break
+                }
+                lastError = result.exceptionOrNull()
+                tarball.delete()
+            }
+
+            if (!downloaded) {
+                throw lastError ?: RuntimeException("所有 Ubuntu rootfs 镜像源均下载失败")
             }
 
             // 解压到 rootfs 目录
