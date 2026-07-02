@@ -14,7 +14,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -408,7 +408,7 @@ private fun StepItem(
                     strokeWidth = 2.dp
                 )
                 else -> Icon(
-                    Icons.Default.Schedule,
+                    Icons.Default.MoreHoriz,
                     contentDescription = null,
                     tint = Color.White.copy(alpha = 0.5f),
                     modifier = Modifier.size(16.dp)

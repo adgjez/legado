@@ -271,6 +271,8 @@ object AiBatchProcessor {
         )
     }
 
+}
+
 /**
  * 扩展 AiChapterSummaryService 以支持 BatchProcessor
  */
