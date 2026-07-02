@@ -947,8 +947,11 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     pendingPanelBorderColor = null
                     setupPanelBorderColorRow(row)
                 } else {
+                    val initialColor = runCatching {
+                        colorText?.let { normalizeColor(it).toColorInt() } ?: accentColor
+                    }.getOrDefault(accentColor)
                     ColorPickerDialog.newBuilder()
-                        .setColor((pendingPanelBorderColor ?: "#${accentColor.hexString}").toColorInt())
+                        .setColor(initialColor)
                         .setShowAlphaSlider(false)
                         .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
                         .setDialogId(colorPanelBorder)

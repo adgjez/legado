@@ -59,6 +59,7 @@ abstract class PageDelegate(protected val readView: ReadView) {
     var isStarted = false
 
     private var deferredAnimationRefresh = false
+    private var deferredAnimationRefreshPosted = false
     private var selectedOnDown = false
 
     init {
@@ -76,11 +77,17 @@ abstract class PageDelegate(protected val readView: ReadView) {
     }
 
     protected fun startScroll(startX: Int, startY: Int, dx: Int, dy: Int, animationSpeed: Int) {
+        if (dx == 0 && dy == 0) {
+            isStarted = true
+            onAnimStop()
+            stopScroll()
+            return
+        }
         val duration = if (dx != 0) {
             (animationSpeed * abs(dx)) / viewWidth
         } else {
             (animationSpeed * abs(dy)) / viewHeight
-        }
+        }.coerceAtLeast(1)
         scroller.startScroll(startX, startY, dx, dy, duration)
         isRunning = true
         isStarted = true
@@ -201,13 +208,24 @@ abstract class PageDelegate(protected val readView: ReadView) {
         if (ReadBook.book?.isEpub == true) return
         if (isStarted && isRunning && this is HorizontalPageDelegate) {
             deferredAnimationRefresh = true
+            if (!deferredAnimationRefreshPosted) {
+                deferredAnimationRefreshPosted = true
+                readView.post {
+                    deferredAnimationRefreshPosted = false
+                    if (isStarted && isRunning && deferredAnimationRefresh) {
+                        deferredAnimationRefresh = false
+                        setBitmap()
+                        readView.postInvalidateOnAnimation()
+                    }
+                }
+            }
             readView.postInvalidateOnAnimation()
         }
     }
 
     protected fun flushDeferredAnimationRefresh() {
-        if (!deferredAnimationRefresh) return
         deferredAnimationRefresh = false
+        deferredAnimationRefreshPosted = false
         readView.postInvalidateOnAnimation()
     }
 

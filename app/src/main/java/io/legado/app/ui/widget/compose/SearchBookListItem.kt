@@ -1,18 +1,17 @@
 package io.legado.app.ui.widget.compose
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -100,7 +99,6 @@ fun SearchBookListItem(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SearchBookListText(
     book: SearchBook,
@@ -150,32 +148,19 @@ private fun SearchBookListText(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        val kinds = remember(book.kind) { book.getKindList() }
+        val kinds = remember(book.tag, book.kind) { book.getKindList() }
         if (kinds.isNotEmpty()) {
             Spacer(modifier = Modifier.size(if (rounded) 4.dp else 1.dp))
-            if (rounded) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    kinds.take(4).forEach { kind ->
-                        SearchBookKindChip(
-                            text = kind,
-                            rounded = true,
-                            palette = palette
-                        )
-                    }
-                }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    kinds.take(3).forEach { kind ->
-                        SearchBookKindChip(
-                            text = kind,
-                            rounded = false,
-                            palette = palette,
-                            modifier = Modifier.widthIn(max = 72.dp)
-                        )
-                    }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(if (rounded) 6.dp else 4.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState())
+            ) {
+                kinds.forEach { kind ->
+                    SearchBookKindChip(
+                        text = kind,
+                        rounded = rounded,
+                        palette = palette
+                    )
                 }
             }
         }

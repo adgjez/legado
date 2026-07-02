@@ -72,7 +72,6 @@ import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import io.legado.app.ui.widget.image.CoverImageView
-import io.legado.app.utils.stableSearchBookKey
 import kotlin.math.roundToInt
 
 private const val BOOK_COVER_ASPECT_RATIO = 0.75f
@@ -676,7 +675,7 @@ private fun DiscoverySuiteHorizontalBooksWidget(
     val displayBooks = remember(widget.id, books) {
         books.take(HORIZONTAL_WIDGET_MAX_RENDER_COUNT)
     }
-    val shouldLoadMore by remember(rowState, widget.id, displayBooks.size) {
+    val shouldLoadMore by remember {
         derivedStateOf {
             val lastVisibleIndex = rowState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             displayBooks.isNotEmpty() && lastVisibleIndex >= displayBooks.lastIndex - 4
@@ -1264,7 +1263,11 @@ private fun SearchBook.displayKey(): String {
  * 不含 index / 可变展示字段，合并回填或去重移位时不会被 Compose 误判为新 item。
  */
 private fun SearchBook.suiteStableKey(): String {
-    return stableSearchBookKey()
+    return when {
+        bookUrl.isNotBlank() -> "$origin|$bookUrl"
+        author.isNotBlank() -> "$origin|$name|$author"
+        else -> "$origin|$name"
+    }
 }
 
 private fun BookshelfListRenderConfig.withSuiteOpacityMultiplier(

@@ -399,6 +399,8 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
     private fun buildSubSearchItems(): List<MySettingsSubSearchItem> {
         return listOf(
             Triple("theme_setting", R.xml.pref_config_theme, ConfigTag.THEME_CONFIG),
+            Triple("theme_setting", R.xml.pref_config_cover, ConfigTag.COVER_CONFIG),
+            Triple("theme_setting", R.xml.pref_config_welcome, ConfigTag.WELCOME_CONFIG),
             Triple("web_dav_setting", R.xml.pref_config_backup, ConfigTag.BACKUP_CONFIG),
             Triple("ai_setting", R.xml.pref_config_ai, ConfigTag.AI_CONFIG),
             Triple("setting", R.xml.pref_config_other, ConfigTag.OTHER_CONFIG),
@@ -409,7 +411,15 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
             )
         ).flatMap { (ownerKey, xmlRes, ownerConfigTag) ->
             buildPreferenceXmlSearchItems(ownerKey, xmlRes, ownerConfigTag)
-        }
+        } + listOf(
+            MySettingsSubSearchItem(
+                ownerKey = "theme_setting",
+                title = getString(R.string.welcome_style),
+                summary = getString(R.string.welcome_style_summary),
+                key = PreferKey.welcomeShowTime,
+                ownerConfigTag = ConfigTag.WELCOME_CONFIG
+            )
+        )
     }
 
     private fun buildPreferenceXmlSearchItems(

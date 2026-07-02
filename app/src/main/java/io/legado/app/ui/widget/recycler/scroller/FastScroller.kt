@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -540,8 +541,11 @@ class FastScroller : LinearLayout {
     }
 
     private fun applyTouchTargetWidth() {
-        val targetWidth = (AppConfig.fastScrollerTouchTargetDp * resources.displayMetrics.density)
-            .roundToInt()
+        val targetWidth = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            AppConfig.fastScrollerTouchTargetDp.toFloat(),
+            resources.displayMetrics
+        ).roundToInt()
         val handleWidth = resources.getDimensionPixelSize(R.dimen.fastscroll_handle_width)
         val sidePadding = max(0, (targetWidth - handleWidth) / 2)
         ViewCompat.setPaddingRelative(
