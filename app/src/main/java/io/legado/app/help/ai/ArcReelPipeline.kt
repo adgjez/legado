@@ -205,7 +205,7 @@ object ArcReelPipeline {
                 AiStoryboardService.generateStoryboard(input)
             }.getOrElse { e ->
                 updatePhase(ArcReelProject.PipelinePhase.GENERATING_STORYBOARD, (index + 1).toFloat() / chapterContents.size, "分镜失败: ${e.message}")
-                continue
+                return@forEachIndexed
             }
 
             // 为分镜场景生成插画（使用批量生成）
@@ -231,7 +231,10 @@ object ArcReelPipeline {
                 }
                 sceneImages = batchResults
                     .filter { it.imageUrl != null }
-                    .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }
+                    .associate { item ->
+                        val key = result.scenes.getOrNull(item.index)?.sceneId ?: item.index
+                        key!! to item.imageUrl!!
+                    }
             }
             storyboards.add(ChapterStoryboard(chapterIdx, "第${chapterIdx + 1}章", result, sceneImages))
         }
@@ -331,7 +334,10 @@ object ArcReelPipeline {
             }
             sceneImages = batchResults
                 .filter { it.imageUrl != null }
-                .associate { result.scenes.getOrNull(it.index)?.sceneId ?: it.index to it.imageUrl!! }
+                .associate { item ->
+                    val key = result.scenes.getOrNull(item.index)?.sceneId ?: item.index
+                    key!! to item.imageUrl!!
+                }
         }
 
         val newStoryboard = ChapterStoryboard(chapterIndex, chapterTitle, result, sceneImages)

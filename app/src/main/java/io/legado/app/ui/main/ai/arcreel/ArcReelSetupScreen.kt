@@ -42,6 +42,15 @@ import kotlinx.coroutines.withContext
  * 3. 克隆/更新 ArcReel 仓库
  * 4. 启动服务
  */
+private enum class SetupStep {
+    CHECKING,           // 检查环境
+    INSTALLING_ENV,     // 安装 Ubuntu 环境
+    INSTALLING_ARCREEL, // 安装 ArcReel
+    STARTING,           // 启动服务
+    COMPLETED,          // 完成
+    ERROR               // 错误
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArcReelSetupScreen(
@@ -50,15 +59,6 @@ fun ArcReelSetupScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    enum class SetupStep {
-        CHECKING,           // 检查环境
-        INSTALLING_ENV,     // 安装 Ubuntu 环境
-        INSTALLING_ARCREEL, // 安装 ArcReel
-        STARTING,           // 启动服务
-        COMPLETED,          // 完成
-        ERROR               // 错误
-    }
 
     data class SetupStepInfo(
         val label: String,
