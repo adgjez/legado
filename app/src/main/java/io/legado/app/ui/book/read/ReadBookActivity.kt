@@ -322,6 +322,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var backupJob: Job? = null
     private var tts: TTS? = null
     private var commentWebViewSession: CommentWebViewSession? = null
+    private var shareNotePreviewOverlay: ShareNotePreviewOverlay? = null
     @Volatile
     private var commentBrowserOpening = false
     @Volatile
@@ -1403,7 +1404,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 return true
             }
             R.id.menu_share_image -> {
-                showShareNoteTemplateDialog(selectedText)
+                showShareNotePreviewOverlay(selectedText)
                 return true
             }
         }
@@ -1455,13 +1456,34 @@ class ReadBookActivity : BaseReadBookActivity(),
         )
     }
 
-    private fun shareSelectionAsNoteImage(
-        text: String,
-        entry: ShareNoteTemplateManager.Entry
-    ) {
+    private fun showShareNotePreviewOverlay(selection: String) {
+        val text = selection.trim()
+        if (text.isBlank()) return
+        val payload = buildShareNotePayload(text)
+        lifecycleScope.launch {
+            val entries = withContext(IO) {
+                ShareNoteTemplateManager.loadEntries()
+            }
+            val entry = entries.firstOrNull { it.dirName == ShareNoteTemplateManager.lastDirName() }
+                ?: entries.firstOrNull()
+            if (entry == null) {
+                toastOnUi(R.string.share_note_no_template)
+                return@launch
+            }
+            shareNotePreviewOverlay?.dismiss()
+            shareNotePreviewOverlay = ShareNotePreviewOverlay.show(
+                activity = this@ReadBookActivity,
+                parent = binding.root,
+                entry = entry,
+                payload = payload
+            )
+        }
+    }
+
+    private fun buildShareNotePayload(text: String): ShareNoteImageRenderer.Payload {
         val book = ReadBook.book
         val now = Date()
-        val payload = ShareNoteImageRenderer.Payload(
+        return ShareNoteImageRenderer.Payload(
             generatedAt = DateFormat.getDateTimeInstance().format(now),
             book = ShareNoteImageRenderer.Book(
                 title = book?.name.orEmpty().ifBlank { getString(R.string.book_name) },
@@ -1474,6 +1496,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                 description = text
             )
         )
+    }
+
+    private fun shareSelectionAsNoteImage(
+        text: String,
+        entry: ShareNoteTemplateManager.Entry
+    ) {
+        val payload = buildShareNotePayload(text)
         lifecycleScope.launch {
             toastOnUi("正在生成分享图片")
             kotlin.runCatching {
@@ -4747,6 +4776,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         tts?.clearTts()
         textActionMenu.dismiss()
         popupAction.dismiss()
+        shareNotePreviewOverlay?.dismiss()
+        shareNotePreviewOverlay = null
         binding.readView.onDestroy()
         commentWebViewSession?.destroy()
         commentWebViewSession = null

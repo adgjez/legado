@@ -1,29 +1,48 @@
 package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.Looper
+import android.provider.MediaStore
 import android.view.View
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+import kotlin.math.ceil
+import kotlin.math.sqrt
 
 object ShareNoteImageRenderer {
+
+    private const val MAX_EXPORT_WIDTH = 1080
+    private const val MAX_EXPORT_HEIGHT = 16000
+    private const val MAX_EXPORT_PIXELS = 16_000_000
+    private const val READY_TIMEOUT_MS = 8000L
 
     private val renderMutex = Mutex()
 
@@ -67,26 +86,33 @@ object ShareNoteImageRenderer {
         val comment: String = ""
     )
 
+    data class CaptureSize(
+        val width: Int,
+        val height: Int,
+        val left: Int = 0,
+        val top: Int = 0
+    )
+
     suspend fun renderShareImage(
         context: Context,
         entry: ShareNoteTemplateManager.Entry,
         payload: Payload
     ): File = renderMutex.withLock {
-        val bitmap = renderBitmap(
-            context = context,
-            entry = entry,
-            payloadJson = GSON.toJson(payload),
-            previewOnly = false
-        )
-        withContext(Dispatchers.IO) {
-            val dir = File(context.cacheDir, "share_note").apply { mkdirs() }
-            val file = File(dir, "share_note_${System.currentTimeMillis()}.png")
-            FileOutputStream(file).use {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 96, it)
+        val bitmap = withContext(Dispatchers.Main) {
+            val width = initialWidth(entry)
+            val webView = WebView(context).apply {
+                configureWebView(this)
+                visibility = View.VISIBLE
             }
-            bitmap.recycle()
-            file
+            try {
+                loadInto(webView, entry, payload, width)
+                drawWebViewToBitmap(webView)
+            } finally {
+                webView.stopLoading()
+                webView.destroy()
+            }
         }
+        writeBitmapToCache(context, bitmap)
     }
 
     suspend fun renderPreview(
@@ -97,12 +123,22 @@ object ShareNoteImageRenderer {
         val file = ShareNoteTemplateManager.previewFile(entry)
         if (!force && file.exists() && file.length() > 0L) return@withLock file
         runCatching {
-            val bitmap = renderBitmap(
-                context = context,
-                entry = entry,
-                payloadJson = null,
-                previewOnly = true
-            )
+            val bitmap = withContext(Dispatchers.Main) {
+                val webView = WebView(context).apply {
+                    configureWebView(this)
+                    visibility = View.VISIBLE
+                }
+                try {
+                    loadHtml(webView, entry, null)
+                    val size = evaluateCaptureSize(webView, initialWidth(entry), initialHeight(entry))
+                    layoutWebView(webView, size.width, minOf(size.height, 260).coerceAtLeast(180))
+                    waitForDraw()
+                    drawWebViewToBitmap(webView)
+                } finally {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+            }
             withContext(Dispatchers.IO) {
                 FileOutputStream(file).use {
                     bitmap.compress(Bitmap.CompressFormat.PNG, 92, it)
@@ -114,97 +150,216 @@ object ShareNoteImageRenderer {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private suspend fun renderBitmap(
-        context: Context,
+    fun configureWebView(webView: WebView) {
+        webView.settings.javaScriptEnabled = true
+        webView.settings.domStorageEnabled = true
+        webView.settings.allowFileAccess = true
+        webView.settings.allowContentAccess = true
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        webView.settings.loadWithOverviewMode = false
+        webView.settings.useWideViewPort = false
+        webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
+        webView.webChromeClient = WebChromeClient()
+    }
+
+    suspend fun loadInto(
+        webView: WebView,
+        entry: ShareNoteTemplateManager.Entry,
+        payload: Payload,
+        targetWidth: Int
+    ): CaptureSize = withContext(Dispatchers.Main) {
+        val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
+        loadHtml(webView, entry, GSON.toJson(payload), width)
+        val capture = evaluateCaptureSize(webView, width, initialHeight(entry))
+        val height = capture.height.coerceIn(180, MAX_EXPORT_HEIGHT)
+        layoutWebView(webView, width, height)
+        waitForDraw()
+        capture.copy(width = width, height = height)
+    }
+
+    suspend fun exportMountedWebView(context: Context, webView: WebView): File = renderMutex.withLock {
+        val bitmap = withContext(Dispatchers.Main) {
+            drawWebViewToBitmap(webView)
+        }
+        writeBitmapToCache(context, bitmap)
+    }
+
+    suspend fun savePngToGallery(context: Context, pngFile: File): Uri = withContext(Dispatchers.IO) {
+        val name = "Reeden_${System.currentTimeMillis()}.png"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, name)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Reeden")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: throw IllegalStateException("MediaStore insert failed")
+            try {
+                resolver.openOutputStream(uri)?.use { output ->
+                    pngFile.inputStream().use { input -> input.copyTo(output) }
+                } ?: throw IllegalStateException("MediaStore openOutputStream failed")
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                uri
+            } catch (e: Throwable) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
+        } else {
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                "Reeden"
+            ).apply { mkdirs() }
+            val target = File(dir, name)
+            pngFile.inputStream().use { input ->
+                FileOutputStream(target).use { output -> input.copyTo(output) }
+            }
+            Uri.fromFile(target)
+        }
+    }
+
+    private suspend fun loadHtml(
+        webView: WebView,
         entry: ShareNoteTemplateManager.Entry,
         payloadJson: String?,
-        previewOnly: Boolean
-    ): Bitmap = withContext(Dispatchers.Main) {
-        check(Looper.myLooper() == Looper.getMainLooper())
+        targetWidth: Int = initialWidth(entry)
+    ) {
         val html = prepareHtml(ShareNoteTemplateManager.readTemplateHtml(entry), payloadJson)
-        val meta = entry.meta
-        val width = if (meta.canvas == ShareNoteTemplateManager.CANVAS_WIDE) {
+        val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
+        layoutWebView(webView, width, initialHeight(entry))
+        waitPageLoaded(webView, html, ShareNoteTemplateManager.baseUrl(entry))
+        waitUntilReady(webView)
+    }
+
+    private fun initialWidth(entry: ShareNoteTemplateManager.Entry): Int {
+        return if (entry.meta.canvas == ShareNoteTemplateManager.CANVAS_WIDE) {
             720
         } else {
-            meta.width
-        }.coerceIn(240, 1440)
-        val initialHeight = if (meta.canvas == ShareNoteTemplateManager.CANVAS_WIDE) {
-            meta.height
+            entry.meta.width
+        }.coerceIn(240, MAX_EXPORT_WIDTH)
+    }
+
+    private fun initialHeight(entry: ShareNoteTemplateManager.Entry): Int {
+        return if (entry.meta.canvas == ShareNoteTemplateManager.CANVAS_WIDE) {
+            entry.meta.height
         } else {
             900
         }.coerceIn(240, 2400)
-        val webView = WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.allowFileAccess = true
-            settings.allowContentAccess = true
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            visibility = View.INVISIBLE
+    }
+
+    private fun layoutWebView(webView: WebView, width: Int, height: Int) {
+        webView.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+        )
+        webView.layout(0, 0, width, height)
+    }
+
+    private suspend fun waitUntilReady(webView: WebView) {
+        withTimeoutOrNull(READY_TIMEOUT_MS) {
+            waitDocumentReady(webView)
         }
-        try {
-            webView.measure(
-                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(initialHeight, View.MeasureSpec.EXACTLY)
-            )
-            webView.layout(0, 0, width, initialHeight)
-            waitPageLoaded(webView, html, ShareNoteTemplateManager.baseUrl(entry))
-            waitImagesReady(webView)
-            val size = evaluateCaptureSize(webView, width, initialHeight, previewOnly)
-            webView.measure(
-                View.MeasureSpec.makeMeasureSpec(size.first, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(size.second, View.MeasureSpec.EXACTLY)
-            )
-            webView.layout(0, 0, size.first, size.second)
-            waitForWebViewDraw(webView)
-            @Suppress("DEPRECATION")
-            webView.isDrawingCacheEnabled = false
-            val bitmap = Bitmap.createBitmap(size.first, size.second, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            webView.draw(canvas)
-            if (meta.radius > 0) {
-                roundBitmap(bitmap, meta.radius.toFloat())
-            } else {
-                bitmap
+        waitFontsReady(webView)
+        waitImagesReady(webView)
+        waitForDraw()
+    }
+
+    private suspend fun waitDocumentReady(webView: WebView) {
+        pollJs(webView, 80L) {
+            """document.readyState === "complete";"""
+        }
+    }
+
+    private suspend fun waitFontsReady(webView: WebView) {
+        runCatching {
+            withTimeoutOrNull(1500L) {
+                pollJs(webView, 80L) {
+                    """
+                        (function(){
+                          return !document.fonts || document.fonts.status === "loaded";
+                        })();
+                    """.trimIndent()
+                }
             }
-        } finally {
-            webView.stopLoading()
-            webView.destroy()
         }
     }
 
     private suspend fun waitImagesReady(webView: WebView) {
-        suspendCoroutine<Unit> { continuation ->
-            var resumed = false
-            fun resumeOnce() {
-                if (resumed) return
-                resumed = true
-                continuation.resume(Unit)
-            }
-            val startedAt = System.currentTimeMillis()
-            fun check() {
-                val script = """
+        withTimeoutOrNull(3000L) {
+            pollJs(webView, 100L) {
+                """
                     (function(){
                       var imgs = Array.prototype.slice.call(document.images || []);
                       return imgs.length === 0 || imgs.every(function(img){ return img.complete; });
                     })();
                 """.trimIndent()
-                webView.evaluateJavascript(script) { raw ->
-                    val ready = raw == "true"
-                    if (ready || System.currentTimeMillis() - startedAt > 1200L) {
-                        resumeOnce()
-                    } else {
-                        webView.postDelayed({ check() }, 80)
-                    }
-                }
             }
-            check()
-            webView.postDelayed({ resumeOnce() }, 1500)
         }
     }
 
-    private suspend fun waitForWebViewDraw(webView: WebView) {
-        suspendCoroutine<Unit> { continuation ->
-            webView.postDelayed({ continuation.resume(Unit) }, 80)
+    private suspend fun pollJs(webView: WebView, intervalMs: Long, script: () -> String) {
+        while (true) {
+            coroutineContext.ensureActive()
+            if (evaluateBoolean(webView, script())) return
+            delay(intervalMs)
         }
+    }
+
+    private suspend fun evaluateCaptureSize(
+        webView: WebView,
+        fallbackWidth: Int,
+        fallbackHeight: Int
+    ): CaptureSize {
+        val raw = evaluateString(
+            webView,
+            """
+                (function(){
+                  var node = document.querySelector('[data-reeden-capture]') || document.body;
+                  var rect = node.getBoundingClientRect();
+                  return JSON.stringify({
+                    left: Math.max(0, Math.floor(rect.left || 0)),
+                    top: Math.max(0, Math.floor(rect.top || 0)),
+                    width: Math.ceil(Math.max(rect.width, document.body.scrollWidth, $fallbackWidth)),
+                    height: Math.ceil(Math.max(rect.height, document.body.scrollHeight, $fallbackHeight))
+                  });
+                })();
+            """.trimIndent()
+        )
+        val json = runCatching { JSONObject(raw) }.getOrNull()
+        return CaptureSize(
+            width = json?.optInt("width", fallbackWidth)?.coerceIn(240, MAX_EXPORT_WIDTH) ?: fallbackWidth,
+            height = json?.optInt("height", fallbackHeight)?.coerceIn(180, MAX_EXPORT_HEIGHT) ?: fallbackHeight,
+            left = json?.optInt("left", 0) ?: 0,
+            top = json?.optInt("top", 0) ?: 0
+        )
+    }
+
+    private suspend fun evaluateBoolean(webView: WebView, script: String): Boolean {
+        return evaluateString(webView, script) == "true"
+    }
+
+    private suspend fun evaluateString(webView: WebView, script: String): String {
+        return suspendCoroutine { continuation ->
+            webView.evaluateJavascript(script) { raw ->
+                val value = raw
+                    ?.trim()
+                    ?.trim('"')
+                    ?.replace("\\\"", "\"")
+                    ?.replace("\\\\", "\\")
+                    .orEmpty()
+                continuation.resume(value)
+            }
+        }
+    }
+
+    private suspend fun waitForDraw() {
+        delay(32)
     }
 
     private fun prepareHtml(html: String, payloadJson: String?): String {
@@ -236,63 +391,54 @@ object ShareNoteImageRenderer {
             fun resumeOnce(error: Throwable? = null) {
                 if (resumed) return
                 resumed = true
-                webView.postDelayed({
-                    if (error != null) continuation.resumeWithException(error)
-                    else continuation.resume(Unit)
-                }, 220)
+                if (error != null) continuation.resumeWithException(error)
+                else continuation.resume(Unit)
             }
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    resumeOnce()
+                    webView.postDelayed({ resumeOnce() }, 120)
                 }
             }
             webView.loadDataWithBaseURL(baseUrl, html, "text/html", "UTF-8", null)
-            webView.postDelayed({ resumeOnce() }, 1600)
+            webView.postDelayed({ resumeOnce() }, READY_TIMEOUT_MS)
         }
     }
 
-    private suspend fun evaluateCaptureSize(
-        webView: WebView,
-        fallbackWidth: Int,
-        fallbackHeight: Int,
-        previewOnly: Boolean
-    ): Pair<Int, Int> {
-        return suspendCoroutine { continuation ->
-            var resumed = false
-            fun resumeOnce(size: Pair<Int, Int>) {
-                if (resumed) return
-                resumed = true
-                continuation.resume(size)
+    private fun drawWebViewToBitmap(webView: WebView): Bitmap {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val width = webView.width.coerceAtLeast(1)
+        val height = webView.height.coerceAtLeast(1)
+        val scale = exportScale(width, height)
+        val outWidth = ceil(width * scale).toInt().coerceAtLeast(1)
+        val outHeight = ceil(height * scale).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.scale(scale, scale)
+        webView.draw(canvas)
+        return bitmap
+    }
+
+    private fun exportScale(width: Int, height: Int): Float {
+        val byWidth = MAX_EXPORT_WIDTH.toFloat() / width.toFloat()
+        val byHeight = MAX_EXPORT_HEIGHT.toFloat() / height.toFloat()
+        val byPixels = sqrt(MAX_EXPORT_PIXELS.toFloat() / (width.toFloat() * height.toFloat()))
+        return minOf(1f, byWidth, byHeight, byPixels).coerceAtMost(1f)
+    }
+
+    private suspend fun writeBitmapToCache(context: Context, bitmap: Bitmap): File = withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, "share_note").apply { mkdirs() }
+        val file = File(dir, "share_note_${System.currentTimeMillis()}.png")
+        try {
+            FileOutputStream(file).use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 96, it)
             }
-            val script = """
-                (function(){
-                  var node = document.querySelector('[data-reeden-capture]') || document.body;
-                  var rect = node.getBoundingClientRect();
-                  return JSON.stringify({
-                    width: Math.ceil(Math.max(rect.width, document.body.scrollWidth, $fallbackWidth)),
-                    height: Math.ceil(Math.max(rect.height, document.body.scrollHeight, $fallbackHeight))
-                  });
-                })();
-            """.trimIndent()
-            webView.evaluateJavascript(script) { raw ->
-                val text = raw?.trim('"')?.replace("\\\"", "\"").orEmpty()
-                val width = Regex(""""width"\s*:\s*(\d+)""").find(text)
-                    ?.groupValues?.getOrNull(1)?.toIntOrNull() ?: fallbackWidth
-                val height = Regex(""""height"\s*:\s*(\d+)""").find(text)
-                    ?.groupValues?.getOrNull(1)?.toIntOrNull() ?: fallbackHeight
-                val nextHeight = if (previewOnly) {
-                    minOf(height, 260)
-                } else {
-                    minOf(height, 12000)
-                }.coerceAtLeast(180)
-                resumeOnce(width.coerceIn(240, 1440) to nextHeight)
-            }
-            webView.postDelayed({
-                resumeOnce(fallbackWidth.coerceIn(240, 1440) to fallbackHeight.coerceIn(180, 2400))
-            }, 1200)
+            file
+        } finally {
+            bitmap.recycle()
         }
     }
 
+    @Suppress("unused")
     private fun roundBitmap(source: Bitmap, radius: Float): Bitmap {
         val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
