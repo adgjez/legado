@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.ai.ArcReelPipeline
 import io.legado.app.help.ai.ArcReelProject
-import io.legado.app.help.ai.ChapterStoryboard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,8 +65,8 @@ private fun ArcReelPipelineScreen(
             try {
                 val p = ArcReelProject(
                     name = bookName.ifBlank { "新项目" },
-                    description = "基于《$bookName》的 AI 视频项目",
-                    contentText = content
+                    bookName = bookName,
+                    author = author
                 )
                 project = p
                 isLoading = false
@@ -138,17 +137,17 @@ private fun ArcReelPipelineScreen(
                     onBack = onBack,
                     onStartPipeline = { prj ->
                         scope.launch(Dispatchers.IO) {
-                            ArcReelPipeline.executeFullPipeline(prj) { state ->
-                                // 管道状态回调
-                            }
+                            ArcReelPipeline.executeFullPipeline(
+                                project = prj,
+                                chapterContents = listOf(0 to content),
+                                contentText = content
+                            )
                         }
                         prj
                     },
                     onViewStoryboard = { /* TODO: 查看分镜详情 */ },
                     onViewCharacters = { /* TODO: 查看角色设计 */ },
-                    onViewScenes = { /* TODO: 查看场景设计 */ },
-                    onViewGallery = { /* TODO: 查看画廊 */ },
-                    onGenerateVideo = { /* TODO: 生成视频 */ }
+                    onViewGallery = { /* TODO: 查看画廊 */ }
                 )
             }
         }
