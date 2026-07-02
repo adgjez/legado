@@ -148,7 +148,7 @@ private fun SearchBookListText(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        val kinds = remember(book.tag, book.kind) { book.getKindList() }
+        val kinds = remember(book.kind) { book.getKindList() }
         if (kinds.isNotEmpty()) {
             Spacer(modifier = Modifier.size(if (rounded) 4.dp else 1.dp))
             Row(
