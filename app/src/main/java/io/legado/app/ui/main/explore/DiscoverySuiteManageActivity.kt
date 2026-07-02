@@ -107,6 +107,8 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
     private var selectedSuiteIdState by mutableStateOf(DiscoverySuiteStore.selectedSuiteId())
     private var sourceTagOptionsState by mutableStateOf<List<DiscoverySuiteSourceTagOptions>>(emptyList())
     private var loadingTagsState by mutableStateOf(false)
+    private var loadingSourceTagUrlsState by mutableStateOf<Set<String>>(emptySet())
+    private var loadedSourceTagUrlsState by mutableStateOf<Set<String>>(emptySet())
     private var screenModeState by mutableStateOf<DiscoverySuiteManageMode>(DiscoverySuiteManageMode.List)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -117,7 +119,7 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
         initComposeContent()
         refreshConfig()
         updateTitleBar()
-        loadTagOptions()
+        loadSourceOptions()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -183,6 +185,9 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
                                 widget = widget,
                                 sourceOptions = sourceTagOptionsState,
                                 loadingOptions = loadingTagsState,
+                                loadingSourceUrls = loadingSourceTagUrlsState,
+                                loadedSourceUrls = loadedSourceTagUrlsState,
+                                onLoadSourceTags = ::loadSourceTags,
                                 onSave = { title, type, targets ->
                                     saveWidget(mode.suiteId, widget, title, type, targets)
                                 },
@@ -278,61 +283,108 @@ class DiscoverySuiteManageActivity : BaseActivity<ActivityThemeManageBinding>() 
         invalidateOptionsMenu()
     }
 
-    private fun loadTagOptions() {
+    private fun loadSourceOptions() {
         loadingTagsState = true
         lifecycleScope.launch {
             val options = withContext(IO) {
-                val sources = appDb.bookSourceDao.allEnabledPart
+                appDb.bookSourceDao.allEnabledPart
                     .filter { it.enabledExplore && it.hasExploreUrl }
                     .take(MAX_MANAGER_SOURCES)
-                sources.mapNotNull { source ->
-                    source.toSourceTagOptions()
-                }
+                    .map { source ->
+                        DiscoverySuiteSourceTagOptions(
+                            sourceName = source.bookSourceName,
+                            sourceUrl = source.bookSourceUrl,
+                            kinds = emptyList(),
+                            tags = emptyList()
+                        )
+                    }
             }
-            sourceTagOptionsState = options
+            val loadedByUrl = sourceTagOptionsState.associateBy { it.sourceUrl }
+            sourceTagOptionsState = options.map { option ->
+                loadedByUrl[option.sourceUrl]?.takeIf { it.kinds.isNotEmpty() || it.tags.isNotEmpty() }
+                    ?: option
+            }
             loadingTagsState = false
         }
     }
 
-    private suspend fun BookSourcePart.toSourceTagOptions(): DiscoverySuiteSourceTagOptions? {
-        return runCatching {
-            val result = ArrayList<DiscoverySuiteTagOption>()
-            var currentGroup = ""
-            val kinds = exploreKinds()
-            kinds.forEachIndexed { index, kind ->
-                if (index == 0 && kind.isSuiteLeadingBlankPlaceholder()) {
-                    return@forEachIndexed
-                }
-                val url = kind.normalizedSuiteDiscoverUrl()
-                val action = kind.action?.takeIf { it.isNotBlank() }
-                if (url.isNullOrBlank() && action.isNullOrBlank() && kind.isSuiteDiscoverGroupKind()) {
-                    currentGroup = kind.suiteDiscoverGroupTitle()
-                    return@forEachIndexed
-                }
-                if (!url.isNullOrBlank()) {
-                    result += DiscoverySuiteTagOption(
-                        sourceName = bookSourceName,
-                        sourceUrl = bookSourceUrl,
-                        tagTitle = kind.suiteDiscoverTagText(),
-                        tagUrl = url,
-                        group = currentGroup
+    private fun loadSourceTags(sourceUrl: String) {
+        if (sourceUrl.isBlank()) return
+        if (sourceUrl in loadingSourceTagUrlsState || sourceUrl in loadedSourceTagUrlsState) return
+        val sourceName = sourceTagOptionsState.firstOrNull { it.sourceUrl == sourceUrl }?.sourceName
+            ?: return
+        loadingSourceTagUrlsState = loadingSourceTagUrlsState + sourceUrl
+        lifecycleScope.launch {
+            val option = withContext(IO) {
+                appDb.bookSourceDao.allEnabledPart
+                    .firstOrNull { it.bookSourceUrl == sourceUrl }
+                    ?.takeIf { it.enabledExplore && it.hasExploreUrl }
+                    ?.toSourceTagOptions()
+                    ?: DiscoverySuiteSourceTagOptions(
+                        sourceName = sourceName,
+                        sourceUrl = sourceUrl,
+                        kinds = emptyList(),
+                        tags = emptyList()
                     )
-                }
             }
-            val tags = if (result.any { it.group.isNotBlank() }) {
-                result.map {
-                    if (it.group.isBlank()) it.copy(group = getString(R.string.discover_group_other)) else it
-                }
-            } else {
-                result
+            sourceTagOptionsState = sourceTagOptionsState.map {
+                if (it.sourceUrl == sourceUrl) option else it
             }
+            loadedSourceTagUrlsState = loadedSourceTagUrlsState + sourceUrl
+            loadingSourceTagUrlsState = loadingSourceTagUrlsState - sourceUrl
+        }
+    }
+
+    private suspend fun BookSourcePart.toSourceTagOptions(): DiscoverySuiteSourceTagOptions {
+        return runCatching {
+            buildSourceTagOptions()
+        }.getOrElse {
             DiscoverySuiteSourceTagOptions(
                 sourceName = bookSourceName,
                 sourceUrl = bookSourceUrl,
-                kinds = kinds,
-                tags = tags.distinctBy { it.key }
-            ).takeIf { it.tags.isNotEmpty() }
-        }.getOrNull()
+                kinds = emptyList(),
+                tags = emptyList()
+            )
+        }
+    }
+
+    private suspend fun BookSourcePart.buildSourceTagOptions(): DiscoverySuiteSourceTagOptions {
+        val result = ArrayList<DiscoverySuiteTagOption>()
+        var currentGroup = ""
+        val kinds = exploreKinds()
+        kinds.forEachIndexed { index, kind ->
+            if (index == 0 && kind.isSuiteLeadingBlankPlaceholder()) {
+                return@forEachIndexed
+            }
+            val url = kind.normalizedSuiteDiscoverUrl()
+            val action = kind.action?.takeIf { it.isNotBlank() }
+            if (url.isNullOrBlank() && action.isNullOrBlank() && kind.isSuiteDiscoverGroupKind()) {
+                currentGroup = kind.suiteDiscoverGroupTitle()
+                return@forEachIndexed
+            }
+            if (!url.isNullOrBlank()) {
+                result += DiscoverySuiteTagOption(
+                    sourceName = bookSourceName,
+                    sourceUrl = bookSourceUrl,
+                    tagTitle = kind.suiteDiscoverTagText(),
+                    tagUrl = url,
+                    group = currentGroup
+                )
+            }
+        }
+        val tags = if (result.any { it.group.isNotBlank() }) {
+            result.map {
+                if (it.group.isBlank()) it.copy(group = getString(R.string.discover_group_other)) else it
+            }
+        } else {
+            result
+        }
+        return DiscoverySuiteSourceTagOptions(
+            sourceName = bookSourceName,
+            sourceUrl = bookSourceUrl,
+            kinds = kinds,
+            tags = tags.distinctBy { it.key }
+        )
     }
 
     private fun saveConfig(transform: (DiscoverySuiteConfig) -> DiscoverySuiteConfig) {
@@ -839,6 +891,9 @@ private fun DiscoverySuiteWidgetEditorScreen(
     widget: DiscoverySuiteWidget?,
     sourceOptions: List<DiscoverySuiteSourceTagOptions>,
     loadingOptions: Boolean,
+    loadingSourceUrls: Set<String>,
+    loadedSourceUrls: Set<String>,
+    onLoadSourceTags: (String) -> Unit,
     onSave: (String, String, List<DiscoverySuiteWidgetTarget>) -> Unit,
     onCancel: () -> Unit
 ) {
@@ -878,17 +933,28 @@ private fun DiscoverySuiteWidgetEditorScreen(
             }
         }
     }
-    var selectedSourceUrl by remember(widget?.id, sourceOptions) {
-        mutableStateOf(
-            widget?.targets
+    var selectedSourceUrl by remember(widget?.id) {
+        mutableStateOf(widget?.targets?.firstOrNull()?.sourceUrl.orEmpty())
+    }
+    LaunchedEffect(sourceOptions, widget?.id) {
+        if (sourceOptions.isEmpty()) return@LaunchedEffect
+        if (sourceOptions.none { it.sourceUrl == selectedSourceUrl }) {
+            selectedSourceUrl = widget?.targets
                 ?.firstOrNull()
                 ?.sourceUrl
                 ?.takeIf { sourceUrl -> sourceOptions.any { it.sourceUrl == sourceUrl } }
-                ?: sourceOptions.firstOrNull()?.sourceUrl.orEmpty()
-        )
+                ?: sourceOptions.first().sourceUrl
+        }
     }
     val selectedSource = sourceOptions.firstOrNull { it.sourceUrl == selectedSourceUrl }
         ?: sourceOptions.firstOrNull()
+    val selectedSourceIsLoading = selectedSource?.sourceUrl in loadingSourceUrls
+    val selectedSourceLoaded = selectedSource?.sourceUrl in loadedSourceUrls
+    LaunchedEffect(selectedSource?.sourceUrl) {
+        selectedSource?.sourceUrl
+            ?.takeIf { it.isNotBlank() && it !in loadingSourceUrls && it !in loadedSourceUrls }
+            ?.let(onLoadSourceTags)
+    }
     var sourceQuery by remember(widget?.id) { mutableStateOf("") }
     val filteredSources = remember(sourceOptions, sourceQuery) {
         val query = sourceQuery.trim()
@@ -996,8 +1062,10 @@ private fun DiscoverySuiteWidgetEditorScreen(
                     }
                     Text(
                         text = when {
-                            loadingOptions -> "Tag 加载中..."
+                            loadingOptions -> "书源加载中..."
                             sourceOptions.isEmpty() -> "没有可用书源"
+                            selectedSourceIsLoading -> "正在加载当前书源 Tag；已选 ${selectedKeys.size} 个"
+                            selectedSourceLoaded && selectedSource?.tags.isNullOrEmpty() -> "当前书源没有可用 Tag；已选 ${selectedKeys.size} 个"
                             type == DiscoverySuiteWidgetType.HorizontalBooks.value -> "横排滑动控件只能选择 1 个 Tag；已选 ${selectedKeys.size} 个"
                             type == DiscoverySuiteWidgetType.RankButtons.value -> "排行榜按钮需要选择 3-9 个 Tag；已选 ${selectedKeys.size} 个"
                             type == DiscoverySuiteWidgetType.RankedList.value -> "排行榜列表需要选择 3-9 个 Tag；已选 ${selectedKeys.size} 个"
@@ -1020,9 +1088,12 @@ private fun DiscoverySuiteWidgetEditorScreen(
                                 SourceOptionChip(
                                     source = source,
                                     selected = source.sourceUrl == selectedSource?.sourceUrl,
+                                    loading = source.sourceUrl in loadingSourceUrls,
+                                    loaded = source.sourceUrl in loadedSourceUrls,
                                     renderConfig = renderConfig
                                 ) {
                                     selectedSourceUrl = source.sourceUrl
+                                    onLoadSourceTags(source.sourceUrl)
                                 }
                             }
                         }
@@ -1050,21 +1121,45 @@ private fun DiscoverySuiteWidgetEditorScreen(
                             }
                         }
                         selectedSource?.let { source ->
-                            ClassicDiscoverPreview(
-                                source = source,
-                                selectedKeys = selectedKeys,
-                                singleSelection = type == DiscoverySuiteWidgetType.HorizontalBooks.value,
-                                renderConfig = renderConfig,
-                                onSelectedKeysChange = {
-                                    selectedKeys = if (type == DiscoverySuiteWidgetType.RankButtons.value ||
-                                        type == DiscoverySuiteWidgetType.RankedList.value
-                                    ) {
-                                        it.take(9).toSet()
-                                    } else {
-                                        it
-                                    }
+                            when {
+                                source.sourceUrl in loadingSourceUrls -> {
+                                    SourceTagsStatePanel(
+                                        text = "${source.sourceName} Tag 加载中...",
+                                        renderConfig = renderConfig
+                                    )
                                 }
-                            )
+                                source.sourceUrl !in loadedSourceUrls -> {
+                                    SourceTagsStatePanel(
+                                        text = "${source.sourceName} 尚未加载 Tag",
+                                        renderConfig = renderConfig,
+                                        actionText = "加载",
+                                        onAction = { onLoadSourceTags(source.sourceUrl) }
+                                    )
+                                }
+                                source.tags.isEmpty() -> {
+                                    SourceTagsStatePanel(
+                                        text = "${source.sourceName} 没有可用 Tag",
+                                        renderConfig = renderConfig
+                                    )
+                                }
+                                else -> {
+                                    ClassicDiscoverPreview(
+                                        source = source,
+                                        selectedKeys = selectedKeys,
+                                        singleSelection = type == DiscoverySuiteWidgetType.HorizontalBooks.value,
+                                        renderConfig = renderConfig,
+                                        onSelectedKeysChange = {
+                                            selectedKeys = if (type == DiscoverySuiteWidgetType.RankButtons.value ||
+                                                type == DiscoverySuiteWidgetType.RankedList.value
+                                            ) {
+                                                it.take(9).toSet()
+                                            } else {
+                                                it
+                                            }
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1083,9 +1178,49 @@ private fun DiscoverySuiteWidgetEditorScreen(
 }
 
 @Composable
+private fun SourceTagsStatePanel(
+    text: String,
+    renderConfig: BookshelfListRenderConfig,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    val palette = renderConfig.palette
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(palette.panelRadius))
+            .appSettingPanelBackground(
+                normalColor = palette.rowColor,
+                panelImage = renderConfig.panelImage,
+                borderColor = palette.borderColor,
+                radiusPx = palette.panelRadiusPx
+            )
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontSize = 14.sp,
+            fontFamily = palette.bodyFontFamily,
+            color = palette.secondaryText,
+            modifier = Modifier.weight(1f)
+        )
+        if (actionText != null && onAction != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            CompactAction(text = actionText, renderConfig = renderConfig, onClick = onAction)
+        }
+    }
+}
+
+@Composable
 private fun SourceOptionChip(
     source: DiscoverySuiteSourceTagOptions,
     selected: Boolean,
+    loading: Boolean,
+    loaded: Boolean,
     renderConfig: BookshelfListRenderConfig,
     onClick: () -> Unit
 ) {
@@ -1113,7 +1248,11 @@ private fun SourceOptionChip(
                 color = if (selected) palette.accent else palette.primaryText
             )
             Text(
-                text = "${source.tags.size} 个 Tag",
+                text = when {
+                    loading -> "加载中"
+                    loaded -> "${source.tags.size} 个 Tag"
+                    else -> "未加载"
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 fontSize = 11.sp,
