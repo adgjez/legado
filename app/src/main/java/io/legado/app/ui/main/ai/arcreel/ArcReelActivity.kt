@@ -141,7 +141,7 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
                         Text(message, color = Color.White, fontSize = 16.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "首次启动需要下载约 200MB 数据",
+                            "首次启动需要下载约 30MB 数据",
                             color = Color.White.copy(alpha = 0.5f),
                             fontSize = 13.sp
                         )

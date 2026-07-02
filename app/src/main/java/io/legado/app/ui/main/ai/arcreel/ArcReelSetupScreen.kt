@@ -76,7 +76,7 @@ fun ArcReelSetupScreen(
 
     fun updateSteps(stepIndex: Int, isCompleted: Boolean = false, isActive: Boolean = false, isError: Boolean = false) {
         val labels = listOf(
-            "下载 Ubuntu 环境 (~200MB)",
+            "下载 Ubuntu 环境 (~28MB)",
             "安装 Python 和依赖",
             "克隆 ArcReel 仓库",
             "安装 Python 依赖",

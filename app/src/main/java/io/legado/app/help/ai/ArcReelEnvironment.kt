@@ -26,11 +26,11 @@ import java.util.zip.GZIPInputStream
  */
 object ArcReelEnvironment {
 
-    // Ubuntu 24.04 (Noble) arm64 base tarball（多个镜像源）
+    // Ubuntu 24.04 (Noble) arm64 base tarball（多个镜像源, ~28MB）
     private val UBUNTU_ROOTFS_URLS = listOf(
-        "https://mirrors.ustc.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz",
-        "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz",
-        "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz",
+        "https://mirrors.ustc.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
+        "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
+        "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
     )
 
     // proot arm64 预编译二进制
@@ -100,7 +100,7 @@ object ArcReelEnvironment {
 
             // Step 2: 下载并解压 Ubuntu rootfs
             if (!File(rootfsDir(context), ".extraction_complete").exists()) {
-                _state.value = EnvState(EnvStatus.INSTALLING, 0.1f, "下载 Ubuntu rootfs (~200MB)...")
+                _state.value = EnvState(EnvStatus.INSTALLING, 0.1f, "下载 Ubuntu rootfs (~28MB)...")
                 downloadAndExtractRootfs(context).getOrThrow()
             }
 
