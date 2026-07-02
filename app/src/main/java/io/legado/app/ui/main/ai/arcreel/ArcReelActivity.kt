@@ -1,184 +1,201 @@
 package io.legado.app.ui.main.ai.arcreel
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import io.legado.app.help.ai.*
-import io.legado.app.ui.main.ai.compose.aiComposeStyle
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.legado.app.help.ai.ArcReelEnvironment
+import io.legado.app.help.ai.ArcReelServiceController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 
 /**
- * ArcReel 活动 — 宿主Activity，承载完整的ArcReel管道UI
- * 从小说 → 角色/场景/道具设计 → 剧本 → 分镜 → 视频
+ * ArcReel 入口 Activity — 智能路由
+ *
+ * 根据环境安装状态：
+ * 1. 未安装 → 显示安装引导
+ * 2. 已安装，服务未运行 → 启动服务后跳转 WebView
+ * 3. 服务运行中 → 直接跳转 WebView
  */
 class ArcReelActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val bookName = intent.getStringExtra("bookName") ?: "未命名项目"
-        val author = intent.getStringExtra("author") ?: ""
-        val bookUrl = intent.getStringExtra("bookUrl") ?: ""
-        val content = intent.getStringExtra("content") ?: ""
-        val chapterContentsJson = intent.getStringExtra("chapterContentsJson")
-        val chapterContents: List<Pair<Int, String>>? = chapterContentsJson?.let { parseChapterContents(it) }
-
-        val activity = this
-
         setContent {
-            val style = aiComposeStyle(this)
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = style.colors.pageBackground
-            ) {
-                ArcReelActivityContent(
-                    bookName = bookName,
-                    author = author,
-                    bookUrl = bookUrl,
-                    content = content,
-                    chapterContents = chapterContents,
-                    onFinish = { activity.finish() }
-                )
-            }
+            ArcReelEntryScreen(
+                onFinish = { finish() }
+            )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从 WebView 返回时，检查是否需要重新跳转
+        if (ArcReelServiceController.isRunning()) {
+            // 如果服务在运行，可以重新打开 WebView
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ArcReelActivityContent(
-    bookName: String,
-    author: String,
-    bookUrl: String,
-    content: String,
-    chapterContents: List<Pair<Int, String>>?,
-    onFinish: () -> Unit
-) {
-    var project by remember {
-        mutableStateOf(
-            ArcReelProject(
-                name = "$bookName - ArcReel",
-                bookName = bookName,
-                author = author,
-                bookUrl = bookUrl
+private fun ArcReelEntryScreen(onFinish: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var isChecking by remember { mutableStateOf(true) }
+    var showSetup by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("检查 ArcReel 环境...") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // 检查环境状态
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                // 检查环境是否已安装
+                if (!ArcReelEnvironment.isInstalled(context)) {
+                    showSetup = true
+                    isChecking = false
+                    return@withContext
+                }
+
+                // 检查 ArcReel 服务是否已安装
+                if (!ArcReelServiceController.isInstalled(context)) {
+                    showSetup = true
+                    isChecking = false
+                    return@withContext
+                }
+
+                message = "正在启动 ArcReel 服务..."
+                // 启动服务
+                val startResult = ArcReelServiceController.start(context)
+                if (startResult.isSuccess) {
+                    // 跳转 WebView
+                    context.startActivity(
+                        Intent(context, ArcReelWebViewActivity::class.java)
+                    )
+                } else {
+                    errorMessage = "服务启动失败: ${startResult.exceptionOrNull()?.message}"
+                }
+            } catch (e: Exception) {
+                errorMessage = "启动失败: ${e.message}"
+            } finally {
+                isChecking = false
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F0F23))
+    ) {
+        TopAppBar(
+            title = { Text("ArcReel", fontSize = 18.sp, fontWeight = FontWeight.Medium) },
+            navigationIcon = {
+                IconButton(onClick = onFinish) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color(0xFF1A1A2E),
+                titleContentColor = Color.White,
+                navigationIconContentColor = Color.White
             )
         )
-    }
-    var currentScreen by remember { mutableStateOf<ArcReelScreen>(ArcReelScreen.MAIN) }
-    var selectedChapter by remember { mutableStateOf<ChapterStoryboard?>(null) }
 
-    when (currentScreen) {
-        ArcReelScreen.MAIN -> {
-            ArcReelMainScreen(
-                project = project,
-                onBack = onFinish,
-                onStartPipeline = { proj ->
-                    val contents = chapterContents ?: listOf(0 to content)
-                    withContext(Dispatchers.IO) {
-                        ArcReelPipeline.executeFullPipeline(
-                            project = proj,
-                            chapterContents = contents,
-                            contentText = content,
-                            generateImages = true,
-                            generateVideos = false
-                        )
-                    }.also { project = it }
-                },
-                onViewStoryboard = { chapter ->
-                    selectedChapter = chapter
-                    currentScreen = ArcReelScreen.STORYBOARD
-                },
-                onViewCharacters = {
-                    currentScreen = ArcReelScreen.DESIGN
-                },
-                onViewGallery = {
-                    currentScreen = ArcReelScreen.GALLERY
-                }
-            )
-        }
-        ArcReelScreen.STORYBOARD -> {
-            selectedChapter?.let { chapter ->
-                ArcReelStoryboardScreen(
-                    chapter = chapter,
-                    onBack = { currentScreen = ArcReelScreen.MAIN },
-                    onGenerateSceneImage = { sceneId ->
-                        val scene = chapter.result.scenes.find { it.sceneId == sceneId }
-                        scene?.let {
-                            try {
-                                AiSceneVisualizer.generateSceneImage(
-                                    AiSceneVisualizer.SceneVisualization(
-                                        sceneDescription = it.description,
-                                        atmosphere = "",
-                                        moodKeywords = emptyList(),
-                                        imagePrompt = it.visualPrompt,
-                                        imagePromptCN = it.visualPrompt
-                                    )
-                                )
-                            } catch (_: Exception) { null }
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                showSetup -> {
+                    // 显示安装引导
+                    ArcReelSetupScreen(
+                        onBack = onFinish,
+                        onComplete = {
+                            // 安装完成，跳转 WebView
+                            context.startActivity(
+                                Intent(context, ArcReelWebViewActivity::class.java)
+                            )
                         }
-                    },
-                    onGenerateVideo = { sceneId ->
-                        val scene = chapter.result.scenes.find { it.sceneId == sceneId }
-                        scene?.let {
-                            withContext(Dispatchers.IO) {
-                                AiCreationService.textToVideoWithProgress(prompt = it.visualPrompt)
-                            }
+                    )
+                }
+
+                isChecking -> {
+                    // 检查中
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Color(0xFF6C63FF))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(message, color = Color.White, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "首次启动需要下载约 200MB 数据",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
+                errorMessage != null -> {
+                    // 错误
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(32.dp)
+                    ) {
+                        Text(
+                            "启动失败",
+                            color = Color(0xFFFF6B6B),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            errorMessage!!,
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = {
+                                errorMessage = null
+                                isChecking = true
+                                scope.launch(Dispatchers.IO) {
+                                    // 重新尝试
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF6C63FF)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("重试")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = onFinish) {
+                            Text("返回", color = Color.White.copy(alpha = 0.6f))
                         }
                     }
-                )
+                }
             }
         }
-        ArcReelScreen.DESIGN -> {
-            ArcReelDesignWorkshopScreen(
-                project = project,
-                onBack = { currentScreen = ArcReelScreen.MAIN },
-                onGenerateCharacterImage = { name ->
-                    val char = project.characters.find { it.name == name }
-                    char?.let {
-                        try {
-                            val vis = AiSceneVisualizer.visualizeCharacter(
-                                name = it.name,
-                                description = it.appearance,
-                                context = "${it.identity} · ${it.personality}"
-                            )
-                            AiSceneVisualizer.generateCharacterImage(vis)
-                        } catch (_: Exception) { null }
-                    }
-                },
-                onGenerateSceneImage = { name ->
-                    val scene = project.scenes.find { it.name == name }
-                    scene?.let {
-                        try {
-                            AiImageService.generate(it.imagePromptCN.ifBlank { it.imagePrompt })
-                        } catch (_: Exception) { null }
-                    }
-                }
-            )
-        }
-        ArcReelScreen.GALLERY -> {
-            val galleryItems = remember(project) { AiSceneGallery.buildGallery(project) }
-            ArcReelGalleryScreen(
-                items = galleryItems,
-                onBack = { currentScreen = ArcReelScreen.MAIN }
-            )
-        }
     }
-}
-
-private enum class ArcReelScreen { MAIN, STORYBOARD, DESIGN, GALLERY }
-
-private fun parseChapterContents(json: String): List<Pair<Int, String>> {
-    return try {
-        val arr = JSONArray(json)
-        (0 until arr.length()).map { i ->
-            val obj = arr.getJSONObject(i)
-            obj.getInt("index") to obj.getString("content")
-        }
-    } catch (_: Exception) { emptyList() }
 }

@@ -9,7 +9,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * ArcReel 集成入口 — 从阅读页/AI聊天页启动ArcReel管道
+ * ArcReel 集成入口 — 从阅读页/AI聊天页启动ArcReel
+ *
+ * 根据环境安装状态，自动路由到：
+ * 1. 首次使用 → ArcReelActivity (Setup 模式)
+ * 2. 已安装 → ArcReelWebViewActivity (WebView 模式)
  */
 object ArcReelLauncher {
 
