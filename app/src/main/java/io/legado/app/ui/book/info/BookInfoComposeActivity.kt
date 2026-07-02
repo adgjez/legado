@@ -523,6 +523,7 @@ class BookInfoComposeActivity :
         val coverPath = resolveStableCoverPath(CoverDisplayResolver.resolve(book).path)
         uiState = BookInfoUiState(
             bookUrl = book.bookUrl,
+            sourceUrl = book.origin,
             name = book.name,
             author = book.getRealAuthor(),
             originName = getString(R.string.origin_show, book.originName),
@@ -577,6 +578,7 @@ class BookInfoComposeActivity :
         )
         return BookInfoUiState(
             bookUrl = bookUrl,
+            sourceUrl = origin,
             name = name,
             author = author,
             originName = originName.takeIf { it.isNotBlank() }?.let {

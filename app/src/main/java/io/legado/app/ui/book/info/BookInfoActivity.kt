@@ -827,6 +827,7 @@ class BookInfoActivity :
         val coverPath = resolveStableComposeCoverPath(CoverDisplayResolver.resolve(safeBook).path)
         composeBookInfoState = BookInfoUiState(
             bookUrl = safeBook.bookUrl,
+            sourceUrl = safeBook.origin,
             name = safeBook.name,
             author = safeBook.getRealAuthor(),
             originName = getString(R.string.origin_show, safeBook.originName),
@@ -878,6 +879,7 @@ class BookInfoActivity :
         )
         return BookInfoUiState(
             bookUrl = bookUrl,
+            sourceUrl = origin,
             name = name,
             author = author,
             originName = originName.takeIf { it.isNotBlank() }?.let {

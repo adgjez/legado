@@ -20,6 +20,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,10 +43,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -94,6 +101,9 @@ import androidx.compose.ui.zIndex
 import androidx.core.text.HtmlCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.BookInfoQuickActionConfig
+import io.legado.app.help.config.BookInfoQuickActionItem
+import io.legado.app.help.config.BookInfoQuickActionType
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
@@ -124,6 +134,7 @@ data class BookInfoChapterUi(
 @Immutable
 data class BookInfoUiState(
     val bookUrl: String = "",
+    val sourceUrl: String = "",
     val name: String = "",
     val author: String = "",
     val originName: String = "",
@@ -181,7 +192,8 @@ data class BookInfoActions(
     val onCopyTocUrl: () -> Unit = {},
     val onClearCache: () -> Unit = {},
     val onSetupWebIntro: (WebView) -> Unit = {},
-    val onRefreshEnabledChanged: (Boolean) -> Unit = {}
+    val onRefreshEnabledChanged: (Boolean) -> Unit = {},
+    val onQuickActionsChanged: () -> Unit = {}
 )
 
 @Immutable
@@ -331,6 +343,8 @@ fun BookInfoComposeRoute(
     }
     val style = remember(context, coverColor) { bookInfoComposeStyle(context, coverColor) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    var showQuickActionEditor by remember { mutableStateOf(false) }
+    var quickActionConfigVersion by remember { mutableStateOf(0) }
     var metricPreview by remember { mutableStateOf<BookInfoMetricPreview?>(null) }
     var metricPreviewVisible by remember { mutableStateOf(false) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
@@ -405,6 +419,7 @@ fun BookInfoComposeRoute(
                         state = state,
                         actions = actions,
                         style = style,
+                        configVersion = quickActionConfigVersion,
                         onPreviewStart = {
                             metricPreview = it
                             metricPreviewVisible = true
@@ -469,7 +484,22 @@ fun BookInfoComposeRoute(
                 state = state,
                 style = style,
                 actions = actions,
+                onEditQuickActions = {
+                    showMoreMenu = false
+                    showQuickActionEditor = true
+                },
                 onDismiss = { showMoreMenu = false }
+            )
+        }
+        if (showQuickActionEditor) {
+            BookInfoQuickActionEditSheet(
+                state = state,
+                style = style,
+                onDismiss = { showQuickActionEditor = false },
+                onSaved = {
+                    quickActionConfigVersion += 1
+                    actions.onQuickActionsChanged()
+                }
             )
         }
         metricPreview?.let { preview ->
@@ -492,56 +522,169 @@ private fun BookInfoStatusStrip(
     state: BookInfoUiState,
     actions: BookInfoActions,
     style: BookInfoComposeStyle,
+    configVersion: Int,
     onPreviewStart: (BookInfoMetricPreview) -> Unit,
     onPreviewEnd: () -> Unit
 ) {
-    val sourceValue = state.originName.cleanBookInfoValue()
-    val tocValue = if (state.chapterCount > 0) {
-        "${state.chapterCount}"
-    } else {
-        stringResource(R.string.view_toc)
+    val configuredItems = remember(configVersion) {
+        BookInfoQuickActionConfig.load()
     }
-    val galleryValue = if (state.aiImageCount > 0) "${state.aiImageCount}" else stringResource(R.string.ai_image_gallery_empty)
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(9.dp)
-    ) {
-        BookInfoMetricBox(
-            label = "书源",
-            value = sourceValue,
-            modifier = Modifier.weight(1f),
-            style = style,
-            onLongPressStart = { bounds ->
-                onPreviewStart(BookInfoMetricPreview(BookInfoMetricPreviewType.Source, bounds))
-            },
-            onPressEnd = onPreviewEnd,
+    val configuredActions = mutableListOf<BookInfoQuickActionUi>()
+    configuredItems.forEach { item ->
+        item.toQuickActionUi(state, actions)?.let(configuredActions::add)
+    }
+    val quickActions = configuredActions.takeIf { it.isNotEmpty() }
+        ?: defaultBookInfoQuickActions(state, actions)
+    val pages = remember(quickActions) { quickActions.chunked(3) }
+    val pagerState = rememberPagerState(pageCount = { pages.size })
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth()
+        ) { page ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                pages[page].forEach { quickAction ->
+                    BookInfoMetricBox(
+                        label = quickAction.label,
+                        value = quickAction.value,
+                        suffix = quickAction.suffix,
+                        modifier = Modifier.weight(1f),
+                        style = style,
+                        onLongPressStart = { bounds ->
+                            quickAction.previewType?.let {
+                                onPreviewStart(BookInfoMetricPreview(it, bounds))
+                            }
+                        },
+                        onPressEnd = onPreviewEnd,
+                        onClick = quickAction.onClick
+                    )
+                }
+                repeat(3 - pages[page].size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        if (pages.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                pages.indices.forEach { index ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (index == pagerState.currentPage) 7.dp else 5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (index == pagerState.currentPage) {
+                                    style.colors.accent
+                                } else {
+                                    style.colors.metricSecondaryText.copy(alpha = 0.42f)
+                                }
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class BookInfoQuickActionUi(
+    val label: String,
+    val value: String,
+    val suffix: String = "",
+    val previewType: BookInfoMetricPreviewType? = null,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun BookInfoQuickActionItem.toQuickActionUi(
+    state: BookInfoUiState,
+    actions: BookInfoActions
+): BookInfoQuickActionUi? {
+    if (!enabled) return null
+    val customAlias = BookInfoQuickActionConfig.customButtonAlias(state.sourceUrl)
+    return when (type) {
+        BookInfoQuickActionType.SOURCE -> BookInfoQuickActionUi(
+            label = alias.ifBlank { "书源" },
+            value = state.originName.cleanBookInfoValue(),
+            previewType = BookInfoMetricPreviewType.Source,
             onClick = actions.onChangeSource
         )
-        BookInfoMetricBox(
-            label = "目录",
-            value = tocValue,
+        BookInfoQuickActionType.TOC -> BookInfoQuickActionUi(
+            label = alias.ifBlank { "目录" },
+            value = if (state.chapterCount > 0) "${state.chapterCount}" else stringResource(R.string.view_toc),
             suffix = if (state.chapterCount > 0) "章" else "",
-            modifier = Modifier.weight(1f),
-            style = style,
-            onLongPressStart = { bounds ->
-                onPreviewStart(BookInfoMetricPreview(BookInfoMetricPreviewType.Toc, bounds))
-            },
-            onPressEnd = onPreviewEnd,
+            previewType = BookInfoMetricPreviewType.Toc,
             onClick = actions.onOpenToc
         )
-        BookInfoMetricBox(
-            label = "图库",
-            value = galleryValue,
-            suffix = if (state.aiImageCount > 0) "" else "",
-            modifier = Modifier.weight(1f),
-            style = style,
-            onLongPressStart = { bounds ->
-                onPreviewStart(BookInfoMetricPreview(BookInfoMetricPreviewType.Gallery, bounds))
-            },
-            onPressEnd = onPreviewEnd,
+        BookInfoQuickActionType.GALLERY -> BookInfoQuickActionUi(
+            label = alias.ifBlank { "图库" },
+            value = if (state.aiImageCount > 0) "${state.aiImageCount}" else stringResource(R.string.ai_image_gallery_empty),
+            previewType = BookInfoMetricPreviewType.Gallery,
             onClick = actions.onOpenAiGallery
         )
+        BookInfoQuickActionType.GROUP -> BookInfoQuickActionUi(
+            label = alias.ifBlank { stringResource(R.string.group) },
+            value = state.groupText.cleanBookInfoValue().ifBlank { stringResource(R.string.no_group) },
+            onClick = actions.onChangeGroup
+        )
+        BookInfoQuickActionType.CLOUD -> BookInfoQuickActionUi(
+            label = alias.ifBlank { stringResource(R.string.book_cloud_entry_mode) },
+            value = when (state.cloudEntryMode) {
+                BookCloudEntryMode.CACHE_PACKAGE -> stringResource(R.string.book_cloud_cache_package_mode)
+                BookCloudEntryMode.LIBRARY_CHAPTER -> stringResource(R.string.book_cloud_library_chapter_mode)
+            },
+            onClick = {
+                when (state.cloudEntryMode) {
+                    BookCloudEntryMode.CACHE_PACKAGE -> actions.onCloudBackup()
+                    BookCloudEntryMode.LIBRARY_CHAPTER -> actions.onOpenLibraryContainer()
+                }
+            }
+        )
+        BookInfoQuickActionType.CUSTOM_BUTTON -> {
+            if (!state.hasCustomButton) return null
+            BookInfoQuickActionUi(
+                label = stringResource(R.string.custom_button),
+                value = customAlias.ifBlank { alias.ifBlank { stringResource(R.string.custom_button) } },
+                onClick = actions.onCustomButton
+            )
+        }
+        BookInfoQuickActionType.EDIT_INFO -> BookInfoQuickActionUi(
+            label = alias.ifBlank { stringResource(R.string.edit) },
+            value = stringResource(R.string.book_info_edit),
+            onClick = actions.onEditBookInfo
+        )
+        BookInfoQuickActionType.SHELF -> BookInfoQuickActionUi(
+            label = alias.ifBlank { stringResource(R.string.bookshelf) },
+            value = if (state.inBookshelf) {
+                stringResource(R.string.remove_from_bookshelf)
+            } else {
+                stringResource(R.string.add_to_bookshelf)
+            },
+            onClick = actions.onShelf
+        )
+        BookInfoQuickActionType.READ -> BookInfoQuickActionUi(
+            label = alias.ifBlank { stringResource(R.string.reading) },
+            value = stringResource(R.string.reading),
+            onClick = actions.onRead
+        )
     }
+}
+
+@Composable
+private fun defaultBookInfoQuickActions(
+    state: BookInfoUiState,
+    actions: BookInfoActions
+): List<BookInfoQuickActionUi> {
+    return listOfNotNull(
+        BookInfoQuickActionItem(BookInfoQuickActionType.SOURCE).toQuickActionUi(state, actions),
+        BookInfoQuickActionItem(BookInfoQuickActionType.TOC).toQuickActionUi(state, actions),
+        BookInfoQuickActionItem(BookInfoQuickActionType.GALLERY).toQuickActionUi(state, actions)
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -883,6 +1026,7 @@ private fun BookInfoMoreActionSheet(
     state: BookInfoUiState,
     style: BookInfoComposeStyle,
     actions: BookInfoActions,
+    onEditQuickActions: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -936,6 +1080,9 @@ private fun BookInfoMoreActionSheet(
                 }
                 BookInfoMoreActionItem(stringResource(R.string.book_cloud_entry_mode), style) {
                     showCloudOptions = true
+                }
+                BookInfoMoreActionItem(stringResource(R.string.book_info_quick_action_edit), style) {
+                    onEditQuickActions()
                 }
                 if (state.hasBookSource) {
                     BookInfoToggleActionItem(
@@ -1056,6 +1203,228 @@ private fun BookInfoToggleActionItem(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BookInfoQuickActionEditSheet(
+    state: BookInfoUiState,
+    style: BookInfoComposeStyle,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var draft by remember { mutableStateOf(BookInfoQuickActionConfig.load()) }
+    var customAlias by remember(state.sourceUrl) {
+        mutableStateOf(BookInfoQuickActionConfig.customButtonAlias(state.sourceUrl))
+    }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = style.metrics.panelRadius, topEnd = style.metrics.panelRadius),
+        containerColor = style.colors.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.book_info_quick_action_edit),
+                color = style.colors.primaryText,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                draft.forEachIndexed { index, item ->
+                    BookInfoQuickActionEditRow(
+                        item = item,
+                        index = index,
+                        total = draft.size,
+                        state = state,
+                        customAlias = customAlias,
+                        style = style,
+                        onToggle = {
+                            draft = draft.toMutableList().also { list ->
+                                list[index] = item.copy(enabled = !item.enabled)
+                            }
+                        },
+                        onAliasChange = { alias ->
+                            if (item.type == BookInfoQuickActionType.CUSTOM_BUTTON) {
+                                customAlias = alias
+                            } else {
+                                draft = draft.toMutableList().also { list ->
+                                    list[index] = item.copy(alias = alias)
+                                }
+                            }
+                        },
+                        onMoveUp = {
+                            if (index > 0) {
+                                draft = draft.toMutableList().also { list ->
+                                    val moved = list.removeAt(index)
+                                    list.add(index - 1, moved)
+                                }
+                            }
+                        },
+                        onMoveDown = {
+                            if (index < draft.lastIndex) {
+                                draft = draft.toMutableList().also { list ->
+                                    val moved = list.removeAt(index)
+                                    list.add(index + 1, moved)
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = {
+                        draft = BookInfoQuickActionConfig.defaults()
+                        customAlias = ""
+                    }
+                ) {
+                    Text(text = stringResource(R.string.reset), color = style.colors.secondaryText)
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = onDismiss) {
+                    Text(text = stringResource(R.string.cancel), color = style.colors.secondaryText)
+                }
+                TextButton(
+                    onClick = {
+                        BookInfoQuickActionConfig.save(draft)
+                        BookInfoQuickActionConfig.saveCustomButtonAlias(state.sourceUrl, customAlias)
+                        onSaved()
+                        onDismiss()
+                    }
+                ) {
+                    Text(text = stringResource(R.string.action_save), color = style.colors.accent)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun BookInfoQuickActionEditRow(
+    item: BookInfoQuickActionItem,
+    index: Int,
+    total: Int,
+    state: BookInfoUiState,
+    customAlias: String,
+    style: BookInfoComposeStyle,
+    onToggle: () -> Unit,
+    onAliasChange: (String) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
+) {
+    val aliasValue = if (item.type == BookInfoQuickActionType.CUSTOM_BUTTON) customAlias else item.alias
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(style.colors.surfaceVariant.copy(alpha = 0.72f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Checkbox(
+                checked = item.enabled,
+                onCheckedChange = { onToggle() },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = style.colors.accent,
+                    uncheckedColor = style.colors.secondaryText
+                )
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.type.editorTitle(),
+                    color = style.colors.primaryText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (item.type == BookInfoQuickActionType.CUSTOM_BUTTON && state.sourceUrl.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.book_info_quick_action_source_alias_hint),
+                        color = style.colors.secondaryText,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            TextButton(onClick = onMoveUp, enabled = index > 0) {
+                Text(text = stringResource(R.string.move_up))
+            }
+            TextButton(onClick = onMoveDown, enabled = index < total - 1) {
+                Text(text = stringResource(R.string.move_down))
+            }
+        }
+        OutlinedTextField(
+            value = aliasValue,
+            onValueChange = onAliasChange,
+            singleLine = true,
+            label = { Text(stringResource(R.string.book_info_quick_action_alias)) },
+            placeholder = { Text(item.type.defaultAliasPlaceholder()) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = style.colors.accent,
+                focusedLabelColor = style.colors.accent,
+                cursorColor = style.colors.accent,
+                focusedTextColor = style.colors.primaryText,
+                unfocusedTextColor = style.colors.primaryText,
+                unfocusedBorderColor = style.colors.secondaryText.copy(alpha = 0.42f),
+                unfocusedLabelColor = style.colors.secondaryText
+            )
+        )
+    }
+}
+
+@Composable
+private fun BookInfoQuickActionType.editorTitle(): String {
+    return when (this) {
+        BookInfoQuickActionType.SOURCE -> "书源"
+        BookInfoQuickActionType.TOC -> "目录"
+        BookInfoQuickActionType.GALLERY -> "图库"
+        BookInfoQuickActionType.GROUP -> stringResource(R.string.group)
+        BookInfoQuickActionType.CLOUD -> stringResource(R.string.book_cloud_entry_mode)
+        BookInfoQuickActionType.CUSTOM_BUTTON -> stringResource(R.string.custom_button)
+        BookInfoQuickActionType.EDIT_INFO -> stringResource(R.string.book_info_edit)
+        BookInfoQuickActionType.SHELF -> stringResource(R.string.bookshelf)
+        BookInfoQuickActionType.READ -> stringResource(R.string.reading)
+    }
+}
+
+@Composable
+private fun BookInfoQuickActionType.defaultAliasPlaceholder(): String {
+    return when (this) {
+        BookInfoQuickActionType.SOURCE -> "书源"
+        BookInfoQuickActionType.TOC -> "目录"
+        BookInfoQuickActionType.GALLERY -> "图库"
+        BookInfoQuickActionType.GROUP -> stringResource(R.string.group)
+        BookInfoQuickActionType.CLOUD -> stringResource(R.string.book_cloud_entry_mode)
+        BookInfoQuickActionType.CUSTOM_BUTTON -> stringResource(R.string.custom_button)
+        BookInfoQuickActionType.EDIT_INFO -> stringResource(R.string.book_info_edit)
+        BookInfoQuickActionType.SHELF -> stringResource(R.string.bookshelf)
+        BookInfoQuickActionType.READ -> stringResource(R.string.reading)
     }
 }
 

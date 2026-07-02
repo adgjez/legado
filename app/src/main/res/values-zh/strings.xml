@@ -367,6 +367,11 @@
     <string name="auto_next_page_speed">自动翻页间隔</string>
     <string name="book_info">书籍信息</string>
     <string name="book_info_edit">书籍信息编辑</string>
+    <string name="book_info_quick_action_edit">详情按键编辑</string>
+    <string name="book_info_quick_action_alias">显示名称</string>
+    <string name="book_info_quick_action_source_alias_hint">别名按当前书源单独保存</string>
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
     <string name="ps_default_read">默认打开书架</string>
     <string name="pt_default_read">自动跳转最近阅读</string>
     <string name="replace_scope">替换范围，选填书名或者书源 URL</string>
