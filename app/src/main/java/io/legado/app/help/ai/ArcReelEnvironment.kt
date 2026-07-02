@@ -35,9 +35,11 @@ object ArcReelEnvironment {
     // 备用: 直接使用静态编译的 proot 二进制
     private const val PROOT_DEB_URL =
         "https://packages.termux.dev/apt/termux-main/pool/main/p/proot/proot_5.1.0_aarch64.deb"
-    // 备用静态二进制 URL (如果可用)
-    private const val PROOT_STATIC_URL =
-        "https://github.com/proot-meefik/proot-static-build/releases/download/v5.1.0/proot-aarch64"
+    // 备用静态二进制 URL（多个镜像源）
+    private val PROOT_STATIC_URLS = listOf(
+        "https://ghproxy.com/https://github.com/proot-meefik/proot-static-build/releases/download/v5.1.0/proot-aarch64",
+        "https://github.com/proot-meefik/proot-static-build/releases/download/v5.1.0/proot-aarch64",
+    )
 
     private const val PROOT_BINARY_NAME = "proot"
     private const val ROOTFS_DIR_NAME = "ubuntu-rootfs"
@@ -178,26 +180,34 @@ object ArcReelEnvironment {
                 return Result.success(Unit)
             }
 
-            // 下载到临时文件，成功后再重命名
-            val tmpFile = File(envDir(context), "proot.tmp")
-            tmpFile.delete()
-
-            // 尝试直接下载静态二进制
+            // 尝试下载 proot 二进制（多个镜像源）
             _state.value = _state.value.copy(message = "下载 proot 二进制...")
-            val directResult = runCatching {
-                downloadFile(PROOT_STATIC_URL, tmpFile.absolutePath) { progress ->
-                    _state.value = _state.value.copy(
-                        progress = 0.05f + progress * 0.05f,
-                        message = "下载 proot: ${(progress * 100).toInt()}%"
-                    )
+            var lastError: Exception? = null
+            var downloaded = false
+
+            for ((index, url) in PROOT_STATIC_URLS.withIndex()) {
+                val tmpFile = File(envDir(context), "proot.tmp")
+                tmpFile.delete()
+                val result = runCatching {
+                    downloadFile(url, tmpFile.absolutePath) { progress ->
+                        _state.value = _state.value.copy(
+                            progress = 0.05f + progress * 0.05f,
+                            message = "下载 proot (源${index + 1}): ${(progress * 100).toInt()}%"
+                        )
+                    }
                 }
+                if (result.isSuccess && tmpFile.length() > 1000) {
+                    tmpFile.renameTo(prootBinary(context))
+                    downloaded = true
+                    break
+                }
+                lastError = result.exceptionOrNull()
+                tmpFile.delete()
             }
 
-            if (directResult.isSuccess && tmpFile.length() > 1000) {
-                tmpFile.renameTo(prootBinary(context))
+            if (downloaded) {
                 return Result.success(Unit)
             }
-            tmpFile.delete()
 
             // 回退: 从 .deb 包提取
             _state.value = _state.value.copy(message = "从 .deb 包提取 proot...")
