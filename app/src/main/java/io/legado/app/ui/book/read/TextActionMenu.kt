@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.PopupWindow
 import androidx.annotation.RequiresApi
 import androidx.appcompat.view.SupportMenuInflater
@@ -53,6 +54,9 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistryOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -87,6 +91,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private var itemWidthPx by mutableIntStateOf(64.dpToPx())
     private var pageCapacity by mutableIntStateOf(1)
     private var lastMaxMainWidth = 0
+    private var overlayParent: ViewGroup? = null
     private val itemTextPaint = TextPaint().apply {
         textSize = 12f * context.resources.displayMetrics.scaledDensity
         typeface = context.uiTypeface()
@@ -273,7 +278,61 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         } else {
             (endBottomY + margin).coerceAtMost((safeWindowHeight - popupHeight - margin).coerceAtLeast(margin))
         }
-        showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
+        showInHostView(view, x, y)
+    }
+
+    private fun showInHostView(anchor: View, x: Int, y: Int) {
+        dismiss()
+        installViewTreeOwners(anchor)
+        val parent = anchor.rootView as? ViewGroup
+        if (parent == null) {
+            showAtLocation(anchor, Gravity.TOP or Gravity.START, x, y)
+            return
+        }
+        (composeView.parent as? ViewGroup)?.removeView(composeView)
+        parent.addView(
+            composeView,
+            FrameLayout.LayoutParams(popupWidthPx, popupHeightPx).apply {
+                leftMargin = x
+                topMargin = y
+            }
+        )
+        overlayParent = parent
+    }
+
+    private fun installViewTreeOwners(anchor: View) {
+        val lifecycleKey = androidx.lifecycle.runtime.R.id.view_tree_lifecycle_owner
+        val viewModelStoreKey = androidx.lifecycle.viewmodel.R.id.view_tree_view_model_store_owner
+        val savedStateKey = androidx.savedstate.R.id.view_tree_saved_state_registry_owner
+        val lifecycleOwner = findViewTreeTag<LifecycleOwner>(anchor, lifecycleKey)
+            ?: context as? LifecycleOwner
+        val viewModelStoreOwner = findViewTreeTag<ViewModelStoreOwner>(anchor, viewModelStoreKey)
+            ?: context as? ViewModelStoreOwner
+        val savedStateRegistryOwner =
+            findViewTreeTag<SavedStateRegistryOwner>(anchor, savedStateKey)
+            ?: context as? SavedStateRegistryOwner
+        lifecycleOwner?.let { composeView.setTag(lifecycleKey, it) }
+        viewModelStoreOwner?.let { composeView.setTag(viewModelStoreKey, it) }
+        savedStateRegistryOwner?.let { composeView.setTag(savedStateKey, it) }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> findViewTreeTag(anchor: View, key: Int): T? {
+        var current: View? = anchor
+        while (current != null) {
+            current.getTag(key)?.let { return it as? T }
+            current = current.parent as? View
+        }
+        return null
+    }
+
+    override fun dismiss() {
+        overlayParent?.let {
+            (composeView.parent as? ViewGroup)?.removeView(composeView)
+            overlayParent = null
+            return
+        }
+        super.dismiss()
     }
 
     private fun toggleSpeakMode() {
