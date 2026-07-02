@@ -207,6 +207,22 @@
 		<item>beta_releaseS_version</item>
 	</string-array>
 
+    <string-array name="fast_scroller_touch_target_entries">
+        <item>@string/fast_scroller_touch_target_compact</item>
+        <item>@string/fast_scroller_touch_target_original</item>
+        <item>@string/fast_scroller_touch_target_standard</item>
+        <item>@string/fast_scroller_touch_target_large</item>
+        <item>@string/fast_scroller_touch_target_extra_large</item>
+    </string-array>
+
+    <string-array name="fast_scroller_touch_target_values">
+        <item>32</item>
+        <item>36</item>
+        <item>44</item>
+        <item>52</item>
+        <item>60</item>
+    </string-array>
+
 	<string-array name="discovery_page_mode_entries">
 		<item>@string/discovery_page_mode_modern</item>
 		<item>@string/discovery_page_mode_legacy</item>

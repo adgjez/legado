@@ -106,7 +106,6 @@ import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.SearchBookMergeUtils
-import io.legado.app.utils.stableSearchBookKey
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
@@ -144,7 +143,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
 /**
@@ -195,7 +193,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val discoverSelectItems = mutableListOf<DiscoverTagItem>()
     private val discoverMajorGroups = mutableListOf<String>()
     private val discoverBookshelf = linkedSetOf<String>()
-    private val discoverBooks = mutableListOf<SearchBook>()
+    private val discoverBooks = linkedSetOf<SearchBook>()
     private val composeDiscoverBooks = mutableStateListOf<SearchBook>()
     private val composeDiscoverLoading = mutableStateOf(false)
     private val composeDiscoverHasMore = mutableStateOf(true)
@@ -873,9 +871,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             widget.type == DiscoverySuiteWidgetType.WaterfallBooks.value
         ) return
         val deck = suiteRandomDeck(widget)
-        if (deck.queue.size >= RANDOM_SUITE_BOOK_COUNT) return
-        if (!deck.prefetching.compareAndSet(false, true)) return
+        if (deck.prefetching || deck.queue.size >= RANDOM_SUITE_BOOK_COUNT) return
         viewLifecycleOwner.lifecycleScope.launch(IO) {
+            deck.prefetching = true
             try {
                 val queuedBooks = deck.mutex.withLock {
                     fillSuiteRandomDeckLocked(widget, deck, RANDOM_SUITE_PREFETCH_COUNT)
@@ -889,7 +887,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             } catch (e: Throwable) {
                 AppLog.put("套件发现控件预加载失败", e)
             } finally {
-                deck.prefetching.set(false)
+                deck.prefetching = false
             }
         }
     }
@@ -1027,14 +1025,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun loadMoreSuiteHorizontalWidget(widget: DiscoverySuiteWidget) {
         if (!usingSuiteDiscovery || widget.type != DiscoverySuiteWidgetType.HorizontalBooks.value) return
         val state = suiteHorizontalPagingState(widget)
-        if (state.exhausted || !state.loading.compareAndSet(false, true)) return
+        if (state.loading || state.exhausted) return
         val currentBooks = composeSuiteWidgetBooks[widget.id].orEmpty()
         if (currentBooks.size >= HORIZONTAL_SUITE_MAX_BOOKS) {
             state.exhausted = true
-            state.loading.set(false)
             return
         }
         val page = state.nextPage
+        state.loading = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
             val books = try {
@@ -1046,12 +1044,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 emptyList()
             }
             if (!isCurrentSuiteWidget(widget)) {
-                state.loading.set(false)
+                state.loading = false
                 return@launch
             }
             val latestState = suiteHorizontalPagingState(widget)
             if (latestState.signature != state.signature) {
-                state.loading.set(false)
+                state.loading = false
                 return@launch
             }
             val current = composeSuiteWidgetBooks[widget.id].orEmpty()
@@ -1068,9 +1066,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             } else {
                 latestState.exhausted = true
             }
-            latestState.loading.set(false)
+            latestState.loading = false
             } finally {
-                state.loading.set(false)
+                state.loading = false
             }
         }
     }
@@ -1082,8 +1080,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         if (!usingSuiteDiscovery || widget.type != DiscoverySuiteWidgetType.RankedList.value) return
         if (target.sourceUrl.isBlank() || target.tagUrl.isBlank()) return
         val state = suiteRankedPagingState(widget, target)
-        if (state.exhausted || !state.loading.compareAndSet(false, true)) return
+        if (state.loading || state.exhausted) return
         val page = state.nextPage
+        state.loading = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
             val books = try {
@@ -1095,12 +1094,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 emptyList()
             }
             if (!isCurrentSuiteWidget(widget)) {
-                state.loading.set(false)
+                state.loading = false
                 return@launch
             }
             val latestState = suiteRankedPagingState(widget, target)
             if (latestState.signature != state.signature) {
-                state.loading.set(false)
+                state.loading = false
                 return@launch
             }
             val targetKey = target.deckKey()
@@ -1121,9 +1120,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             } else {
                 latestState.exhausted = true
             }
-            latestState.loading.set(false)
+            latestState.loading = false
             } finally {
-                state.loading.set(false)
+                state.loading = false
             }
         }
     }
@@ -1721,7 +1720,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun discoverBooksSignature(): String {
         return buildString {
             discoverBooks.forEach { book ->
-                append(book.stableSearchBookKey()).append('#')
+                append(book.bookUrl).append('#')
                 append(book.name).append('#')
                 append(book.author).append('#')
                 append(book.coverUrl ?: "").append('#')
@@ -3601,7 +3600,7 @@ private data class SuiteRandomDeck(
     val nextPageByTarget: MutableMap<String, Int> = linkedMapOf(),
     var targetIndex: Int = 0,
     // Main 线程读、IO 线程写，加 @Volatile 保证可见性，避免重复预取。
-    val prefetching: AtomicBoolean = AtomicBoolean(false)
+    @Volatile var prefetching: Boolean = false
 )
 
 private data class SuitePreparedBatch(
@@ -3620,7 +3619,7 @@ private data class SuiteHorizontalPagingState(
     val signature: String,
     // nextPage/loading/exhausted 会被 Main(loadMore) 与 IO(首页加载) 访问，加 @Volatile 保证可见性。
     @Volatile var nextPage: Int = 2,
-    val loading: AtomicBoolean = AtomicBoolean(false),
+    @Volatile var loading: Boolean = false,
     @Volatile var exhausted: Boolean = false
 )
 
@@ -3628,7 +3627,7 @@ private data class SuiteRankedPagingState(
     val signature: String,
     // nextPage/loading/exhausted 会被 Main(loadMore) 与 IO(首页加载) 访问，加 @Volatile 保证可见性。
     @Volatile var nextPage: Int = 2,
-    val loading: AtomicBoolean = AtomicBoolean(false),
+    @Volatile var loading: Boolean = false,
     @Volatile var exhausted: Boolean = false
 )
 
@@ -3731,5 +3730,9 @@ private fun DiscoverySuiteWidget.isSuiteButtonOnlyWidget(): Boolean {
 }
 
 private fun SearchBook.suiteDeckKey(): String {
-    return stableSearchBookKey()
+    return when {
+        bookUrl.isNotBlank() -> "$origin|$bookUrl"
+        author.isNotBlank() -> "$origin|$name|$author"
+        else -> "$origin|$name"
+    }
 }

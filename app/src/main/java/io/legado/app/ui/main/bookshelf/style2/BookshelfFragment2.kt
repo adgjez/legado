@@ -124,6 +124,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private var composePendingScrollRestoreGroupId by mutableStateOf<Long?>(null)
     private var composeScrollToTopTick by mutableStateOf(0)
     private var composeListItemStyle by mutableIntStateOf(AppConfig.bookshelfListItemStyle)
+    private var composeListIntroLines by mutableIntStateOf(AppConfig.bookshelfListIntroLines)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -365,6 +366,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                         item = item,
                         listLayout = bookshelfLayout,
                         cardStyle = composeListItemStyle,
+                        introMaxLines = composeListIntroLines,
                         renderConfig = renderConfig,
                         modifier = Modifier.padding(vertical = marginDp.coerceAtLeast(2.dp)),
                         fragment = this@BookshelfFragment2,
@@ -694,6 +696,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             if (useComposeBookshelf) {
                 bookshelfMargin = AppConfig.bookshelfMargin
                 composeListItemStyle = AppConfig.bookshelfListItemStyle
+                composeListIntroLines = AppConfig.bookshelfListIntroLines
                 updateComposeItems()
             } else {
                 bookshelfMargin = AppConfig.bookshelfMargin
@@ -713,6 +716,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         bookshelfLayout = AppConfig.bookshelfLayout.coerceIn(0, 6)
         bookshelfMargin = AppConfig.bookshelfMargin
         composeListItemStyle = AppConfig.bookshelfListItemStyle
+        composeListIntroLines = AppConfig.bookshelfListIntroLines
         composeScrollPositions.clear()
         composeItems = emptyList()
         composeCanScrollBackward = false

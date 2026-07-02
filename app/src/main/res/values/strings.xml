@@ -1651,6 +1651,12 @@ function login() {
     <string name="open_book_info_by_click_title">Click on the book title to open details</string>
     <string name="export_wait">Waiting for export</string>
     <string name="show_bookshelf_fast_scroller">Show quick scroll bar</string>
+    <string name="fast_scroller_touch_target">Quick scroll bar touch area</string>
+    <string name="fast_scroller_touch_target_compact">Compact 32dp</string>
+    <string name="fast_scroller_touch_target_original">Original 36dp</string>
+    <string name="fast_scroller_touch_target_standard">Standard 44dp</string>
+    <string name="fast_scroller_touch_target_large">Large 52dp</string>
+    <string name="fast_scroller_touch_target_extra_large">Extra large 60dp</string>
     <string name="export_all_use_book_source">Export book source for all books</string>
     <string name="keep_enable">Retain Enabled Status</string>
     <string name="preview_image_by_click">Click to preview image</string>
@@ -2320,6 +2326,10 @@ Selected text or question:
     <string name="bookshelf_list_style">List card style</string>
     <string name="bookshelf_list_style_classic">Classic list</string>
     <string name="bookshelf_list_style_rounded_card">Rounded card</string>
+    <string name="bookshelf_list_intro_lines">Intro lines</string>
+    <string name="bookshelf_list_intro_lines_1">1 line</string>
+    <string name="bookshelf_list_intro_lines_2">2 lines</string>
+    <string name="bookshelf_list_intro_lines_3">3 lines</string>
     <string name="main_layout_preset">Navigation style</string>
     <string name="main_layout_preset_summary">Switch to built-in top and bottom navigation presets</string>
     <string name="main_layout_preset_default">Floating</string>

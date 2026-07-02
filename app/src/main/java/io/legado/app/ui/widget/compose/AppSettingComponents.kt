@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.legado.app.R
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
@@ -213,8 +214,7 @@ fun AppManagementLazyColumn(
             state = state,
             enabled = showFastScroller,
             modifier = Modifier.align(Alignment.CenterEnd),
-            touchTargetWidth = 28.dp,
-            dragHotZoneWidth = 26.dp
+            touchTargetWidth = AppConfig.fastScrollerTouchTargetDp.dp
         )
     }
 }

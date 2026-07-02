@@ -151,6 +151,7 @@ fun BookshelfListItem(
     item: BookshelfItemUi,
     listLayout: Int,
     cardStyle: Int,
+    introMaxLines: Int,
     renderConfig: BookshelfListRenderConfig,
     modifier: Modifier = Modifier,
     fragment: Fragment? = null,
@@ -159,10 +160,12 @@ fun BookshelfListItem(
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
     val compact = listLayout == 1
+    val normalizedIntroMaxLines = introMaxLines.coerceIn(1, 3)
     when (cardStyle) {
         BookshelfListItemStyle.RoundedCard -> BookshelfRoundedCardListItem(
             item = item,
             compact = compact,
+            introMaxLines = normalizedIntroMaxLines,
             renderConfig = renderConfig,
             modifier = modifier,
             fragment = fragment,
@@ -174,6 +177,7 @@ fun BookshelfListItem(
         else -> BookshelfClassicListItem(
             item = item,
             compact = compact,
+            introMaxLines = normalizedIntroMaxLines,
             renderConfig = renderConfig,
             modifier = modifier,
             fragment = fragment,
@@ -189,6 +193,7 @@ fun BookshelfListItem(
 private fun BookshelfClassicListItem(
     item: BookshelfItemUi,
     compact: Boolean,
+    introMaxLines: Int,
     renderConfig: BookshelfListRenderConfig,
     modifier: Modifier,
     fragment: Fragment?,
@@ -221,7 +226,7 @@ private fun BookshelfClassicListItem(
             modifier = Modifier.weight(1f),
             showIntro = true,
             showTags = false,
-            introMaxLines = 2
+            introMaxLines = introMaxLines
         )
         BookshelfListStatus(item = item, palette = palette)
     }
@@ -232,6 +237,7 @@ private fun BookshelfClassicListItem(
 private fun BookshelfRoundedCardListItem(
     item: BookshelfItemUi,
     compact: Boolean,
+    introMaxLines: Int,
     renderConfig: BookshelfListRenderConfig,
     modifier: Modifier,
     fragment: Fragment?,
@@ -264,7 +270,7 @@ private fun BookshelfRoundedCardListItem(
             modifier = Modifier.weight(1f),
             showIntro = true,
             showTags = true,
-            introMaxLines = if (compact) 2 else 3
+            introMaxLines = introMaxLines
         )
         BookshelfListStatus(item = item, palette = palette)
     }

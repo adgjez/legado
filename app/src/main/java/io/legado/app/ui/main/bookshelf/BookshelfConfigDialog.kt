@@ -84,6 +84,7 @@ data class BookshelfConfigValues(
     val sort: Int,
     val showBookname: Int,
     val listItemStyle: Int,
+    val listIntroLines: Int,
     val margin: Int
 )
 
@@ -97,7 +98,8 @@ private data class BookshelfConfigOptions(
     val layouts: List<BookshelfConfigOption>,
     val sorts: List<BookshelfConfigOption>,
     val bookNameModes: List<BookshelfConfigOption>,
-    val listItemStyles: List<BookshelfConfigOption>
+    val listItemStyles: List<BookshelfConfigOption>,
+    val listIntroLines: List<BookshelfConfigOption>
 )
 
 private data class BookshelfConfigTexts(
@@ -109,6 +111,7 @@ private data class BookshelfConfigTexts(
     val sortLabel: String,
     val bookNameLabel: String,
     val listItemStyleLabel: String,
+    val listIntroLinesLabel: String,
     val marginTitle: String,
     val marginLabel: String,
     val cancelLabel: String,
@@ -162,6 +165,7 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
         sort = 0,
         showBookname = 0,
         listItemStyle = 0,
+        listIntroLines = 2,
         margin = 12
     )
     private var onApply: ((BookshelfConfigValues) -> Unit)? = null
@@ -254,7 +258,12 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
             listItemStyles = listOf(
                 getString(R.string.bookshelf_list_style_classic),
                 getString(R.string.bookshelf_list_style_rounded_card)
-            ).mapIndexed { index, label -> BookshelfConfigOption(label, index) }
+            ).mapIndexed { index, label -> BookshelfConfigOption(label, index) },
+            listIntroLines = listOf(
+                getString(R.string.bookshelf_list_intro_lines_1),
+                getString(R.string.bookshelf_list_intro_lines_2),
+                getString(R.string.bookshelf_list_intro_lines_3)
+            ).mapIndexed { index, label -> BookshelfConfigOption(label, index + 1) }
         )
     }
 
@@ -268,6 +277,7 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
             sortLabel = getString(R.string.sort),
             bookNameLabel = getString(R.string.book_name),
             listItemStyleLabel = getString(R.string.bookshelf_list_style),
+            listIntroLinesLabel = getString(R.string.bookshelf_list_intro_lines),
             marginTitle = getString(R.string.margin),
             marginLabel = getString(R.string.margin),
             cancelLabel = getString(android.R.string.cancel),
@@ -345,6 +355,15 @@ private fun BookshelfConfigContent(
                     options = options.listItemStyles,
                     selectedValue = values.listItemStyle,
                     onSelected = { onValuesChange(values.copy(listItemStyle = it)) }
+                )
+            )
+            add(
+                BookshelfSelectItem(
+                    key = "listIntroLines",
+                    label = texts.listIntroLinesLabel,
+                    options = options.listIntroLines,
+                    selectedValue = values.listIntroLines,
+                    onSelected = { onValuesChange(values.copy(listIntroLines = it)) }
                 )
             )
         }

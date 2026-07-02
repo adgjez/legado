@@ -145,6 +145,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var composeScrollToTopTick by mutableStateOf(0)
     private var composeImmediateScrollToTopTick by mutableStateOf(0)
     private var composeListItemStyle by mutableIntStateOf(AppConfig.bookshelfListItemStyle)
+    private var composeListIntroLines by mutableIntStateOf(AppConfig.bookshelfListIntroLines)
     private var scrollToTopWhenReturnFromRead = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -449,6 +450,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                         item = item,
                         listLayout = bookshelfLayout,
                         cardStyle = composeListItemStyle,
+                        introMaxLines = composeListIntroLines,
                         renderConfig = renderConfig,
                         modifier = Modifier.padding(vertical = marginDp.coerceAtLeast(2.dp)),
                         fragment = this@BooksFragment,
@@ -848,6 +850,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             binding.rvBookshelf.invalidateItemDecorations()
             if (useComposeBookshelf) {
                 composeListItemStyle = AppConfig.bookshelfListItemStyle
+                composeListIntroLines = AppConfig.bookshelfListIntroLines
                 updateComposeItems(shelfDisplays)
             } else {
                 booksAdapter.notifyDataSetChanged()

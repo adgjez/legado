@@ -258,6 +258,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         var bookshelfSort = AppConfig.bookshelfSort
         var showBookname = AppConfig.showBookname
         var listItemStyle = AppConfig.bookshelfListItemStyle
+        var listIntroLines = AppConfig.bookshelfListIntroLines
         if (bookshelfLayout !in 0..6) {
             bookshelfLayout = 0
             AppConfig.bookshelfLayout = 0
@@ -274,6 +275,10 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             listItemStyle = 0
             AppConfig.bookshelfListItemStyle = 0
         }
+        if (listIntroLines !in 1..3) {
+            listIntroLines = 2
+            AppConfig.bookshelfListIntroLines = 2
+        }
         showDialogFragment(
             BookshelfConfigDialog.create(
                 initialValues = BookshelfConfigValues(
@@ -286,6 +291,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                     sort = bookshelfSort,
                     showBookname = showBookname,
                     listItemStyle = listItemStyle,
+                    listIntroLines = listIntroLines,
                     margin = AppConfig.bookshelfMargin
                 ),
                 onPreviewMarginChange = ::previewBookshelfMargin,
@@ -325,6 +331,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         val sort = values.sort.coerceIn(0, 5)
         val showBookname = values.showBookname.coerceIn(0, 2)
         val listItemStyle = values.listItemStyle.coerceIn(0, 2)
+        val listIntroLines = values.listIntroLines.coerceIn(1, 3)
         val margin = values.margin.coerceIn(0, 60)
         if (AppConfig.bookGroupStyle != groupStyle) {
             AppConfig.bookGroupStyle = groupStyle
@@ -340,6 +347,10 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         }
         if (AppConfig.bookshelfListItemStyle != listItemStyle) {
             AppConfig.bookshelfListItemStyle = listItemStyle
+            refreshBookshelf = true
+        }
+        if (AppConfig.bookshelfListIntroLines != listIntroLines) {
+            AppConfig.bookshelfListIntroLines = listIntroLines
             refreshBookshelf = true
         }
         if (AppConfig.showUnread != values.showUnread) {

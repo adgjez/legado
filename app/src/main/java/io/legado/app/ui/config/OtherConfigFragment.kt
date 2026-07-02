@@ -173,6 +173,13 @@ class OtherConfigFragment : ComposeSettingFragment() {
                         .show(parentFragmentManager, "contentSelectMenuConfig")
                 }
             ),
+            intChoice(
+                key = PreferKey.fastScrollerTouchTargetDp,
+                title = getString(R.string.fast_scroller_touch_target),
+                entriesRes = R.array.fast_scroller_touch_target_entries,
+                valuesRes = R.array.fast_scroller_touch_target_values,
+                defaultValue = AppConfig.DEFAULT_FAST_SCROLLER_TOUCH_TARGET_DP
+            ),
             choice(
                 key = PreferKey.epubReadEngine,
                 title = getString(R.string.epub_read_engine),
@@ -438,6 +445,26 @@ class OtherConfigFragment : ComposeSettingFragment() {
             options = options,
             selectedValue = selectedValue,
             onSelected = { updateStringSetting(key, it) }
+        )
+    }
+
+    private fun intChoice(
+        key: String,
+        title: String,
+        entriesRes: Int,
+        valuesRes: Int,
+        defaultValue: Int,
+        summary: String? = null
+    ): SettingChoiceSpec {
+        val options = choiceOptions(entriesRes, valuesRes)
+        val selectedValue = intSetting(key, defaultValue).toString()
+        return SettingChoiceSpec(
+            key = key,
+            title = title,
+            summary = summary ?: choiceLabel(options, selectedValue),
+            options = options,
+            selectedValue = selectedValue,
+            onSelected = { updateIntSetting(key, it.toIntOrNull() ?: defaultValue) }
         )
     }
 

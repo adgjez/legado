@@ -26,6 +26,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import io.legado.app.R
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.getCompatColor
@@ -164,6 +165,7 @@ class FastScroller : LinearLayout {
             }
             else -> throw IllegalArgumentException("Parent ViewGroup must be a ConstraintLayout, CoordinatorLayout, FrameLayout, or RelativeLayout")
         }
+        applyTouchTargetWidth()
         updateViewHeights()
     }
 
@@ -455,6 +457,7 @@ class FastScroller : LinearLayout {
     private fun showScrollbar() {
         mRecyclerView?.let { mRecyclerView ->
             if (mRecyclerView.computeVerticalScrollRange() - mViewHeight > 0) {
+                applyTouchTargetWidth()
                 val transX =
                     resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_padding_end)
                         .toFloat()
@@ -533,6 +536,22 @@ class FastScroller : LinearLayout {
         setFadeScrollbar(fadeScrollbar)
         setBubbleVisible(showBubble)
         setTrackVisible(showTrack)
+        applyTouchTargetWidth()
+    }
+
+    private fun applyTouchTargetWidth() {
+        val targetWidth = (AppConfig.fastScrollerTouchTargetDp * resources.displayMetrics.density)
+            .roundToInt()
+        val handleWidth = resources.getDimensionPixelSize(R.dimen.fastscroll_handle_width)
+        val sidePadding = max(0, (targetWidth - handleWidth) / 2)
+        ViewCompat.setPaddingRelative(
+            mHandleView,
+            sidePadding,
+            mHandleView.paddingTop,
+            sidePadding,
+            mHandleView.paddingBottom
+        )
+        mScrollbar.minimumWidth = targetWidth
     }
 
     interface SectionIndexer {

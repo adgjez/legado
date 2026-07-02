@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -315,7 +317,10 @@ fun ReadMenuActionBar(
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
-        Row(
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val sourceMaxWidth = (maxWidth / 3f).coerceIn(72.dp, 180.dp)
+
+            Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -380,6 +385,7 @@ fun ReadMenuActionBar(
             if (!state.isLocalBook) {
                 Box(
                     modifier = Modifier
+                        .widthIn(max = sourceMaxWidth)
                         .height(34.dp)
                         .clip(RoundedCornerShape(style.actionRadius))
                         .background(style.fieldSurface)
@@ -426,6 +432,7 @@ fun ReadMenuActionBar(
                     )
                 }
             }
+        }
         }
     }
 }

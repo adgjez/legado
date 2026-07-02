@@ -1148,6 +1148,12 @@
     <string name="sync_book_progress_success">進度同步成功</string>
     <string name="default_home_page">默认主页</string>
     <string name="show_bookshelf_fast_scroller">显示快速滚动条</string>
+    <string name="fast_scroller_touch_target">快速滾動條觸摸區域</string>
+    <string name="fast_scroller_touch_target_compact">緊湊 32dp</string>
+    <string name="fast_scroller_touch_target_original">原始 36dp</string>
+    <string name="fast_scroller_touch_target_standard">標準 44dp</string>
+    <string name="fast_scroller_touch_target_large">加大 52dp</string>
+    <string name="fast_scroller_touch_target_extra_large">超大 60dp</string>
     <string name="export_all_use_book_source">导出所有书的书源</string>
     <string name="cloud_progress_exceeds_current">雲端進度超過目前進度，是否同步？</string>
     <string name="keep_enable">保留启用状态</string>

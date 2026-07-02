@@ -1360,6 +1360,12 @@
     <string name="sync_book_progress_success">进度同步成功</string>
     <string name="default_home_page">默认主页</string>
     <string name="show_bookshelf_fast_scroller">显示快速滚动条</string>
+    <string name="fast_scroller_touch_target">快速滚动条触摸区域</string>
+    <string name="fast_scroller_touch_target_compact">紧凑 32dp</string>
+    <string name="fast_scroller_touch_target_original">原始 36dp</string>
+    <string name="fast_scroller_touch_target_standard">标准 44dp</string>
+    <string name="fast_scroller_touch_target_large">加大 52dp</string>
+    <string name="fast_scroller_touch_target_extra_large">超大 60dp</string>
     <string name="export_all_use_book_source">导出所有书的书源</string>
     <string name="cloud_progress_exceeds_current">云端进度超过当前进度，是否同步？</string>
     <string name="keep_enable">保留启用状态</string>
@@ -2186,6 +2192,10 @@ bookUrl：%7$s
     <string name="bookshelf_list_style">列表卡片样式</string>
     <string name="bookshelf_list_style_classic">经典列表</string>
     <string name="bookshelf_list_style_rounded_card">圆角卡片</string>
+    <string name="bookshelf_list_intro_lines">简介行数</string>
+    <string name="bookshelf_list_intro_lines_1">1 行</string>
+    <string name="bookshelf_list_intro_lines_2">2 行</string>
+    <string name="bookshelf_list_intro_lines_3">3 行</string>
     <string name="main_layout_preset">界面导航样式</string>
     <string name="main_layout_preset_summary">快速切换系统自带顶栏与底栏组合</string>
     <string name="main_layout_preset_default">悬浮</string>
