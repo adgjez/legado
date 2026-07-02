@@ -656,6 +656,9 @@ class ReadMenu @JvmOverloads constructor(
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> runMenuOut {
                 callBack.showParagraphRuleQuickDialog()
             }
+            ReadMenuButtonConfig.Builtin.BUBBLE -> runMenuOut {
+                callBack.showBubbleQuickSwitch()
+            }
             ReadMenuButtonConfig.Builtin.CHARACTERS -> runMenuOut {
                 callBack.openBookCharacters()
             }
@@ -796,6 +799,7 @@ class ReadMenu @JvmOverloads constructor(
         fun showLibraryCloudDebug() = Unit
         fun openReadAssistant() = Unit
         fun showParagraphRuleQuickDialog() = Unit
+        fun showBubbleQuickSwitch() = Unit
         fun openBookCharacters() = Unit
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit

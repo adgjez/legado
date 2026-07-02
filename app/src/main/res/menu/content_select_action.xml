@@ -35,6 +35,10 @@
         android:title="@string/ai_image_generate" />
 
     <item
+        android:id="@+id/menu_share_image"
+        android:title="@string/share" />
+
+    <item
         android:id="@+id/menu_search_content"
         android:title="@string/search_content"
         app:showAsAction="never" />

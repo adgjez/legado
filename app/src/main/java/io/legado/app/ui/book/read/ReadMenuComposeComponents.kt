@@ -767,6 +767,7 @@ private fun readMenuButtonTitle(
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> "助手"
             ReadMenuButtonConfig.Builtin.AI_SUMMARY -> "AI"
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> "段落"
+            ReadMenuButtonConfig.Builtin.BUBBLE -> "气泡"
             ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
             else -> ref.id
         }
@@ -795,6 +796,7 @@ private fun readMenuButtonIconRes(
         ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> R.drawable.ic_bottom_ai_assistant
         ReadMenuButtonConfig.Builtin.AI_SUMMARY -> R.drawable.ic_bottom_ai
         ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
+        ReadMenuButtonConfig.Builtin.BUBBLE -> R.drawable.ic_bubble_chart
         ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
         else -> R.drawable.ic_custom
     }

@@ -282,6 +282,9 @@
             android:name=".ui.config.BubbleManageActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.config.ShareNoteTemplateManageActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.config.S3ContainerManageActivity"
             android:launchMode="standard" />
         <activity

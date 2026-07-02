@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="reeden-template-version" content="1">
+  <meta name="reeden-template-name" content="默认摘录模板">
+  <meta name="reeden-template-type" content="note">
+  <meta name="reeden-template-canvas" content="long">
+  <meta name="reeden-template-width" content="375">
+  <meta name="reeden-template-radius" content="0">
+  <title>默认摘录模板</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #121418; color: #eee9df; }
+    * { box-sizing: border-box; }
+    body { width: 375px; margin: 0; padding: 18px; background: #121418; }
+    .poster { display: grid; gap: 16px; padding: 20px; border: 1px solid rgba(236,231,220,.16); background: linear-gradient(180deg,#22262d 0%,#15181d 100%); }
+    .hero { display: grid; grid-template-columns: 86px 1fr; gap: 14px; align-items: start; }
+    .hero.no-cover { grid-template-columns: 1fr; }
+    .cover { width: 86px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 6px; background: rgba(238,233,223,.1); }
+    .eyebrow { font-size: 12px; color: #73c7b6; }
+    h1 { margin: 4px 0 0; font-size: 24px; line-height: 1.25; font-weight: 650; }
+    .subtitle, .footer { font-size: 13px; line-height: 1.45; color: rgba(238,233,223,.62); }
+    .subtitle { margin-top: 8px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { padding: 4px 8px; border: 1px solid rgba(115,199,182,.32); border-radius: 999px; color: #9bd9cc; background: rgba(115,199,182,.08); font-size: 11px; line-height: 1.2; }
+    .content { display: grid; gap: 12px; }
+    blockquote { margin: 0; padding-left: 14px; border-left: 3px solid #73c7b6; font-size: 18px; line-height: 1.65; font-weight: 500; white-space: pre-wrap; }
+    .body-text { font-size: 15px; line-height: 1.7; color: rgba(238,233,223,.86); white-space: pre-wrap; }
+    .section { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid rgba(238,233,223,.12); }
+    .section h2 { margin: 0; font-size: 13px; line-height: 1.2; font-weight: 650; color: #eee9df; }
+    .info-list { display: grid; gap: 7px; }
+    .info-row { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; font-size: 12px; line-height: 1.45; }
+    .info-row b { color: rgba(238,233,223,.5); font-weight: 500; }
+    .info-row span { color: rgba(238,233,223,.84); overflow-wrap: anywhere; white-space: pre-wrap; }
+    .footer { padding-top: 12px; border-top: 1px solid rgba(238,233,223,.12); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <main class="poster" data-reeden-capture>
+    <header class="hero">
+      <img class="cover" data-red-src="book.cover" data-red-show="book.cover" alt="">
+      <div>
+        <div class="eyebrow" data-red-text="type">摘录</div>
+        <h1 data-red-text="title">默认摘录模板</h1>
+        <div class="subtitle" data-red-text="subtitle"></div>
+      </div>
+    </header>
+    <div class="chips" data-red-chips></div>
+    <div class="content" data-red-content></div>
+    <div class="footer" data-red-text="footer"></div>
+  </main>
+  <script>
+    window.ReedenShareTemplateMock = {
+      type: "note",
+      generatedAt: "2026-06-10 20:00:00",
+      profile: { name: "Reeden", bio: "让阅读留下形状", avatar: null },
+      appearance: { hideComment: false },
+      book: {
+        title: "海边的阅读练习",
+        author: "Reeden",
+        description: "一本关于阅读节奏的示例书。",
+        cover: "",
+        type: "epub",
+        rating: 4.5,
+        sizeText: "7.87 MB",
+        wordCountText: "13 万字",
+        readStatusText: "在读",
+        readProgressText: "读到 65%",
+        lastReadTime: "2026-06-10 20:00:00"
+      },
+      note: {
+        createAt: "2026-06-10 20:00:00",
+        sectionName: "第一章 让内容先自然生长",
+        description: "真正稳定的模板，应该先让内容自然生长，再决定边界。",
+        comment: "这里是用户写下的想法。长文本会自动换行，海报高度由内容撑开。"
+      }
+    };
+    const RedTemplate = (() => {
+      const compact = (value) => value != null && String(value).trim() !== "";
+      const text = (value) => compact(value) ? String(value).trim() : "";
+      const formatDate = (value) => text(value);
+      const element = (tag, className, value) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (value != null) node.textContent = String(value);
+        return node;
+      };
+      const page = () => {
+        const root = document.querySelector("[data-reeden-capture]") || document.body;
+        const content = root.querySelector("[data-red-content]");
+        const chips = root.querySelector("[data-red-chips]");
+        content.innerHTML = "";
+        chips.innerHTML = "";
+        return {
+          setText(key, value) {
+            const node = root.querySelector('[data-red-text="' + key + '"]');
+            if (node) node.textContent = text(value);
+          },
+          setHeroImage(value) {
+            const hero = root.querySelector(".hero");
+            const image = root.querySelector('[data-red-src="book.cover"]');
+            if (hero) hero.classList.toggle("no-cover", !compact(value));
+            if (!image) return;
+            if (compact(value)) { image.src = value; image.style.display = ""; }
+            else { image.removeAttribute("src"); image.style.display = "none"; }
+          },
+          addChip(label) {
+            const value = text(label);
+            if (value) chips.appendChild(element("span", "chip", value));
+          },
+          quote(value) {
+            const next = text(value);
+            return next ? element("blockquote", "", next) : null;
+          },
+          paragraph(value) {
+            const next = text(value);
+            return next ? element("div", "body-text", next) : null;
+          },
+          infoRow(label, value) {
+            const next = text(value);
+            if (!next) return null;
+            const row = element("div", "info-row");
+            row.appendChild(element("b", "", label));
+            row.appendChild(element("span", "", next));
+            return row;
+          },
+          infoList(rows) {
+            const visible = rows.filter(Boolean);
+            if (!visible.length) return null;
+            const list = element("div", "info-list");
+            visible.forEach(row => list.appendChild(row));
+            return list;
+          },
+          section(title, children) {
+            const visible = children.filter(Boolean);
+            if (!visible.length) return;
+            const box = element("section", "section");
+            box.appendChild(element("h2", "", title));
+            visible.forEach(child => box.appendChild(child));
+            content.appendChild(box);
+          }
+        };
+      };
+      return { compact, text, formatDate, page };
+    })();
+    window.ReedenShareTemplate = {
+      render(payload) {
+        const R = RedTemplate;
+        const page = R.page();
+        const book = payload.book || {};
+        const note = payload.note || {};
+        const profile = payload.profile || {};
+        const appearance = payload.appearance || {};
+        page.setText("type", "摘录");
+        page.setText("title", book.title || "摘录");
+        page.setText("subtitle", [book.author, profile.name, R.formatDate(payload.generatedAt)].filter(R.compact).join(" · "));
+        page.setText("footer", [profile.name || "Reeden", profile.bio, R.formatDate(payload.generatedAt)].filter(R.compact).join(" · "));
+        page.setHeroImage(book.cover);
+        page.addChip(book.readStatusText);
+        page.addChip(book.type ? String(book.type).toUpperCase() : "");
+        page.addChip(book.sizeText);
+        page.addChip(book.wordCountText);
+        page.section("摘录", [page.quote(note.description)]);
+        page.section("想法", appearance.hideComment ? [] : [page.paragraph(note.comment)]);
+        page.section("细节", [page.infoList([
+          page.infoRow("章节", note.sectionName),
+          page.infoRow("记录时间", note.createAt),
+          page.infoRow("阅读进度", book.readProgressText),
+          page.infoRow("最后阅读", book.lastReadTime),
+          page.infoRow("书籍简介", book.description)
+        ])]);
+      }
+    };
+    window.ReedenShareTemplate.render(window.ReedenShareTemplateMock);
+  </script>
+</body>
+</html>

@@ -89,8 +89,10 @@ import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.BubblePackageManager
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
+import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
@@ -159,6 +161,8 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
 import io.legado.app.ui.browser.WebViewActivity
+import io.legado.app.ui.config.BubbleManageActivity
+import io.legado.app.ui.config.ShareNoteTemplateManageActivity
 import io.legado.app.ui.dict.DictDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
@@ -189,6 +193,7 @@ import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLightStatusBar
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
@@ -214,6 +219,7 @@ import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import java.text.DateFormat
 import java.util.Date
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Matcher
 
@@ -1396,6 +1402,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                 generateImageBySelection()
                 return true
             }
+            R.id.menu_share_image -> {
+                showShareNoteTemplateDialog(selectedText)
+                return true
+            }
         }
         return false
     }
@@ -1432,6 +1442,73 @@ class ReadBookActivity : BaseReadBookActivity(),
                 paragraphText = paragraph.text
             )
         )
+    }
+
+    private fun showShareNoteTemplateDialog(selection: String) {
+        val text = selection.trim()
+        if (text.isBlank()) return
+        showDialogFragment(
+            ShareNoteTemplateSelectDialog.create(
+                onSelected = { entry -> shareSelectionAsNoteImage(text, entry) },
+                onManage = { startActivity<ShareNoteTemplateManageActivity>() }
+            )
+        )
+    }
+
+    private fun shareSelectionAsNoteImage(
+        text: String,
+        entry: ShareNoteTemplateManager.Entry
+    ) {
+        val book = ReadBook.book
+        val now = Date()
+        val payload = ShareNoteImageRenderer.Payload(
+            generatedAt = DateFormat.getDateTimeInstance().format(now),
+            book = ShareNoteImageRenderer.Book(
+                title = book?.name.orEmpty().ifBlank { getString(R.string.book_name) },
+                author = book?.getRealAuthor().orEmpty(),
+                cover = book?.getDisplayCover()?.let(::normalizeShareNoteCoverUrl)
+            ),
+            note = ShareNoteImageRenderer.Note(
+                createAt = DateFormat.getDateInstance().format(now),
+                sectionName = currentShareNoteChapterTitle(),
+                description = text
+            )
+        )
+        lifecycleScope.launch {
+            toastOnUi("正在生成分享图片")
+            kotlin.runCatching {
+                ShareNoteImageRenderer.renderShareImage(this@ReadBookActivity, entry, payload)
+            }.onSuccess { file ->
+                share(file, "image/png")
+            }.onFailure {
+                AppLog.put("摘录分享图片生成失败\n${it.localizedMessage}", it, true)
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun currentShareNoteChapterTitle(): String {
+        if (epubCoreActive) {
+            epubCoreChapterTitle()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return ReadBook.curTextChapter?.chapter?.title
+            ?: ReadBook.book?.durChapterTitle
+            ?: ""
+    }
+
+    private fun normalizeShareNoteCoverUrl(raw: String): String? {
+        val value = raw.trim()
+        if (value.isBlank()) return null
+        if (value.startsWith("http", ignoreCase = true) ||
+            value.startsWith("file:", ignoreCase = true) ||
+            value.startsWith("content:", ignoreCase = true) ||
+            value.startsWith("data:", ignoreCase = true)
+        ) {
+            return value
+        }
+        return runCatching {
+            File(value).takeIf { it.exists() }?.toURI()?.toString()
+        }.getOrNull() ?: value
     }
 
     private fun currentSelectedParagraphForImage(): SelectedParagraphForImage? {
@@ -3068,6 +3145,31 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             ParagraphRuleQuickDialog.create(book.bookUrl)
                 .show(supportFragmentManager, "paragraphRuleQuick")
+        }
+    }
+
+    override fun showBubbleQuickSwitch() {
+        showDialogFragment(
+            BubbleQuickSwitchDialog.create(
+                onSelected = { entry -> applyBubblePackageFromReadMenu(entry) },
+                onManage = { startActivity<BubbleManageActivity>() }
+            )
+        )
+    }
+
+    private fun applyBubblePackageFromReadMenu(entry: BubblePackageManager.Entry) {
+        lifecycleScope.launch {
+            kotlin.runCatching {
+                withContext(IO) {
+                    BubblePackageManager.apply(entry)
+                    ImageProvider.clear()
+                }
+            }.onSuccess {
+                postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+                toastOnUi(R.string.success)
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
         }
     }
 

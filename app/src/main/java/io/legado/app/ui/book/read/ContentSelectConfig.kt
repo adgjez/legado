@@ -18,6 +18,7 @@ object ContentSelectConfig {
     const val ACTION_DICT = "dict"
     const val ACTION_ASK_AI = "ask_ai"
     const val ACTION_GENERATE_IMAGE = "generate_image"
+    const val ACTION_SHARE_IMAGE = "share_image"
 
     private val oldDefaultActions = setOf(
         ACTION_REPLACE,
@@ -26,7 +27,8 @@ object ContentSelectConfig {
         ACTION_ALOUD,
         ACTION_DICT,
         ACTION_ASK_AI,
-        ACTION_GENERATE_IMAGE
+        ACTION_GENERATE_IMAGE,
+        ACTION_SHARE_IMAGE
     )
 
     val defaultActions = setOf(

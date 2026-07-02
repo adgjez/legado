@@ -107,6 +107,13 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
                             onClick = { startActivity<BubbleManageActivity>() }
                         ),
                         SettingActionSpec(
+                            key = KEY_SHARE_NOTE_TEMPLATE_MANAGE,
+                            title = "摘录分享模板",
+                            summary = "管理正文长按分享图片使用的 HTML 模板",
+                            searchKeys = listOf("分享模板", "摘录模板", "笔记模板", "正文分享"),
+                            onClick = { startActivity<ShareNoteTemplateManageActivity>() }
+                        ),
+                        SettingActionSpec(
                             key = ConfigTag.COVER_CONFIG,
                             title = getString(R.string.cover_config),
                             summary = getString(R.string.cover_config_summary),
@@ -189,5 +196,6 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
         private const val KEY_TOP_BAR_MANAGE = "top_bar_manage"
         private const val KEY_BOOK_INFO_MANAGE = "book_info_manage"
         private const val KEY_BUBBLE_MANAGE = "bubble_manage"
+        private const val KEY_SHARE_NOTE_TEMPLATE_MANAGE = "share_note_template_manage"
     }
 }

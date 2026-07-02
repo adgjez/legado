@@ -24,6 +24,7 @@ object ReadMenuButtonConfig {
         const val AI_SUMMARY = "aiSummary"
         const val PARAGRAPH_RULES = "paragraphRules"
         const val CHARACTERS = "characters"
+        const val BUBBLE = "bubble"
 
         val ids = setOf(
             SEARCH,
@@ -37,7 +38,8 @@ object ReadMenuButtonConfig {
             READ_ASSISTANT,
             AI_SUMMARY,
             PARAGRAPH_RULES,
-            CHARACTERS
+            CHARACTERS,
+            BUBBLE
         )
     }
 
@@ -60,7 +62,11 @@ object ReadMenuButtonConfig {
             GSON.fromJson(raw, ButtonLayout::class.java)
         }.getOrNull()
         val layout = sanitize(parsed ?: defaultLayout())
-        return if (layout.isMisplacedAiDefault()) defaultLayout() else layout
+        return when {
+            layout.isMisplacedAiDefault() -> defaultLayout()
+            parsed != null && layout.isLegacyDefaultBeforeBubble() -> defaultLayout()
+            else -> layout
+        }
     }
 
     fun save(context: Context, layout: ButtonLayout) {
@@ -89,6 +95,7 @@ object ReadMenuButtonConfig {
             builtin(Builtin.CATALOG),
             builtin(Builtin.READ_ALOUD),
             builtin(Builtin.READ_STYLE),
+            builtin(Builtin.BUBBLE),
             builtin(Builtin.SETTING)
         )
     }
@@ -134,5 +141,15 @@ object ReadMenuButtonConfig {
             builtin(Builtin.READ_ASSISTANT),
             builtin(Builtin.AI_SUMMARY)
         )
+    }
+
+    private fun ButtonLayout.isLegacyDefaultBeforeBubble(): Boolean {
+        return firstRow.map { it.type to it.id } == defaultFirstRow().map { it.type to it.id } &&
+                secondRow.map { it.type to it.id } == listOf(
+            builtin(Builtin.CATALOG),
+            builtin(Builtin.READ_ALOUD),
+            builtin(Builtin.READ_STYLE),
+            builtin(Builtin.SETTING)
+        ).map { it.type to it.id }
     }
 }
