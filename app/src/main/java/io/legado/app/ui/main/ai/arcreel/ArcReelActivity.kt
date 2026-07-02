@@ -44,14 +44,6 @@ class ArcReelActivity : ComponentActivity() {
             )
         }
     }
-
-    override fun onResume() {
-        super.onResume()
-        // 从 WebView 返回时，检查是否需要重新跳转
-        if (ArcReelServiceController.isRunning()) {
-            // 如果服务在运行，可以重新打开 WebView
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,9 +56,12 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
     var showSetup by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("检查 ArcReel 环境...") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var retryTrigger by remember { mutableStateOf(0) }
 
     // 检查环境状态
-    LaunchedEffect(Unit) {
+    LaunchedEffect(retryTrigger) {
+        isChecking = true
+        errorMessage = null
         withContext(Dispatchers.IO) {
             try {
                 // 检查环境是否已安装
@@ -87,15 +82,17 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
                 // 启动服务
                 val startResult = ArcReelServiceController.start(context)
                 if (startResult.isSuccess) {
-                    // 跳转 WebView
-                    context.startActivity(
-                        Intent(context, ArcReelWebViewActivity::class.java)
-                    )
+                    // 跳转 WebView（需要在主线程）
+                    withContext(Dispatchers.Main) {
+                        context.startActivity(
+                            Intent(context, ArcReelWebViewActivity::class.java)
+                        )
+                    }
                 } else {
-                    errorMessage = "服务启动失败: ${startResult.exceptionOrNull()?.message}"
+                    errorMessage = "服务启动失败: ${startResult.exceptionOrNull()?.message ?: "未知错误"}"
                 }
             } catch (e: Exception) {
-                errorMessage = "启动失败: ${e.message}"
+                errorMessage = "启动失败: ${e.message ?: "未知错误"}"
             } finally {
                 isChecking = false
             }
@@ -127,11 +124,9 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
         ) {
             when {
                 showSetup -> {
-                    // 显示安装引导
                     ArcReelSetupScreen(
                         onBack = onFinish,
                         onComplete = {
-                            // 安装完成，跳转 WebView
                             context.startActivity(
                                 Intent(context, ArcReelWebViewActivity::class.java)
                             )
@@ -140,7 +135,6 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
                 }
 
                 isChecking -> {
-                    // 检查中
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = Color(0xFF6C63FF))
                         Spacer(modifier = Modifier.height(16.dp))
@@ -155,7 +149,6 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
                 }
 
                 errorMessage != null -> {
-                    // 错误
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(32.dp)
@@ -175,13 +168,7 @@ private fun ArcReelEntryScreen(onFinish: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
-                            onClick = {
-                                errorMessage = null
-                                isChecking = true
-                                scope.launch(Dispatchers.IO) {
-                                    // 重新尝试
-                                }
-                            },
+                            onClick = { retryTrigger++ },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF6C63FF)
                             ),

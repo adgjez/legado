@@ -2,6 +2,8 @@ package io.legado.app.help.ai
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -39,7 +41,7 @@ object ArcReelEnvironment {
 
     private const val PROOT_BINARY_NAME = "proot"
     private const val ROOTFS_DIR_NAME = "ubuntu-rootfs"
-    private const val ARCREEL_DIR_NAME = "arcreel"
+    const val ARCREEL_DIR_NAME = "arcreel"
 
     enum class EnvStatus {
         NOT_INSTALLED,
@@ -71,34 +73,36 @@ object ArcReelEnvironment {
         File(rootfsDir(context), "root/$ARCREEL_DIR_NAME")
 
     fun isInstalled(context: Context): Boolean =
-        prootBinary(context).exists() && rootfsDir(context).exists() && rootfsDir(context).isDirectory
+        prootBinary(context).exists() && File(rootfsDir(context), ".extraction_complete").exists()
 
     /**
      * 完整安装环境：proot 二进制 + Ubuntu rootfs
      */
     suspend fun install(context: Context): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            _state.value = EnvState(EnvState.INSTALLING, 0f, "准备安装环境...")
+            _state.value = EnvState(EnvStatus.INSTALLING, 0f, "准备安装环境...")
 
             envDir(context).mkdirs()
 
             // Step 1: 安装 proot 二进制
             if (!prootBinary(context).exists()) {
-                _state.value = EnvState(EnvState.INSTALLING, 0.05f, "下载 proot 二进制...")
+                _state.value = EnvState(EnvStatus.INSTALLING, 0.05f, "下载 proot 二进制...")
                 downloadProotBinary(context).getOrThrow()
-                prootBinary(context).setExecutable(true)
+                if (!prootBinary(context).setExecutable(true)) {
+                    throw RuntimeException("无法设置 proot 可执行权限")
+                }
             }
 
             // Step 2: 下载并解压 Ubuntu rootfs
-            if (!rootfsDir(context).exists() || rootfsDir(context).listFiles()?.isEmpty() != false) {
-                _state.value = EnvState(EnvState.INSTALLING, 0.1f, "下载 Ubuntu rootfs (~200MB)...")
+            if (!File(rootfsDir(context), ".extraction_complete").exists()) {
+                _state.value = EnvState(EnvStatus.INSTALLING, 0.1f, "下载 Ubuntu rootfs (~200MB)...")
                 downloadAndExtractRootfs(context).getOrThrow()
             }
 
-            _state.value = EnvState(EnvState.INSTALLED, 1f, "环境安装完成")
+            _state.value = EnvState(EnvStatus.INSTALLED, 1f, "环境安装完成")
             Result.success(Unit)
         } catch (e: Exception) {
-            _state.value = EnvState(EnvState.ERROR, 0f, "安装失败", e.message)
+            _state.value = EnvState(EnvStatus.ERROR, 0f, "安装失败", e.message)
             Result.failure(e)
         }
     }
@@ -117,7 +121,6 @@ object ArcReelEnvironment {
                     "-b", "/dev:/dev",
                     "-b", "/proc:/proc",
                     "-b", "/sys:/sys",
-                    "-b", "/data:/data",
                     "-w", workDir,
                     "/usr/bin/env", "-i",
                     "HOME=/root",
@@ -127,8 +130,16 @@ object ArcReelEnvironment {
                 )
 
                 val process = Runtime.getRuntime().exec(fullCommand)
-                val stdout = process.inputStream.bufferedReader().readText()
-                val stderr = process.errorStream.bufferedReader().readText()
+                // 并发读取 stdout 和 stderr 防止管道死锁
+                val (stdout, stderr) = coroutineScope {
+                    val stdoutDeferred = async(Dispatchers.IO) {
+                        process.inputStream.bufferedReader().use { it.readText() }
+                    }
+                    val stderrDeferred = async(Dispatchers.IO) {
+                        process.errorStream.bufferedReader().use { it.readText() }
+                    }
+                    Pair(stdoutDeferred.await(), stderrDeferred.await())
+                }
                 val exitCode = process.waitFor()
 
                 if (exitCode == 0) {
@@ -153,7 +164,7 @@ object ArcReelEnvironment {
 
     private suspend fun downloadProotBinary(context: Context): Result<Unit> {
         return try {
-            // 尝试从 assets 复制（如果打包了的话）
+            // 尝试从 assets 复制
             val assetProot = try {
                 context.assets.open("proot/$PROOT_BINARY_NAME")
             } catch (_: Exception) { null }
@@ -167,11 +178,14 @@ object ArcReelEnvironment {
                 return Result.success(Unit)
             }
 
-            // 尝试从网络下载
-            // 先尝试直接下载静态二进制
+            // 下载到临时文件，成功后再重命名
+            val tmpFile = File(envDir(context), "proot.tmp")
+            tmpFile.delete()
+
+            // 尝试直接下载静态二进制
             _state.value = _state.value.copy(message = "下载 proot 二进制...")
             val directResult = runCatching {
-                downloadFile(PROOT_STATIC_URL, prootBinary(context).absolutePath) { progress ->
+                downloadFile(PROOT_STATIC_URL, tmpFile.absolutePath) { progress ->
                     _state.value = _state.value.copy(
                         progress = 0.05f + progress * 0.05f,
                         message = "下载 proot: ${(progress * 100).toInt()}%"
@@ -179,9 +193,11 @@ object ArcReelEnvironment {
                 }
             }
 
-            if (directResult.isSuccess && prootBinary(context).length() > 1000) {
+            if (directResult.isSuccess && tmpFile.length() > 1000) {
+                tmpFile.renameTo(prootBinary(context))
                 return Result.success(Unit)
             }
+            tmpFile.delete()
 
             // 回退: 从 .deb 包提取
             _state.value = _state.value.copy(message = "从 .deb 包提取 proot...")
@@ -197,6 +213,9 @@ object ArcReelEnvironment {
 
             Result.success(Unit)
         } catch (e: Exception) {
+            // 清理临时文件
+            File(envDir(context), "proot.tmp").delete()
+            File(envDir(context), "proot.deb").delete()
             Result.failure(e)
         }
     }
@@ -286,10 +305,13 @@ object ArcReelEnvironment {
             )
             extractTarGz(tarball, rootfsDir(context))
 
+            // 写入完成标记
+            File(rootfsDir(context), ".extraction_complete").writeText("ok")
+
             // 清理 tarball
             tarball.delete()
 
-            // 配置 DNS（确保网络可用）
+            // 配置 DNS
             _state.value = _state.value.copy(
                 progress = 0.9f,
                 message = "配置环境..."
@@ -300,6 +322,9 @@ object ArcReelEnvironment {
 
             Result.success(Unit)
         } catch (e: Exception) {
+            // 清理失败的部分下载和提取
+            val tarball = File(envDir(context), "ubuntu-rootfs.tar.gz")
+            tarball.delete()
             Result.failure(e)
         }
     }
@@ -317,12 +342,16 @@ object ArcReelEnvironment {
     ) = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url).build()
         val response = httpClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            response.close()
+            throw RuntimeException("HTTP ${response.code}: ${response.message}")
+        }
         val body = response.body ?: throw RuntimeException("Empty response body")
         val contentLength = body.contentLength()
 
         FileOutputStream(destPath).use { output ->
             body.byteStream().use { input ->
-                val buffer = ByteArray(8192)
+                val buffer = ByteArray(65536)  // 64KB buffer
                 var bytesRead: Int
                 var totalBytesRead: Long = 0
                 while (input.read(buffer).also { bytesRead = it } != -1) {
