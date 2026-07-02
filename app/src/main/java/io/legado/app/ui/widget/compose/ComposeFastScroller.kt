@@ -92,7 +92,7 @@ private fun rememberLegadoScrollbarSettings(
         thumbUnselectedColor = palette.settings.secondaryText.copy(alpha = 0.54f),
         thumbSelectedColor = palette.settings.secondaryText.copy(alpha = 0.82f),
         selectionMode = ScrollbarSelectionMode.Thumb,
-        selectionActionable = ScrollbarSelectionActionable.Always,
+        selectionActionable = ScrollbarSelectionActionable.WhenVisible,
         hideDelayMillis = 900,
         hideDisplacement = 10.dp,
         durationAnimationMillis = 160

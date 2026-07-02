@@ -57,6 +57,7 @@ import io.legado.app.ui.widget.compose.SearchBookListItem
 import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.stableSearchBookKey
 
 @Composable
 fun ExploreModernListScreen(
@@ -144,7 +145,7 @@ fun ExploreModernListScreen(
         ) {
             lazyColumnItems(
                 items = books,
-                key = { book -> "${book.origin}|${book.bookUrl}|${book.name}|${book.author}" },
+                key = { book -> book.stableSearchBookKey() },
                 contentType = { "discover_book_$listItemStyle" }
             ) { book ->
                 ExploreBookListItem(
@@ -265,7 +266,7 @@ private fun ExploreModernGridScreen(
         ) {
             items(
                 items = books,
-                key = { book -> "${book.origin}|${book.bookUrl}|${book.name}|${book.author}" },
+                key = { book -> book.stableSearchBookKey() },
                 contentType = { "discover_grid_book" }
             ) { book ->
                 ExploreGridBookItem(

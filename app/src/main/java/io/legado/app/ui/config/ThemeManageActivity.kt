@@ -2239,6 +2239,7 @@ private fun ThemePackageMoreButton(
         },
         update = { button ->
             button.setTextColor(palette.settings.primaryText.toArgb())
+            button.typeface = context.uiTypeface()
             button.background = UiCorner.actionSelector(
                 ComposeColor.Transparent.toArgb(),
                 palette.settings.rowPressed,

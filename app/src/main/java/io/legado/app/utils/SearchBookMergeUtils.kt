@@ -12,10 +12,10 @@ object SearchBookMergeUtils {
         if (incoming.isEmpty()) return current.toList()
         val result = linkedMapOf<String, SearchBook>()
         current.forEach { book ->
-            result[book.mergeKey()] = book
+            result[book.stableSearchBookKey()] = book
         }
         incoming.forEach { book ->
-            val key = book.mergeKey()
+            val key = book.stableSearchBookKey()
             result[key] = result[key]?.let { mergeSearchBook(it, book) } ?: book
         }
         return result.values.toList()
@@ -29,10 +29,10 @@ object SearchBookMergeUtils {
         if (current.isEmpty()) return incoming.distinctReplacing()
         val result = linkedMapOf<String, SearchBook>()
         incoming.forEach { book ->
-            result[book.mergeKey()] = book
+            result[book.stableSearchBookKey()] = book
         }
         current.forEach { book ->
-            val key = book.mergeKey()
+            val key = book.stableSearchBookKey()
             result[key] = result[key]?.let { incomingBook ->
                 mergeSearchBook(book, incomingBook)
             } ?: book
@@ -43,7 +43,7 @@ object SearchBookMergeUtils {
     private fun Collection<SearchBook>.distinctReplacing(): List<SearchBook> {
         val result = linkedMapOf<String, SearchBook>()
         forEach { book ->
-            val key = book.mergeKey()
+            val key = book.stableSearchBookKey()
             result[key] = result[key]?.let { mergeSearchBook(it, book) } ?: book
         }
         return result.values.toList()
@@ -51,6 +51,7 @@ object SearchBookMergeUtils {
 
     private fun mergeSearchBook(old: SearchBook, new: SearchBook): SearchBook {
         val merged = new.copy(
+            origin = new.origin.ifBlank { old.origin },
             originName = new.originName.ifBlank { old.originName },
             name = new.name.ifBlank { old.name },
             author = new.author.ifBlank { old.author },
@@ -74,11 +75,17 @@ object SearchBookMergeUtils {
         return merged
     }
 
-    private fun SearchBook.mergeKey(): String {
-        return bookUrl.ifBlank { "$origin|$name|$author" }
-    }
-
     private fun String?.ifMeaningful(): String? {
         return this?.takeIf { it.isNotBlank() }
+    }
+}
+
+fun SearchBook.stableSearchBookKey(): String {
+    val sourceKey = origin.ifBlank { originName }
+    return when {
+        bookUrl.isNotBlank() -> "$sourceKey|$bookUrl"
+        name.isNotBlank() || author.isNotBlank() -> "$sourceKey|$name|$author"
+        coverUrl?.isNotBlank() == true -> "$sourceKey|${coverUrl.orEmpty()}"
+        else -> "$sourceKey|$time"
     }
 }

@@ -72,6 +72,7 @@ import io.legado.app.ui.widget.compose.SearchBookPreviewState
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.stableSearchBookKey
 import kotlin.math.roundToInt
 
 private const val BOOK_COVER_ASPECT_RATIO = 0.75f
@@ -675,7 +676,7 @@ private fun DiscoverySuiteHorizontalBooksWidget(
     val displayBooks = remember(widget.id, books) {
         books.take(HORIZONTAL_WIDGET_MAX_RENDER_COUNT)
     }
-    val shouldLoadMore by remember {
+    val shouldLoadMore by remember(rowState, widget.id, displayBooks.size) {
         derivedStateOf {
             val lastVisibleIndex = rowState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             displayBooks.isNotEmpty() && lastVisibleIndex >= displayBooks.lastIndex - 4
@@ -694,7 +695,7 @@ private fun DiscoverySuiteHorizontalBooksWidget(
     ) {
         itemsIndexed(
             items = displayBooks,
-            key = { index, book -> "${widget.id}|$index|${book.origin}|${book.bookUrl}|${book.name}" }
+            key = { _, book -> "${widget.id}|${book.suiteStableKey()}" }
         ) { _, book ->
             DiscoverySuiteCoverBookItem(
                 book = book,
@@ -1257,6 +1258,15 @@ private fun SearchBook.displayKey(): String {
     return "$origin|$bookUrl|${coverUrl.orEmpty()}"
 }
 
+/**
+ * 稳定的列表 item key，口径与加载侧 distinctBy { suiteDeckKey() } 完全一致：
+ * bookUrl 非空用 origin|bookUrl，否则退回 origin|name|author，避免空 bookUrl 撞 key。
+ * 不含 index / 可变展示字段，合并回填或去重移位时不会被 Compose 误判为新 item。
+ */
+private fun SearchBook.suiteStableKey(): String {
+    return stableSearchBookKey()
+}
+
 private fun BookshelfListRenderConfig.withSuiteOpacityMultiplier(
     context: Context,
     multiplier: Float
@@ -1284,14 +1294,6 @@ private fun Int.withAlphaMultiplier(multiplier: Float): Int {
     return (this and 0x00ffffff) or (nextAlpha shl 24)
 }
 
-private fun Float.withSuiteAlphaMultiplier(
-    multiplier: Float,
-    maxAlpha: Float = 1f
-): Float {
-    val safeMultiplier = multiplier.coerceIn(1f, 4f)
-    return (this * safeMultiplier).coerceIn(this, maxAlpha.coerceIn(this, 1f))
-}
-
 private const val RANDOM_WIDGET_DISPLAY_COUNT = 6
 private const val WATERFALL_WIDGET_DISPLAY_COUNT = 24
 private const val HORIZONTAL_WIDGET_MAX_RENDER_COUNT = 72
@@ -1299,17 +1301,6 @@ private const val RANK_BUTTON_MAX_COUNT = 9
 private const val RANKED_LIST_MAX_TARGET_COUNT = 9
 private const val RANKED_LIST_PAGE_BOOK_COUNT = 4
 private val RANKED_LIST_ROW_HEIGHT = 68.dp
-
-private fun <T> List<T>.loopSlice(startIndex: Int, count: Int): List<T> {
-    if (isEmpty() || count <= 0) return emptyList()
-    val resultSize = minOf(count, this.size)
-    val start = startIndex.floorMod(this.size)
-    return List(resultSize) { index -> this[(start + index).floorMod(this.size)] }
-}
-
-private fun Int.floorMod(divisor: Int): Int {
-    return ((this % divisor) + divisor) % divisor
-}
 
 private fun DiscoverySuiteWidget.displayTitle(context: Context): String {
     val title = title.trim()
@@ -1338,221 +1329,4 @@ private fun DiscoverySuiteWidget.displayTitle(context: Context): String {
 
 private fun DiscoverySuiteWidgetTarget.deckKey(): String {
     return "$sourceUrl\n$tagUrl"
-}
-
-/*
-@Composable
-private fun DiscoverySuiteLegacyHorizontalBooksWidget(
-    widget: DiscoverySuiteWidget,
-    books: List<SearchBook>,
-    renderConfig: BookshelfListRenderConfig,
-    onBookClick: (SearchBook) -> Unit,
-    onBookPreview: (SearchBook) -> Unit,
-    fragment: Fragment,
-    lifecycle: Lifecycle
-) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        itemsIndexed(
-            items = books.take(widget.displayLimit),
-            key = { index, book -> "${widget.id}|$index|${book.bookUrl}|${book.origin}" }
-        ) { _, book ->
-            DiscoverySuiteLegacyCoverBookItem(
-                book = book,
-                renderConfig = renderConfig,
-                onBookClick = onBookClick,
-                onBookPreview = onBookPreview,
-                fragment = fragment,
-                lifecycle = lifecycle
-            )
-        }
-    }
-}
-*/
-
-@Composable
-private fun DiscoverySuiteLegacyRankedWidget(
-    widget: DiscoverySuiteWidget,
-    books: List<SearchBook>,
-    renderConfig: BookshelfListRenderConfig,
-    onBookClick: (SearchBook) -> Unit,
-    onBookPreview: (SearchBook) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        books.take(widget.displayLimit.coerceAtMost(8)).forEachIndexed { index, book ->
-            DiscoverySuiteRankedBookRow(
-                rank = index + 1,
-                book = book,
-                renderConfig = renderConfig,
-                onBookClick = onBookClick,
-                onBookPreview = onBookPreview
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DiscoverySuiteLegacyCoverBookItem(
-    book: SearchBook,
-    renderConfig: BookshelfListRenderConfig,
-    onBookClick: (SearchBook) -> Unit,
-    onBookPreview: (SearchBook) -> Unit,
-    fragment: Fragment,
-    lifecycle: Lifecycle
-) {
-    val palette = renderConfig.palette
-    Column(
-        modifier = Modifier
-            .width(82.dp)
-            .combinedClickable(
-                onClick = { onBookClick(book) },
-                onLongClick = { onBookPreview(book) }
-            )
-    ) {
-        BookCoverImage(
-            book = book,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(BOOK_COVER_ASPECT_RATIO),
-            style = CoverImageView.CoverStyle.GRID,
-            loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
-            fragment = fragment,
-            lifecycle = lifecycle,
-            preferThumb = true,
-            fillBounds = true
-        )
-        Text(
-            text = book.name,
-            modifier = Modifier.padding(top = 7.dp),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = palette.titleFontFamily,
-            color = palette.primaryText,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        val meta = listOf(book.author, book.originName)
-            .filter { it.isNotBlank() }
-            .joinToString(" · ")
-        if (meta.isNotBlank()) {
-            Text(
-                text = meta,
-                modifier = Modifier.padding(top = 2.dp),
-                fontSize = 11.sp,
-                fontFamily = palette.bodyFontFamily,
-                color = palette.secondaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DiscoverySuiteRankedBookRow(
-    rank: Int,
-    book: SearchBook,
-    renderConfig: BookshelfListRenderConfig,
-    onBookClick: (SearchBook) -> Unit,
-    onBookPreview: (SearchBook) -> Unit
-) {
-    val palette = renderConfig.palette
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(palette.actionRadius))
-            .combinedClickable(
-                onClick = { onBookClick(book) },
-                onLongClick = { onBookPreview(book) }
-            )
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(
-                    if (rank <= 3) palette.accent.copy(alpha = 0.16f)
-                    else palette.secondaryText.copy(alpha = 0.08f)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = rank.toString(),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = palette.titleFontFamily,
-                color = if (rank <= 3) palette.accent else palette.secondaryText
-            )
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = book.name,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                fontFamily = palette.titleFontFamily,
-                color = palette.primaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = listOf(book.author, book.originName, book.latestChapterTitle.orEmpty())
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · "),
-                fontSize = 12.sp,
-                fontFamily = palette.bodyFontFamily,
-                color = palette.secondaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DiscoverySuiteBookRow(
-    book: SearchBook,
-    renderConfig: BookshelfListRenderConfig,
-    onBookClick: (SearchBook) -> Unit,
-    onBookPreview: (SearchBook) -> Unit
-) {
-    val palette = renderConfig.palette
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(palette.actionRadius))
-            .combinedClickable(
-                onClick = { onBookClick(book) },
-                onLongClick = { onBookPreview(book) }
-            )
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = book.name,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = palette.titleFontFamily,
-            color = palette.primaryText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = listOf(book.author, book.originName)
-                .filter { it.isNotBlank() }
-                .joinToString(" · "),
-            fontSize = 12.sp,
-            fontFamily = palette.bodyFontFamily,
-            color = palette.secondaryText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
 }

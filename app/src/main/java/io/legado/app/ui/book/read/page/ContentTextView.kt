@@ -249,7 +249,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             }
         }
         backgroundScrollOffset += backgroundDelta
-        postInvalidate()
+        postInvalidateOnAnimation()
     }
 
     fun submitRenderTask() {

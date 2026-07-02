@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.R
 import io.legado.app.ui.widget.ModernActionPopup
 
@@ -250,7 +252,7 @@ fun AppPackageManageActionButton(
     val content = if (selected) palette.accent else palette.primaryText
     Surface(
         modifier = modifier
-            .width(72.dp)
+            .widthIn(min = 72.dp)
             .height(34.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(radius),
@@ -260,7 +262,9 @@ fun AppPackageManageActionButton(
         shadowElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -306,7 +310,7 @@ private fun AppPackageManageMoreButton(
         update = { button ->
             button.text = text
             button.setTextColor(palette.settings.primaryText.toArgb())
-            button.typeface = null
+            button.typeface = context.uiTypeface()
             button.background = UiCorner.actionSelector(
                 palette.miuix.surfaceVariant.toArgb(),
                 palette.settings.rowPressed,

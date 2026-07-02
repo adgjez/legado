@@ -121,23 +121,35 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
                 return@runCatching
             }
             val oldItems = this.items.toList()
-            val itemsSize = items?.size ?: 0
+            val newItems = items?.toList().orEmpty()
+            val oldItemsSize = oldItems.size
+            val newItemsSize = newItems.size
             val headerCount = getHeaderCount()
             val footerCount = getFooterCount()
             val callback = object : DiffUtil.Callback() {
                 override fun getOldListSize(): Int {
-                    return itemCount
+                    return oldItemsSize + headerCount + footerCount
                 }
 
                 override fun getNewListSize(): Int {
-                    return itemsSize + headerCount + footerCount
+                    return newItemsSize + headerCount + footerCount
                 }
 
                 override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                    if (isSnapshotHeader(oldItemPosition, headerCount) ||
+                        isSnapshotHeader(newItemPosition, headerCount)
+                    ) {
+                        return oldItemPosition == newItemPosition
+                    }
+                    val oldFooterIndex = snapshotFooterIndex(oldItemPosition, oldItemsSize, headerCount)
+                    val newFooterIndex = snapshotFooterIndex(newItemPosition, newItemsSize, headerCount)
+                    if (oldFooterIndex >= 0 || newFooterIndex >= 0) {
+                        return oldFooterIndex >= 0 && oldFooterIndex == newFooterIndex
+                    }
                     val oldItem = oldItems.getOrNull(oldItemPosition - headerCount)
-                        ?: return true
-                    val newItem = items?.getOrNull(newItemPosition - headerCount)
-                        ?: return true
+                        ?: return false
+                    val newItem = newItems.getOrNull(newItemPosition - headerCount)
+                        ?: return false
                     return itemCallback.areItemsTheSame(oldItem, newItem)
                 }
 
@@ -145,17 +157,34 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
                     oldItemPosition: Int,
                     newItemPosition: Int
                 ): Boolean {
+                    if (isSnapshotHeader(oldItemPosition, headerCount) ||
+                        isSnapshotHeader(newItemPosition, headerCount)
+                    ) {
+                        return oldItemPosition == newItemPosition
+                    }
+                    val oldFooterIndex = snapshotFooterIndex(oldItemPosition, oldItemsSize, headerCount)
+                    val newFooterIndex = snapshotFooterIndex(newItemPosition, newItemsSize, headerCount)
+                    if (oldFooterIndex >= 0 || newFooterIndex >= 0) {
+                        return oldFooterIndex >= 0 && oldFooterIndex == newFooterIndex
+                    }
                     val oldItem = oldItems.getOrNull(oldItemPosition - headerCount)
-                        ?: return true
-                    val newItem = items?.getOrNull(newItemPosition - headerCount)
-                        ?: return true
+                        ?: return false
+                    val newItem = newItems.getOrNull(newItemPosition - headerCount)
+                        ?: return false
                     return itemCallback.areContentsTheSame(oldItem, newItem)
                 }
 
                 override fun getChangePayload(oldItemPosition: Int, newItemPosition: Int): Any? {
+                    if (isSnapshotHeader(oldItemPosition, headerCount) ||
+                        isSnapshotHeader(newItemPosition, headerCount) ||
+                        snapshotFooterIndex(oldItemPosition, oldItemsSize, headerCount) >= 0 ||
+                        snapshotFooterIndex(newItemPosition, newItemsSize, headerCount) >= 0
+                    ) {
+                        return null
+                    }
                     val oldItem = oldItems.getOrNull(oldItemPosition - headerCount)
                         ?: return null
-                    val newItem = items?.getOrNull(newItemPosition - headerCount)
+                    val newItem = newItems.getOrNull(newItemPosition - headerCount)
                         ?: return null
                     return itemCallback.getChangePayload(oldItem, newItem)
                 }
@@ -167,25 +196,23 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
             diffJob?.cancel()
             diffJob = Coroutine.async {
                 val diffResult = if (skipDiff) withTimeoutOrNullAsync(500L) {
-                    DiffUtil.calculateDiff(callback, itemsSize < 2000)
+                    DiffUtil.calculateDiff(callback, newItemsSize < 2000)
                 } else {
-                    DiffUtil.calculateDiff(callback, itemsSize < 2000)
+                    DiffUtil.calculateDiff(callback, newItemsSize < 2000)
                 }
                 ensureActive()
                 handler.post {
-                    if (isResumed || diffResult == null) {
-                        setItems(items)
+                    // 非活跃或 diff 计算失败才全量刷新；活跃且 diff 成功走增量 dispatch。
+                    // 原写法 `if (isResumed || diffResult == null)` 把活跃态也导向全量刷新，
+                    // 导致 dispatchUpdatesTo 永远走不到、DiffUtil 形同虚设。
+                    if (!isResumed || diffResult == null) {
+                        setItems(newItems)
                         return@post
                     }
                     if (this@RecyclerAdapter.items.isNotEmpty()) {
                         this@RecyclerAdapter.items.clear()
                     }
-                    if (items != null) {
-                        this@RecyclerAdapter.items.addAll(items)
-                    }
-                    if (!isResumed) {
-                        return@post
-                    }
+                    this@RecyclerAdapter.items.addAll(newItems)
                     ensureActive()
                     diffResult.dispatchUpdatesTo(this@RecyclerAdapter)
                     onCurrentListChanged()
@@ -458,6 +485,13 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
     private fun isHeader(position: Int) = position < getHeaderCount()
 
     private fun isFooter(position: Int) = position >= getActualItemCount() + getHeaderCount()
+
+    private fun isSnapshotHeader(position: Int, headerCount: Int) = position < headerCount
+
+    private fun snapshotFooterIndex(position: Int, itemCount: Int, headerCount: Int): Int {
+        val footerStart = headerCount + itemCount
+        return if (position >= footerStart) position - footerStart else -1
+    }
 
     private fun getActualPosition(position: Int) = position - getHeaderCount()
 

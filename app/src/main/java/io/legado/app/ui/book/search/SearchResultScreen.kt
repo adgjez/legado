@@ -27,6 +27,7 @@ import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.SearchBookListItem
 import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
+import io.legado.app.utils.stableSearchBookKey
 
 /**
  * 搜索结果列表的 Compose 实现，复用与发现页一致的 [BookListCardSurface] 卡片骨架与
@@ -74,7 +75,7 @@ fun SearchResultScreen(
             ) {
                 itemsIndexed(
                     items = books,
-                    key = { index, book -> searchResultItemKey(index, book) }
+                    key = { _, book -> book.stableSearchBookKey() }
                 ) { _, book ->
                     val inBookshelf = remember(book.bookUrl, bookshelfTick) { isInBookshelf(book) }
                     SearchBookListItem(
@@ -109,8 +110,4 @@ fun SearchResultScreen(
             )
         }
     }
-}
-
-private fun searchResultItemKey(index: Int, book: SearchBook): String {
-    return "${book.bookUrl}|${book.origin}|${book.name}|${book.author}|$index"
 }

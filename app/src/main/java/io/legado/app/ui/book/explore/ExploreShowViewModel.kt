@@ -34,7 +34,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     private var bookSource: BookSource? = null
     private var exploreUrl: String? = null
     private var page = 1
-    private var books = linkedSetOf<SearchBook>()
+    private var books = emptyList<SearchBook>()
 
     init {
         execute {
@@ -86,8 +86,8 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         )
             .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
             .onSuccess(IO) { searchBooks ->
-                books = LinkedHashSet(SearchBookMergeUtils.prependReplacing(books, searchBooks))
-                addBooksData.postValue(searchBooks)
+                books = SearchBookMergeUtils.prependReplacing(books, searchBooks)
+                addBooksData.postValue(books)
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 pageLiveData.postValue(page)
             }.onError {
@@ -97,7 +97,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
     fun skipPage(page: Int) {
         if (page > 0) {
-            books.clear()
+            books = emptyList()
             this.page = page
         }
     }
@@ -115,8 +115,8 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         )
             .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
             .onSuccess(IO) { searchBooks ->
-                books = LinkedHashSet(SearchBookMergeUtils.appendReplacing(books, searchBooks))
-                booksData.postValue(books.toList())
+                books = SearchBookMergeUtils.appendReplacing(books, searchBooks)
+                booksData.postValue(books)
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 pageLiveData.postValue(page)
                 page++

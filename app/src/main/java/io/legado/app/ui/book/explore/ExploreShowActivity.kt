@@ -16,6 +16,7 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.utils.stableSearchBookKey
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
@@ -160,23 +161,29 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     private fun upDataTop(books: List<SearchBook>) {
+        val oldSize = composeBooks.size
+        val oldFirstKey = composeBooks.firstOrNull()?.stableSearchBookKey()
         composeTopLoading.value = false
         composeTopError.value = null
-        prependComposeBooks(books)
+        replaceComposeBooks(books, resetPrepend = false)
+        val prependedCount = oldFirstKey?.let { key ->
+            books.indexOfFirst { it.stableSearchBookKey() == key }
+        }?.takeIf { it > 0 } ?: (books.size - oldSize).coerceAtLeast(0)
+        if (prependedCount > 0) {
+            composePrependedItemCount.intValue = prependedCount
+            composeKeepPositionAfterPrependSignal.intValue++
+        } else {
+            composePrependedItemCount.intValue = 0
+        }
         composeHasPrevious.value = oldPage > 1
     }
 
-    private fun replaceComposeBooks(books: List<SearchBook>) {
+    private fun replaceComposeBooks(books: List<SearchBook>, resetPrepend: Boolean = true) {
         composeBooks.clear()
         composeBooks.addAll(books)
-        composePrependedItemCount.intValue = 0
-    }
-
-    private fun prependComposeBooks(books: List<SearchBook>) {
-        if (books.isEmpty()) return
-        composeBooks.addAll(0, books)
-        composePrependedItemCount.intValue = books.size
-        composeKeepPositionAfterPrependSignal.intValue++
+        if (resetPrepend) {
+            composePrependedItemCount.intValue = 0
+        }
     }
 
     private fun isInBookshelf(book: SearchBook): Boolean {

@@ -39,6 +39,7 @@ import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.ui.widget.compose.SearchBookListItem
 import io.legado.app.ui.widget.compose.SearchBookPreviewOverlay
 import io.legado.app.ui.widget.compose.SearchBookPreviewState
+import io.legado.app.utils.stableSearchBookKey
 
 @Composable
 fun ExploreShowComposeScreen(
@@ -127,7 +128,7 @@ fun ExploreShowComposeScreen(
             }
             itemsIndexed(
                 items = books,
-                key = { index, book -> exploreShowItemKey(index, book) },
+                key = { _, book -> book.stableSearchBookKey() },
                 contentType = { _, _ -> "explore_show_book" }
             ) { _, book ->
                 val inBookshelf = remember(book.bookUrl, bookshelfTick) { isInBookshelf(book) }
@@ -182,10 +183,6 @@ fun ExploreShowComposeScreen(
             modifier = Modifier.fillMaxSize()
         )
     }
-}
-
-private fun exploreShowItemKey(index: Int, book: SearchBook): String {
-    return "${book.origin}|${book.bookUrl}|${book.name}|${book.author}|$index"
 }
 
 @Composable
