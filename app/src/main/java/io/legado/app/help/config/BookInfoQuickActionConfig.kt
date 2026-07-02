@@ -34,6 +34,14 @@ object BookInfoQuickActionConfig {
         BookInfoQuickActionItem(BookInfoQuickActionType.TOC),
         BookInfoQuickActionItem(BookInfoQuickActionType.GALLERY)
     )
+    private val supportedTypes = listOf(
+        BookInfoQuickActionType.SOURCE,
+        BookInfoQuickActionType.TOC,
+        BookInfoQuickActionType.GALLERY,
+        BookInfoQuickActionType.GROUP,
+        BookInfoQuickActionType.CLOUD,
+        BookInfoQuickActionType.CUSTOM_BUTTON
+    )
 
     fun load(): List<BookInfoQuickActionItem> {
         val raw = appCtx.getPrefString(PREF_ACTIONS).orEmpty()
@@ -65,11 +73,11 @@ object BookInfoQuickActionConfig {
         val used = hashSetOf<BookInfoQuickActionType>()
         val normalized = mutableListOf<BookInfoQuickActionItem>()
         items.forEach { item ->
-            if (used.add(item.type)) {
+            if (item.type in supportedTypes && used.add(item.type)) {
                 normalized += item.copy(alias = item.alias.trim())
             }
         }
-        BookInfoQuickActionType.entries.forEach { type ->
+        supportedTypes.forEach { type ->
             if (used.add(type)) {
                 normalized += BookInfoQuickActionItem(type, enabled = false)
             }
