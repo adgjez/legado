@@ -400,16 +400,53 @@ object ArcReelEnvironment {
     private fun extractTarGz(tarball: File, destDir: File) {
         destDir.mkdirs()
         GZIPInputStream(tarball.inputStream().buffered()).use { gzStream ->
+            var longName: String? = null
             var entry = readTarEntry(gzStream)
             while (entry != null) {
-                val entryFile = File(destDir, entry.name.trimStart('/'))
-                if (entry.isDirectory) {
-                    entryFile.mkdirs()
-                } else {
-                    entryFile.parentFile?.mkdirs()
-                    entryFile.outputStream().use { output ->
-                        val buf = entry.data
-                        output.write(buf, 0, entry.size.toInt())
+                when (entry.type) {
+                    'L'.code, 'K'.code -> {
+                        // GNU long name entry — 保存文件名供下一个条目使用
+                        longName = String(entry.data, 0, entry.size.toInt()).trimEnd('\u0000'.toChar())
+                    }
+                    else -> {
+                        val name = longName ?: entry.name
+                        longName = null
+                        val entryFile = File(destDir, name.trimStart('/'))
+                        when {
+                            entry.isDirectory -> entryFile.mkdirs()
+                            entry.isSymlink -> {
+                                entryFile.parentFile?.mkdirs()
+                                // 符号链接目标
+                                val linkTarget = String(entry.data, 0, entry.size.toInt()).trimEnd('\u0000'.toChar())
+                                try {
+                                    entryFile.delete()
+                                    java.nio.file.Files.createSymbolicLink(
+                                        entryFile.toPath(),
+                                        java.nio.file.Paths.get(linkTarget)
+                                    )
+                                } catch (_: Exception) {
+                                    // 不支持符号链接时，写入链接目标作为文本
+                                    entryFile.writeText(linkTarget)
+                                }
+                            }
+                            entry.isHardLink -> {
+                                entryFile.parentFile?.mkdirs()
+                                val linkTarget = String(entry.data, 0, entry.size.toInt()).trimEnd('\u0000'.toChar())
+                                val targetFile = File(destDir, linkTarget.trimStart('/'))
+                                try {
+                                    entryFile.delete()
+                                    java.nio.file.Files.createLink(entryFile.toPath(), targetFile.toPath())
+                                } catch (_: Exception) {
+                                    targetFile.copyTo(entryFile, overwrite = true)
+                                }
+                            }
+                            else -> {
+                                entryFile.parentFile?.mkdirs()
+                                entryFile.outputStream().use { output ->
+                                    output.write(entry.data, 0, entry.size.toInt())
+                                }
+                            }
+                        }
                     }
                 }
                 entry = readTarEntry(gzStream)
@@ -420,33 +457,41 @@ object ArcReelEnvironment {
     /**
      * 简易 TAR 解析器 — 从流中读取单个 TAR 条目
      * TAR 格式: 512 字节头 + 数据块 (512 对齐)
+     * 支持: 普通文件、目录、符号链接、硬链接、GNU 长文件名
      */
     private data class TarEntry(
         val name: String,
         val size: Long,
-        val isDirectory: Boolean,
+        val type: Int,
         val data: ByteArray
-    )
+    ) {
+        val isDirectory: Boolean get() = type == '5'.code || name.endsWith("/")
+        val isSymlink: Boolean get() = type == '2'.code
+        val isHardLink: Boolean get() = type == '1'.code
+    }
 
     private fun readTarEntry(input: InputStream): TarEntry? {
         val header = ByteArray(512)
         var read = 0
         while (read < 512) {
             val n = input.read(header, read, 512 - read)
-            if (n == -1) return null
+            if (n == -1) {
+                if (read == 0) return null
+                break
+            }
             read += n
         }
+        if (read < 512) return null
         // 检查是否全是0（TAR结束标记）
         if (header.all { it == 0.toByte() }) return null
 
         val name = String(header, 0, 100).trimEnd('\u0000'.toChar())
         val sizeStr = String(header, 124, 12).trimEnd('\u0000'.toChar(), ' ')
-        val size = sizeStr.toLongOrNull(16) ?: 0
+        // TAR 使用八进制表示文件大小
+        val size = sizeStr.toLongOrNull(8) ?: 0
         val typeFlag = header[156].toInt() and 0xFF
 
-        val isDirectory = typeFlag == '5'.code || name.endsWith("/")
-
-        if (size == 0L) return TarEntry(name, 0, isDirectory, ByteArray(0))
+        if (size == 0L) return TarEntry(name, 0, typeFlag, ByteArray(0))
 
         val data = ByteArray(size.toInt())
         var dataRead = 0
@@ -460,6 +505,6 @@ object ArcReelEnvironment {
         val padding = if (size % 512 == 0L) 0 else (512 - size % 512).toInt()
         if (padding > 0) input.skip(padding.toLong())
 
-        return TarEntry(name, size, isDirectory, data)
+        return TarEntry(name, size, typeFlag, data)
     }
 }
