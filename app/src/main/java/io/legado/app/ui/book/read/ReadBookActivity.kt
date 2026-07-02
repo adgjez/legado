@@ -1479,7 +1479,11 @@ class ReadBookActivity : BaseReadBookActivity(),
             kotlin.runCatching {
                 ShareNoteImageRenderer.renderShareImage(this@ReadBookActivity, entry, payload)
             }.onSuccess { file ->
-                share(file, "image/png")
+                kotlin.runCatching {
+                    share(file, "image/png")
+                }.onFailure {
+                    toastOnUi(it.localizedMessage ?: getString(R.string.error))
+                }
             }.onFailure {
                 AppLog.put("摘录分享图片生成失败\n${it.localizedMessage}", it, true)
                 toastOnUi(it.localizedMessage ?: getString(R.string.error))

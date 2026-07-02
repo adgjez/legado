@@ -141,13 +141,20 @@ object ShareNoteImageRenderer {
             visibility = View.INVISIBLE
         }
         try {
+            webView.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(initialHeight, View.MeasureSpec.EXACTLY)
+            )
+            webView.layout(0, 0, width, initialHeight)
             waitPageLoaded(webView, html, ShareNoteTemplateManager.baseUrl(entry))
+            waitImagesReady(webView)
             val size = evaluateCaptureSize(webView, width, initialHeight, previewOnly)
             webView.measure(
                 View.MeasureSpec.makeMeasureSpec(size.first, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(size.second, View.MeasureSpec.EXACTLY)
             )
             webView.layout(0, 0, size.first, size.second)
+            waitForWebViewDraw(webView)
             @Suppress("DEPRECATION")
             webView.isDrawingCacheEnabled = false
             val bitmap = Bitmap.createBitmap(size.first, size.second, Bitmap.Config.ARGB_8888)
@@ -161,6 +168,42 @@ object ShareNoteImageRenderer {
         } finally {
             webView.stopLoading()
             webView.destroy()
+        }
+    }
+
+    private suspend fun waitImagesReady(webView: WebView) {
+        suspendCoroutine<Unit> { continuation ->
+            var resumed = false
+            fun resumeOnce() {
+                if (resumed) return
+                resumed = true
+                continuation.resume(Unit)
+            }
+            val startedAt = System.currentTimeMillis()
+            fun check() {
+                val script = """
+                    (function(){
+                      var imgs = Array.prototype.slice.call(document.images || []);
+                      return imgs.length === 0 || imgs.every(function(img){ return img.complete; });
+                    })();
+                """.trimIndent()
+                webView.evaluateJavascript(script) { raw ->
+                    val ready = raw == "true"
+                    if (ready || System.currentTimeMillis() - startedAt > 1200L) {
+                        resumeOnce()
+                    } else {
+                        webView.postDelayed({ check() }, 80)
+                    }
+                }
+            }
+            check()
+            webView.postDelayed({ resumeOnce() }, 1500)
+        }
+    }
+
+    private suspend fun waitForWebViewDraw(webView: WebView) {
+        suspendCoroutine<Unit> { continuation ->
+            webView.postDelayed({ continuation.resume(Unit) }, 80)
         }
     }
 

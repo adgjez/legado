@@ -13,6 +13,17 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/iv_menu_prev"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/bg_popup_action_item"
+            android:contentDescription="@string/previous_chapter"
+            android:padding="8dp"
+            android:src="@drawable/ic_arrow_back"
+            android:tint="@color/primaryText"
+            android:visibility="gone" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_view"
             android:layout_width="wrap_content"
@@ -24,13 +35,13 @@
             app:layoutManager="com.google.android.flexbox.FlexboxLayoutManager" />
 
         <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/iv_menu_more"
+            android:id="@+id/iv_menu_next"
             android:layout_width="34dp"
             android:layout_height="34dp"
             android:background="@drawable/bg_popup_action_item"
-            android:contentDescription="@string/more_menu"
+            android:contentDescription="@string/next_chapter"
             android:padding="8dp"
-            android:src="@drawable/ic_more_vert"
+            android:src="@drawable/ic_arrow_right"
             android:tint="@color/primaryText"
             android:visibility="gone" />
 

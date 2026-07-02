@@ -65,6 +65,7 @@ object ReadMenuButtonConfig {
         return when {
             layout.isMisplacedAiDefault() -> defaultLayout()
             parsed != null && layout.isLegacyDefaultBeforeBubble() -> defaultLayout()
+            parsed != null && layout.isDefaultWithBubbleInSecondRow() -> defaultLayout()
             else -> layout
         }
     }
@@ -85,6 +86,7 @@ object ReadMenuButtonConfig {
             builtin(Builtin.NIGHT_THEME),
             builtin(Builtin.CHARACTERS),
             builtin(Builtin.PARAGRAPH_RULES),
+            builtin(Builtin.BUBBLE),
             builtin(Builtin.READ_ASSISTANT),
             builtin(Builtin.AI_SUMMARY)
         )
@@ -95,7 +97,6 @@ object ReadMenuButtonConfig {
             builtin(Builtin.CATALOG),
             builtin(Builtin.READ_ALOUD),
             builtin(Builtin.READ_STYLE),
-            builtin(Builtin.BUBBLE),
             builtin(Builtin.SETTING)
         )
     }
@@ -144,11 +145,40 @@ object ReadMenuButtonConfig {
     }
 
     private fun ButtonLayout.isLegacyDefaultBeforeBubble(): Boolean {
-        return firstRow.map { it.type to it.id } == defaultFirstRow().map { it.type to it.id } &&
+        return firstRow.map { it.type to it.id } == listOf(
+            builtin(Builtin.SEARCH),
+            builtin(Builtin.AUTO_PAGE),
+            builtin(Builtin.REPLACE_RULE),
+            builtin(Builtin.NIGHT_THEME),
+            builtin(Builtin.CHARACTERS),
+            builtin(Builtin.PARAGRAPH_RULES),
+            builtin(Builtin.READ_ASSISTANT),
+            builtin(Builtin.AI_SUMMARY)
+        ).map { it.type to it.id } &&
                 secondRow.map { it.type to it.id } == listOf(
             builtin(Builtin.CATALOG),
             builtin(Builtin.READ_ALOUD),
             builtin(Builtin.READ_STYLE),
+            builtin(Builtin.SETTING)
+        ).map { it.type to it.id }
+    }
+
+    private fun ButtonLayout.isDefaultWithBubbleInSecondRow(): Boolean {
+        return firstRow.map { it.type to it.id } == listOf(
+            builtin(Builtin.SEARCH),
+            builtin(Builtin.AUTO_PAGE),
+            builtin(Builtin.REPLACE_RULE),
+            builtin(Builtin.NIGHT_THEME),
+            builtin(Builtin.CHARACTERS),
+            builtin(Builtin.PARAGRAPH_RULES),
+            builtin(Builtin.READ_ASSISTANT),
+            builtin(Builtin.AI_SUMMARY)
+        ).map { it.type to it.id } &&
+                secondRow.map { it.type to it.id } == listOf(
+            builtin(Builtin.CATALOG),
+            builtin(Builtin.READ_ALOUD),
+            builtin(Builtin.READ_STYLE),
+            builtin(Builtin.BUBBLE),
             builtin(Builtin.SETTING)
         ).map { it.type to it.id }
     }

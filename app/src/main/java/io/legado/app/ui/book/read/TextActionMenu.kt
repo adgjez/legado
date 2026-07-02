@@ -11,6 +11,7 @@ import android.text.TextPaint
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupWindow
@@ -50,11 +51,14 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         setHasStableIds(true)
     }
     private val allMenuItems: List<MenuItemImpl>
-    private val visibleMenuItems = arrayListOf<MenuItemImpl>()
-    private val moreMenuItems = arrayListOf<MenuItemImpl>()
+    private val pageMenuItems = arrayListOf<MenuItemImpl>()
     private var lastMaxMainWidth = 0
     private var mainMenuLayoutManager: GridLayoutManager? = null
     private var mainMenuItemOuterWidth = 70.dpToPx()
+    private var currentPageIndex = 0
+    private var currentPageCount = 1
+    private var currentPageCapacity = 1
+    private var lastTouchX = 0f
     private val itemTextPaint = TextPaint().apply {
         textSize = 12f * context.resources.displayMetrics.scaledDensity
         typeface = context.uiTypeface()
@@ -101,16 +105,18 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         mainMenuLayoutManager = GridLayoutManager(context, 1)
         binding.recyclerView.layoutManager = mainMenuLayoutManager
         binding.recyclerView.adapter = adapter
-        binding.recyclerViewMore.adapter = adapter
         setOnDismissListener {
             showMainMenu()
         }
-        binding.ivMenuMore.setOnClickListener {
-            if (binding.recyclerView.isVisible && moreMenuItems.isNotEmpty()) {
-                showMoreMenu()
-            } else {
-                showMainMenu()
-            }
+        binding.ivMenuPrev.setOnClickListener {
+            showPage(currentPageIndex - 1)
+        }
+        binding.ivMenuNext.setOnClickListener {
+            showPage(currentPageIndex + 1)
+        }
+        binding.recyclerView.setOnTouchListener { _, event ->
+            handlePageSwipe(event)
+            false
         }
         upMenu()
     }
@@ -127,16 +133,17 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
     private fun upMenuForWidth(maxMainWidth: Int) {
         lastMaxMainWidth = maxMainWidth
-        visibleMenuItems.clear()
-        moreMenuItems.clear()
+        pageMenuItems.clear()
         val filteredItems = filteredMenuItems()
         val maxWidth = (maxMainWidth - 16.dpToPx()).coerceAtLeast(140.dpToPx())
         val contentMaxWidth = (maxWidth - 12.dpToPx()).coerceAtLeast(120.dpToPx())
         val layout = gridMainMenu(filteredItems, contentMaxWidth)
-        visibleMenuItems += layout.visible
-        moreMenuItems += layout.overflow
+        pageMenuItems += filteredItems
+        currentPageCapacity = layout.capacity
+        currentPageCount = layout.pageCount
+        currentPageIndex = currentPageIndex.coerceIn(0, currentPageCount - 1)
         applyMainMenuLayout(layout)
-        showMainMenu()
+        showPage(currentPageIndex)
     }
 
     private fun estimateItemWidth(item: MenuItemImpl): Int {
@@ -147,32 +154,28 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
     private fun maxMenuItemWidth(): Int = 132.dpToPx()
 
-    private fun moreButtonWidth(): Int = 40.dpToPx()
+    private fun pageButtonWidth(): Int = 40.dpToPx()
 
     private fun mainRowHeight(): Int = 40.dpToPx()
 
     private fun gridMainMenu(items: List<MenuItemImpl>, contentMaxWidth: Int): MainMenuLayout {
-        val noMoreColumns = mainMenuColumnCount(items.size, contentMaxWidth)
-        val noMoreCapacity = noMoreColumns * 2
-        val hasOverflow = items.size > noMoreCapacity
-        val rowWidth = if (hasOverflow) {
-            (contentMaxWidth - moreButtonWidth()).coerceAtLeast(96.dpToPx())
-        } else {
-            contentMaxWidth
-        }
+        val initialColumns = mainMenuColumnCount(items.size, contentMaxWidth)
+        val needsPages = items.size > initialColumns * 2
+        val rowWidth = if (needsPages) {
+            (contentMaxWidth - pageButtonWidth() * 2).coerceAtLeast(96.dpToPx())
+        } else contentMaxWidth
         val columns = mainMenuColumnCount(items.size.coerceAtMost(8), rowWidth)
         val capacity = columns * 2
-        val visible = items.take(capacity)
-        val overflow = items.drop(capacity)
-        val rowCount = ceil(visible.size / columns.toFloat()).toInt().coerceIn(1, 2)
-        val itemWidth = mainMenuItemWidth(visible, columns, rowWidth)
+        val pageCount = ceil(items.size.coerceAtLeast(1) / capacity.toFloat()).toInt().coerceAtLeast(1)
+        val rowCount = if (pageCount > 1) 2 else ceil(items.size / columns.toFloat()).toInt().coerceIn(1, 2)
+        val itemWidth = mainMenuItemWidth(items.take(capacity * pageCount), columns, rowWidth)
         return MainMenuLayout(
-            visible = visible,
-            overflow = overflow,
             rowCount = rowCount,
             columnCount = columns,
             itemWidth = itemWidth,
-            width = itemWidth * columns
+            width = itemWidth * columns,
+            capacity = capacity,
+            pageCount = pageCount
         )
     }
 
@@ -206,24 +209,34 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     }
 
     private fun showMainMenu() = binding.run {
-        ivMenuMore.setImageResource(R.drawable.ic_more_vert)
         recyclerViewMore.gone()
-        adapter.itemOuterWidth = mainMenuItemOuterWidth
-        adapter.setItems(visibleMenuItems)
         recyclerView.visible()
-        ivMenuMore.visible(moreMenuItems.isNotEmpty())
+        showPage(currentPageIndex)
     }
 
-    private fun showMoreMenu() = binding.run {
-        ivMenuMore.setImageResource(R.drawable.ic_arrow_back)
-        val rowHeight = 42.dpToPx()
-        adapter.itemOuterWidth = maxMenuItemWidth() + 6.dpToPx()
-        recyclerViewMore.layoutParams = recyclerViewMore.layoutParams.apply {
-            height = minOf(moreMenuItems.size * rowHeight, 240.dpToPx())
+    private fun showPage(index: Int) = binding.run {
+        currentPageIndex = index.coerceIn(0, currentPageCount - 1)
+        val from = currentPageIndex * currentPageCapacity
+        val to = minOf(from + currentPageCapacity, pageMenuItems.size)
+        adapter.itemOuterWidth = mainMenuItemOuterWidth
+        adapter.setItems(if (from < to) pageMenuItems.subList(from, to) else emptyList())
+        ivMenuPrev.visible(currentPageCount > 1 && currentPageIndex > 0)
+        ivMenuNext.visible(currentPageCount > 1 && currentPageIndex < currentPageCount - 1)
+    }
+
+    private fun handlePageSwipe(event: MotionEvent) {
+        if (currentPageCount <= 1) return
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> lastTouchX = event.rawX
+            MotionEvent.ACTION_UP -> {
+                val delta = event.rawX - lastTouchX
+                val threshold = 28.dpToPx()
+                when {
+                    delta > threshold -> showPage(currentPageIndex - 1)
+                    delta < -threshold -> showPage(currentPageIndex + 1)
+                }
+            }
         }
-        adapter.setItems(moreMenuItems)
-        recyclerView.gone()
-        recyclerViewMore.visible()
     }
 
     fun show(
@@ -409,11 +422,11 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     }
 
     private data class MainMenuLayout(
-        val visible: List<MenuItemImpl>,
-        val overflow: List<MenuItemImpl>,
         val rowCount: Int,
         val columnCount: Int,
         val itemWidth: Int,
-        val width: Int
+        val width: Int,
+        val capacity: Int,
+        val pageCount: Int
     )
 }

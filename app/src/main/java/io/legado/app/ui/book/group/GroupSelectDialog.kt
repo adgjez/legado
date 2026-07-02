@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.group
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -68,6 +69,8 @@ class GroupSelectDialog() : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.92f
     override val maxWidthDp: Int = 500
+    override val dialogGravity: Int = Gravity.CENTER
+    override val dialogWindowAnimations: Int = R.style.AnimDialogCenter
 
     override fun onCreateView(
         inflater: LayoutInflater,
