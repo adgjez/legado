@@ -59,6 +59,7 @@ import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.Cache
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ItemFilletCompleteTextBinding
@@ -106,13 +107,16 @@ import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.SearchBookMergeUtils
+import io.legado.app.utils.GSON
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.gone
 import io.legado.app.utils.InfoMap
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setSelectionSafely
 import io.legado.app.utils.startActivity
@@ -655,7 +659,30 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val snapshot = DiscoverySuitePageSnapshotStore.get(
             suiteId = suite.id,
             signature = suite.cacheSignature()
-        ) ?: return
+        )
+        if (snapshot != null) {
+            applySuiteSnapshot(snapshot)
+            return
+        }
+        val suiteId = suite.id
+        val signature = suite.cacheSignature()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val diskSnapshot = withContext(IO) {
+                readSuiteSnapshotCache(suiteId, signature)
+            } ?: return@launch
+            if (!isAdded ||
+                !usingSuiteDiscovery ||
+                selectedSuite()?.id != suiteId ||
+                selectedSuite()?.cacheSignature() != signature
+            ) {
+                return@launch
+            }
+            applySuiteSnapshot(diskSnapshot)
+            DiscoverySuitePageSnapshotStore.put(diskSnapshot)
+        }
+    }
+
+    private fun applySuiteSnapshot(snapshot: DiscoverySuitePageSnapshot) {
         composeSuiteWidgetBooks.clear()
         composeSuiteWidgetBooks.putAll(snapshot.widgetBooks)
         composeSuiteRankedWidgetBooks.clear()
@@ -669,28 +696,60 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val suite = selectedSuite() ?: return
         if (composeSuiteWidgetBooks.isEmpty() && composeSuiteRankedWidgetBooks.isEmpty()) return
         val snapshotWidgets = suite.widgets.take(DISCOVERY_SUITE_SNAPSHOT_WIDGET_LIMIT)
-        DiscoverySuitePageSnapshotStore.put(
-            DiscoverySuitePageSnapshot(
-                suiteId = suite.id,
-                signature = suite.cacheSignature(),
-                widgetBooks = snapshotWidgets.associate { widget ->
-                    widget.id to composeSuiteWidgetBooks[widget.id]
+        val snapshot = DiscoverySuitePageSnapshot(
+            suiteId = suite.id,
+            signature = suite.cacheSignature(),
+            widgetBooks = snapshotWidgets.associate { widget ->
+                widget.id to composeSuiteWidgetBooks[widget.id]
+                    .orEmpty()
+                    .take(widget.snapshotBookLimit())
+            }.filterValues { it.isNotEmpty() },
+            rankedWidgetBooks = snapshotWidgets
+                .filter { it.type == DiscoverySuiteWidgetType.RankedList.value }
+                .associate { widget ->
+                    widget.id to composeSuiteRankedWidgetBooks[widget.id]
                         .orEmpty()
-                        .take(widget.snapshotBookLimit())
-                }.filterValues { it.isNotEmpty() },
-                rankedWidgetBooks = snapshotWidgets
-                    .filter { it.type == DiscoverySuiteWidgetType.RankedList.value }
-                    .associate { widget ->
-                        widget.id to composeSuiteRankedWidgetBooks[widget.id]
-                            .orEmpty()
-                            .mapValues { entry -> entry.value.take(RANKED_SUITE_SNAPSHOT_BOOK_LIMIT) }
-                    }
-                    .filterValues { it.isNotEmpty() },
-                widgetSignatures = suiteWidgetSignatures.filterKeys { key ->
-                    snapshotWidgets.any { it.id == key }
+                        .mapValues { entry -> entry.value.take(RANKED_SUITE_SNAPSHOT_BOOK_LIMIT) }
                 }
-            )
+                .filterValues { it.isNotEmpty() },
+            widgetSignatures = suiteWidgetSignatures.filterKeys { key ->
+                snapshotWidgets.any { it.id == key }
+            }
         )
+        DiscoverySuitePageSnapshotStore.put(snapshot)
+        saveSuiteSnapshotCacheAsync(snapshot)
+    }
+
+    private fun readSuiteSnapshotCache(
+        suiteId: String,
+        signature: String
+    ): DiscoverySuitePageSnapshot? {
+        val raw = appDb.cacheDao.get(suiteSnapshotCacheKey(suiteId, signature), System.currentTimeMillis())
+            ?: return null
+        return GSON.fromJsonObject<DiscoverySuitePageSnapshot>(raw)
+            .getOrNull()
+            ?.takeIf { it.suiteId == suiteId && it.signature == signature }
+    }
+
+    private fun saveSuiteSnapshotCacheAsync(snapshot: DiscoverySuitePageSnapshot) {
+        if (snapshot.widgetBooks.isEmpty() && snapshot.rankedWidgetBooks.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch(IO) {
+            runCatching {
+                appDb.cacheDao.insert(
+                    Cache(
+                        key = suiteSnapshotCacheKey(snapshot.suiteId, snapshot.signature),
+                        value = GSON.toJson(snapshot),
+                        deadline = System.currentTimeMillis() + DISCOVERY_CACHE_TTL_MS
+                    )
+                )
+            }.onFailure {
+                AppLog.put("套件发现缓存写入失败", it)
+            }
+        }
+    }
+
+    private fun suiteSnapshotCacheKey(suiteId: String, signature: String): String {
+        return "$DISCOVERY_SUITE_CACHE_PREFIX${MD5Utils.md5Encode16("$suiteId\u001F$signature")}"
     }
 
     private suspend fun loadSuiteWidgetBooks(widget: DiscoverySuiteWidget): List<SearchBook> {
@@ -1731,6 +1790,92 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
+    private fun restoreModernDiscoverCacheAsync(
+        sourceUrl: String,
+        tagUrl: String?,
+        sourceVersion: Long = discoverSourceVersion,
+        clearOnMiss: Boolean = false
+    ) {
+        val url = tagUrl?.takeIf { it.isNotBlank() } ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val cache = withContext(IO) {
+                readModernDiscoverCache(sourceUrl, url)
+            }
+            if (!isAdded ||
+                !usingModernDiscovery ||
+                sourceVersion != discoverSourceVersion ||
+                selectedDiscoverSourcePart?.bookSourceUrl != sourceUrl ||
+                discoverCurrentUrl != url
+            ) {
+                return@launch
+            }
+            if (cache != null && cache.books.isNotEmpty()) {
+                applyModernDiscoverCache(cache)
+            } else if (clearOnMiss) {
+                discoverBooks.clear()
+                syncDiscoverComposeState(forceBooks = true)
+                discoverBookAdapter?.clearItems()
+            }
+        }
+    }
+
+    private fun applyModernDiscoverCache(cache: ModernDiscoverResultCache) {
+        discoverBooks.clear()
+        discoverBooks.addAll(cache.books.take(DISCOVERY_MODERN_CACHE_BOOK_LIMIT))
+        discoverPage = cache.nextPage.coerceAtLeast(2)
+        discoverHasMore = cache.hasMore
+        syncDiscoverComposeState(forceBooks = true)
+        discoverBookAdapter?.setItems(discoverBooks.toList())
+        binding.tvDiscoverEmpty.gone()
+    }
+
+    private fun readModernDiscoverCache(
+        sourceUrl: String,
+        tagUrl: String
+    ): ModernDiscoverResultCache? {
+        val raw = appDb.cacheDao.get(modernDiscoverCacheKey(sourceUrl, tagUrl), System.currentTimeMillis())
+            ?: return null
+        return GSON.fromJsonObject<ModernDiscoverResultCache>(raw)
+            .getOrNull()
+            ?.takeIf { it.sourceUrl == sourceUrl && it.tagUrl == tagUrl }
+            ?.takeIf { it.books.isNotEmpty() }
+    }
+
+    private fun saveModernDiscoverCacheAsync(
+        sourceUrl: String,
+        tagUrl: String,
+        books: List<SearchBook>,
+        nextPage: Int,
+        hasMore: Boolean
+    ) {
+        if (books.isEmpty()) return
+        val snapshot = ModernDiscoverResultCache(
+            sourceUrl = sourceUrl,
+            tagUrl = tagUrl,
+            books = books.take(DISCOVERY_MODERN_CACHE_BOOK_LIMIT),
+            nextPage = nextPage.coerceAtLeast(2),
+            hasMore = hasMore,
+            savedAt = System.currentTimeMillis()
+        )
+        viewLifecycleOwner.lifecycleScope.launch(IO) {
+            runCatching {
+                appDb.cacheDao.insert(
+                    Cache(
+                        key = modernDiscoverCacheKey(sourceUrl, tagUrl),
+                        value = GSON.toJson(snapshot),
+                        deadline = System.currentTimeMillis() + DISCOVERY_CACHE_TTL_MS
+                    )
+                )
+            }.onFailure {
+                AppLog.put("发现页面缓存写入失败", it)
+            }
+        }
+    }
+
+    private fun modernDiscoverCacheKey(sourceUrl: String, tagUrl: String): String {
+        return "$DISCOVERY_MODERN_CACHE_PREFIX${MD5Utils.md5Encode16("$sourceUrl\u001F$tagUrl")}"
+    }
+
     private fun bindDiscoverSourceSelector() {
         binding.topBar.titleText.applyUiTitleTypeface(requireContext())
         val updateSourceNameWidth = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -2539,6 +2684,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverBooks.clear()
         syncDiscoverComposeState()
         discoverBookAdapter?.clearItems()
+        restoreModernDiscoverCacheAsync(
+            sourceUrl = source.bookSourceUrl,
+            tagUrl = discoverCurrentUrl,
+            sourceVersion = currentSourceVersion,
+            clearOnMiss = false
+        )
         binding.tvDiscoverEmpty.gone()
         discoverAllTagItems.clear()
         discoverMajorGroups.clear()
@@ -3197,6 +3348,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun loadDiscoverBooks(reset: Boolean) {
         if (!usingModernDiscovery) return
         val source = selectedDiscoverSource ?: return
+        val sourceUrl = source.bookSourceUrl
         val url = discoverCurrentUrl?.takeIf { it.isNotBlank() } ?: return
         if (!reset && !discoverHasMore) return
         if (reset) {
@@ -3214,11 +3366,22 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             if (reset) {
                 discoverPage = 1
                 discoverHasMore = true
-                discoverBooks.clear()
-                syncDiscoverComposeState()
-                discoverBookAdapter?.clearItems()
+                val cache = withContext(IO) {
+                    readModernDiscoverCache(sourceUrl, url)
+                }
+                if (!isAdded || requestVersion != discoverRequestVersion || url != discoverCurrentUrl) {
+                    return@launch
+                }
+                if (cache != null && cache.books.isNotEmpty()) {
+                    applyModernDiscoverCache(cache)
+                } else {
+                    discoverBooks.clear()
+                    syncDiscoverComposeState(forceBooks = true)
+                    discoverBookAdapter?.clearItems()
+                }
                 binding.tvDiscoverEmpty.gone()
             }
+            val pageToLoad = if (reset) 1 else discoverPage
             discoverLoading = true
             syncDiscoverComposeState()
             binding.pbDiscoverLoading.visible()
@@ -3227,7 +3390,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     WebBook.exploreBookAwait(
                         source,
                         url,
-                        discoverPage,
+                        pageToLoad,
                         WebViewPool.Scope.DISCOVERY
                     )
                 }
@@ -3241,23 +3404,38 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         binding.tvDiscoverEmpty.visible()
                     }
                 } else {
-                    withContext(IO) {
-                        appDb.searchBookDao.insert(*newBooks.toTypedArray())
-                    }
-                    VideoBookPreloader.preloadSearchBooks(viewLifecycleOwner.lifecycleScope, newBooks)
                     val oldSize = discoverBooks.size
-                    val mergedBooks = SearchBookMergeUtils.appendReplacing(discoverBooks, newBooks)
-                    val hasNewBooks = mergedBooks.size > oldSize
+                    val mergedBooks = if (reset) {
+                        SearchBookMergeUtils.appendReplacing(emptyList(), newBooks)
+                    } else {
+                        SearchBookMergeUtils.appendReplacing(discoverBooks, newBooks)
+                    }
+                    val hasNewBooks = if (reset) mergedBooks.isNotEmpty() else mergedBooks.size > oldSize
                     discoverBooks.clear()
                     discoverBooks.addAll(mergedBooks)
                     if (hasNewBooks) {
-                        discoverPage += 1
+                        discoverPage = pageToLoad + 1
                     } else {
                         discoverHasMore = false
                     }
                     syncDiscoverComposeState()
                     discoverBookAdapter?.setItems(discoverBooks.toList())
                     binding.tvDiscoverEmpty.gone()
+                    saveModernDiscoverCacheAsync(
+                        sourceUrl = sourceUrl,
+                        tagUrl = url,
+                        books = discoverBooks.toList(),
+                        nextPage = discoverPage,
+                        hasMore = discoverHasMore
+                    )
+                    viewLifecycleOwner.lifecycleScope.launch(IO) {
+                        runCatching {
+                            appDb.searchBookDao.insert(*newBooks.toTypedArray())
+                        }.onFailure {
+                            AppLog.put("发现页面搜索缓存写入失败", it)
+                        }
+                    }
+                    VideoBookPreloader.preloadSearchBooks(viewLifecycleOwner.lifecycleScope, newBooks)
                 }
             } catch (_: CancellationException) {
                 return@launch
@@ -3310,7 +3488,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     groups.clear()
                     groups.addAll(it)
                     upGroupsMenu()
-                    delay(500)
+                    delay(DISCOVERY_CLASSIC_FLOW_COALESCE_DELAY_MS)
                 }
         }
     }
@@ -3341,7 +3519,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 binding.swipeRefreshLayout.isRefreshing = false
                 binding.tvEmptyMsg.isGone = it.isNotEmpty() || (searchView?.query?.isNotEmpty() == true)
                 adapter.setItems(it, diffItemCallBack)
-                delay(500)
+                delay(DISCOVERY_CLASSIC_FLOW_COALESCE_DELAY_MS)
             }
         }
     }
@@ -3381,7 +3559,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             saveCurrentSuiteSnapshot()
             suiteLoadJob?.cancel()
             suiteLoadJob = null
-            clearSuiteRuntimeState()
             binding.swipeRefreshLayout.isRefreshing = false
         }
         WebViewPool.scheduleDestroyScope(WebViewPool.Scope.DISCOVERY)
@@ -3631,6 +3808,15 @@ private data class SuiteRankedPagingState(
     @Volatile var exhausted: Boolean = false
 )
 
+private data class ModernDiscoverResultCache(
+    val sourceUrl: String = "",
+    val tagUrl: String = "",
+    val books: List<SearchBook> = emptyList(),
+    val nextPage: Int = 2,
+    val hasMore: Boolean = true,
+    val savedAt: Long = 0L
+)
+
 private data class DiscoverySuitePageSnapshot(
     val suiteId: String,
     val signature: String,
@@ -3671,6 +3857,11 @@ private const val DISCOVERY_SUITE_SNAPSHOT_WATERFALL_LIMIT = 24
 private const val DISCOVERY_SUITE_SNAPSHOT_RANKED_TOTAL_LIMIT = 72
 private const val RANKED_SUITE_SNAPSHOT_BOOK_LIMIT = 24
 private const val DISCOVERY_SUITE_SNAPSHOT_WIDGET_LIMIT = 20
+private const val DISCOVERY_MODERN_CACHE_BOOK_LIMIT = 80
+private const val DISCOVERY_CACHE_TTL_MS = 72L * 60L * 60L * 1000L
+private const val DISCOVERY_CLASSIC_FLOW_COALESCE_DELAY_MS = 120L
+private const val DISCOVERY_MODERN_CACHE_PREFIX = "discovery_modern_result_"
+private const val DISCOVERY_SUITE_CACHE_PREFIX = "discovery_suite_snapshot_"
 
 private fun String.limitDiscoverText(max: Int): String {
     return if (length <= max) this else "${take(max.coerceAtLeast(2) - 1)}..."
