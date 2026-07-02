@@ -1756,6 +1756,7 @@
     <string name="cache_manage_sort_title">缓存排序</string>
     <string name="cache_manage_sort_current">排序：%1$s</string>
     <string name="cache_manage_sort_name">名称</string>
+    <string name="cache_manage_sort_last_read">最后阅读</string>
     <string name="cache_manage_sort_time">最近</string>
     <string name="cache_manage_summary_state">共 %1$d 本，已缓存 %2$d 章</string>
     <string name="cache_manage_empty">暂无%1$s缓存</string>

@@ -1999,6 +1999,7 @@ function login() {
     <string name="cache_manage_sort_title">Sort cache</string>
     <string name="cache_manage_sort_current">Sort: %1$s</string>
     <string name="cache_manage_sort_name">Name</string>
+    <string name="cache_manage_sort_last_read">Last read</string>
     <string name="cache_manage_sort_time">Recent</string>
     <string name="cache_manage_summary_state">%1$d book(s), %2$d cached chapter(s)</string>
     <string name="cache_manage_empty">No %1$s cache</string>

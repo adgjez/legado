@@ -594,6 +594,7 @@ private const val MENU_CONTAINER = 0x5401
 
 enum class CacheManageSortMode(val titleRes: Int) {
     RECENT(R.string.cache_manage_sort_time),
+    LAST_READ(R.string.cache_manage_sort_last_read),
     NAME(R.string.cache_manage_sort_name);
 
     fun comparator(): Comparator<CacheBookItem> {
@@ -602,6 +603,12 @@ enum class CacheManageSortMode(val titleRes: Int) {
                 o2.lastCacheUpdatedAt().compareTo(o1.lastCacheUpdatedAt()).takeIf { it != 0 }
                     ?: o1.book.name.cnCompare(o2.book.name).takeIf { it != 0 }
                     ?: o1.sourceName.cnCompare(o2.sourceName)
+            }
+            LAST_READ -> Comparator { o1, o2 ->
+                o2.lastReadAt().compareTo(o1.lastReadAt()).takeIf { it != 0 }
+                    ?: o1.book.name.cnCompare(o2.book.name).takeIf { it != 0 }
+                    ?: o1.sourceName.cnCompare(o2.sourceName).takeIf { it != 0 }
+                    ?: o2.lastCacheUpdatedAt().compareTo(o1.lastCacheUpdatedAt())
             }
             NAME -> Comparator { o1, o2 ->
                 o1.book.name.cnCompare(o2.book.name).takeIf { it != 0 }
@@ -629,6 +636,14 @@ private fun CacheBookItem.lastCacheUpdatedAt(): Long {
         maxOf(it.localUpdatedAt, it.remoteUpdatedAt)
     } ?: 0L
     return maxOf(localUpdatedAt, remoteUpdatedAt, variantTime)
+}
+
+private fun CacheBookItem.lastReadAt(): Long {
+    val variantTime = sourceVariants.maxOfOrNull { variant ->
+        variant.book.durChapterTime.takeIf { variant.inBookshelf } ?: 0L
+    } ?: 0L
+    val itemTime = book.durChapterTime.takeIf { inBookshelf } ?: 0L
+    return maxOf(itemTime, variantTime)
 }
 
 private fun CacheBookItem.hasLockedCacheTask(): Boolean {
