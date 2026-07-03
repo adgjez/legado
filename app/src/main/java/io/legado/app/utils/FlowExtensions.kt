@@ -197,17 +197,21 @@ fun <T> Flow<T>.flowWithLifecycleFirst(
     lifecycle: Lifecycle,
     minActiveState: Lifecycle.State = Lifecycle.State.STARTED
 ): Flow<T> = callbackFlow {
-    if (!lifecycle.currentState.isAtLeast(minActiveState)) {
-        firstOrNull()?.let {
-            send(it)
+    try {
+        if (!lifecycle.currentState.isAtLeast(minActiveState)) {
+            firstOrNull()?.let {
+                trySend(it)
+            }
         }
-    }
-    lifecycle.repeatOnLifecycle(minActiveState) {
-        this@flowWithLifecycleFirst.collect {
-            send(it)
+        lifecycle.repeatOnLifecycle(minActiveState) {
+            this@flowWithLifecycleFirst.collect {
+                trySend(it)
+                currentCoroutineContext().ensureActive()
+            }
         }
+    } finally {
+        close()
     }
-    close()
 }
 
 fun <T> Flow<T>.flowWithLifecycleAndDatabaseChange(
@@ -221,16 +225,21 @@ fun <T> Flow<T>.flowWithLifecycleAndDatabaseChange(
         .conflate()
         .onEach { update++ }
         .produceIn(this)
-    lifecycle.repeatOnLifecycle(minActiveState) {
-        if (update == 0) {
-            channel.receive()
+    try {
+        lifecycle.repeatOnLifecycle(minActiveState) {
+            if (update == 0) {
+                channel.receiveCatching().getOrNull() ?: return@repeatOnLifecycle
+            }
+            this@flowWithLifecycleAndDatabaseChange.collect {
+                update = 0
+                trySend(it)
+                currentCoroutineContext().ensureActive()
+            }
         }
-        this@flowWithLifecycleAndDatabaseChange.collect {
-            update = 0
-            send(it)
-        }
+    } finally {
+        channel.cancel()
+        close()
     }
-    close()
 }
 
 fun <T> Flow<T>.flowWithLifecycleAndDatabaseChangeFirst(
@@ -245,19 +254,24 @@ fun <T> Flow<T>.flowWithLifecycleAndDatabaseChangeFirst(
         .conflate()
         .onEach { update++ }
         .produceIn(this)
-    if (!isActive) {
-        firstOrNull()?.let {
-            send(it)
+    try {
+        if (!isActive) {
+            firstOrNull()?.let {
+                trySend(it)
+            }
         }
+        lifecycle.repeatOnLifecycle(minActiveState) {
+            if (update == 0) {
+                channel.receiveCatching().getOrNull() ?: return@repeatOnLifecycle
+            }
+            this@flowWithLifecycleAndDatabaseChangeFirst.collect {
+                update = 0
+                trySend(it)
+                currentCoroutineContext().ensureActive()
+            }
+        }
+    } finally {
+        channel.cancel()
+        close()
     }
-    lifecycle.repeatOnLifecycle(minActiveState) {
-        if (update == 0) {
-            channel.receive()
-        }
-        this@flowWithLifecycleAndDatabaseChangeFirst.collect {
-            update = 0
-            send(it)
-        }
-    }
-    close()
 }
