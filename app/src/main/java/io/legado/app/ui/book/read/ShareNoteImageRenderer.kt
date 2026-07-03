@@ -555,8 +555,9 @@ object ShareNoteImageRenderer {
 
     private fun appendBeforeBody(html: String, script: String?): String {
         if (script.isNullOrBlank()) return html
-        return if (html.contains("</body>", ignoreCase = true)) {
-            html.replace(Regex("</body>", RegexOption.IGNORE_CASE), "$script</body>")
+        val bodyEnd = Regex("</body>", RegexOption.IGNORE_CASE).find(html)
+        return if (bodyEnd != null) {
+            html.replaceRange(bodyEnd.range, "$script${bodyEnd.value}")
         } else {
             html + script
         }
