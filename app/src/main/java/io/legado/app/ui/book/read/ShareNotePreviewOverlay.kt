@@ -20,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.ShareNoteTemplateManager
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.config.ShareNoteTemplateManageActivity
@@ -31,6 +32,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.ceil
 
 class ShareNotePreviewOverlay private constructor(
     private val activity: ReadBookActivity,
@@ -45,9 +47,11 @@ class ShareNotePreviewOverlay private constructor(
     private val scrollView = ScrollView(activity)
     private val cardContainer = FrameLayout(activity)
     private val webView = WebView(activity)
+    private val previewImage = ImageView(activity)
     private val statusView = TextView(activity)
     private val bottomBar = LinearLayout(activity)
     private var currentEntry = initialEntry
+    private var renderedResult: ShareNoteImageRenderer.RenderResult? = null
     private var renderJob: Job? = null
     private var closed = false
 
@@ -88,7 +92,7 @@ class ShareNotePreviewOverlay private constructor(
         holder.addView(
             cardContainer,
             LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 leftMargin = cardMargin
@@ -99,11 +103,22 @@ class ShareNotePreviewOverlay private constructor(
         ShareNoteImageRenderer.configureWebView(webView)
         webView.isClickable = false
         webView.isLongClickable = false
+        webView.setOnTouchListener { _, _ -> true }
         cardContainer.addView(
             webView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 1
+            )
+        )
+        previewImage.isVisible = false
+        previewImage.scaleType = ImageView.ScaleType.FIT_CENTER
+        previewImage.adjustViewBounds = false
+        cardContainer.addView(
+            previewImage,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
             )
         )
     }
@@ -200,23 +215,49 @@ class ShareNotePreviewOverlay private constructor(
     private fun render(entry: ShareNoteTemplateManager.Entry) {
         if (closed) return
         currentEntry = entry
+        renderedResult = null
         renderJob?.cancel()
         renderJob = activity.lifecycleScope.launch {
             setBusy(activity.getString(R.string.share_note_loading_preview), true)
             runCatching {
                 val availableWidth = (width - cardMargin * 2).coerceAtLeast(240.dpToPx())
-                val size = ShareNoteImageRenderer.loadInto(webView, entry, payload, availableWidth)
+                previewImage.isVisible = false
+                webView.isVisible = true
+                val result = ShareNoteImageRenderer.renderMountedWebView(
+                    context = activity,
+                    webView = webView,
+                    entry = entry,
+                    payload = payload,
+                    targetWidth = availableWidth
+                )
+                renderedResult = result
+                val displayWidth = result.width.coerceAtMost(availableWidth).coerceAtLeast(1)
+                val displayHeight = ceil(result.height * (displayWidth.toFloat() / result.width.toFloat()))
+                    .toInt()
+                    .coerceAtLeast(1)
                 cardContainer.layoutParams = cardContainer.layoutParams.apply {
-                    height = size.height
+                    width = displayWidth
+                    height = displayHeight
                 }
                 webView.layoutParams = webView.layoutParams.apply {
-                    width = ViewGroup.LayoutParams.MATCH_PARENT
-                    height = size.height
+                    width = displayWidth
+                    height = displayHeight
                 }
+                previewImage.layoutParams = previewImage.layoutParams.apply {
+                    width = displayWidth
+                    height = displayHeight
+                }
+                ImageLoader.load(activity, result.file)
+                    .fitCenter()
+                    .into(previewImage)
+                webView.isVisible = false
+                previewImage.isVisible = true
                 cardContainer.requestLayout()
                 scrollView.scrollTo(0, 0)
             }.onFailure {
                 if (!closed && it !is CancellationException) {
+                    previewImage.isVisible = false
+                    webView.isVisible = false
                     AppLog.put("Share note preview render failed\n${it.localizedMessage}", it, true)
                     activity.toastOnUi(
                         activity.getString(R.string.share_note_render_failed, it.localizedMessage ?: "unknown")
@@ -255,7 +296,8 @@ class ShareNotePreviewOverlay private constructor(
         renderJob = activity.lifecycleScope.launch {
             setBusy(activity.getString(R.string.share_note_exporting), true)
             runCatching {
-                val file = ShareNoteImageRenderer.exportMountedWebView(activity, webView)
+                val file = renderedResult?.file
+                    ?: throw IllegalStateException(activity.getString(R.string.share_note_render_failed, "empty"))
                 ShareNoteImageRenderer.savePngToGallery(activity, file)
             }.onSuccess {
                 if (!closed) activity.toastOnUi(R.string.share_note_saved)
@@ -276,7 +318,8 @@ class ShareNotePreviewOverlay private constructor(
         renderJob = activity.lifecycleScope.launch {
             setBusy(activity.getString(R.string.share_note_exporting), true)
             runCatching {
-                ShareNoteImageRenderer.exportMountedWebView(activity, webView)
+                renderedResult?.file
+                    ?: throw IllegalStateException(activity.getString(R.string.share_note_render_failed, "empty"))
             }.onSuccess { file ->
                 if (!closed) {
                     runCatching {

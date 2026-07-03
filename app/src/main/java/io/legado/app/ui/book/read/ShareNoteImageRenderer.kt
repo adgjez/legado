@@ -13,27 +13,37 @@ import android.os.Build
 import android.os.Environment
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Base64
 import android.view.View
 import android.webkit.WebChromeClient
+import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
+import com.bumptech.glide.request.RequestOptions
 import io.legado.app.help.config.ShareNoteTemplateManager
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 import kotlin.math.ceil
 import kotlin.math.sqrt
@@ -44,8 +54,13 @@ object ShareNoteImageRenderer {
     private const val MAX_EXPORT_HEIGHT = 16000
     private const val MAX_EXPORT_PIXELS = 16_000_000
     private const val READY_TIMEOUT_MS = 8000L
+    private const val CAPTURE_TIMEOUT_MS = 15000L
+    private const val HTML2_CANVAS_ASSET = "share_note_templates/lib/html2canvas.min.js"
+    private const val CAPTURE_BRIDGE_NAME = "ReedenShareBridge"
+    private const val BRIDGE_CHUNK_SIZE = 256 * 1024
 
     private val renderMutex = Mutex()
+    private var html2CanvasScriptCache: String? = null
 
     data class Payload(
         val type: String = "note",
@@ -94,11 +109,45 @@ object ShareNoteImageRenderer {
         val top: Int = 0
     )
 
+    data class RenderResult(
+        val file: File,
+        val width: Int,
+        val height: Int
+    )
+
+    private data class JsPngResult(
+        val base64: String,
+        val width: Int,
+        val height: Int
+    )
+
     suspend fun renderShareImage(
         context: Context,
         entry: ShareNoteTemplateManager.Entry,
         payload: Payload
     ): File = renderMutex.withLock {
+        runCatching {
+            val result = withContext(Dispatchers.Main) {
+                val webView = WebView(context).apply {
+                    configureWebView(this)
+                    visibility = View.VISIBLE
+                }
+                try {
+                    renderHtmlToPngFile(
+                        context = context,
+                        webView = webView,
+                        entry = entry,
+                        payload = payload,
+                        targetWidth = initialWidth(entry)
+                    )
+                } finally {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+            }
+            return@withLock result.file
+        }
+
         val bitmap = withContext(Dispatchers.Main) {
             val width = initialWidth(entry)
             val webView = WebView(context).apply {
@@ -114,6 +163,24 @@ object ShareNoteImageRenderer {
             }
         }
         writeBitmapToCache(context, bitmap)
+    }
+
+    suspend fun renderMountedWebView(
+        context: Context,
+        webView: WebView,
+        entry: ShareNoteTemplateManager.Entry,
+        payload: Payload,
+        targetWidth: Int
+    ): RenderResult = renderMutex.withLock {
+        withContext(Dispatchers.Main) {
+            renderHtmlToPngFile(
+                context = context,
+                webView = webView,
+                entry = entry,
+                payload = payload,
+                targetWidth = targetWidth
+            )
+        }
     }
 
     suspend fun renderPreview(
@@ -159,6 +226,10 @@ object ShareNoteImageRenderer {
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.settings.loadWithOverviewMode = false
         webView.settings.useWideViewPort = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        }
+        webView.settings.blockNetworkImage = false
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.isVerticalScrollBarEnabled = false
         webView.isHorizontalScrollBarEnabled = false
@@ -223,6 +294,97 @@ object ShareNoteImageRenderer {
             }
             Uri.fromFile(target)
         }
+    }
+
+    private suspend fun renderHtmlToPngFile(
+        context: Context,
+        webView: WebView,
+        entry: ShareNoteTemplateManager.Entry,
+        payload: Payload,
+        targetWidth: Int
+    ): RenderResult {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val bridge = CaptureBridge()
+        val preparedPayload = preparePayloadAssets(context, payload)
+        webView.removeJavascriptInterface(CAPTURE_BRIDGE_NAME)
+        webView.addJavascriptInterface(bridge, CAPTURE_BRIDGE_NAME)
+        return try {
+            loadCaptureHtml(
+                context = context,
+                webView = webView,
+                entry = entry,
+                payloadJson = GSON.toJson(preparedPayload),
+                targetWidth = targetWidth
+            )
+            val png = withTimeout(CAPTURE_TIMEOUT_MS) { bridge.await() }
+            val file = writePngBase64ToCache(context, png.base64)
+            RenderResult(file, png.width, png.height)
+        } finally {
+            webView.removeJavascriptInterface(CAPTURE_BRIDGE_NAME)
+        }
+    }
+
+    private suspend fun loadCaptureHtml(
+        context: Context,
+        webView: WebView,
+        entry: ShareNoteTemplateManager.Entry,
+        payloadJson: String,
+        targetWidth: Int
+    ) {
+        val html = prepareHtml(
+            html = ShareNoteTemplateManager.readTemplateHtml(entry),
+            payloadJson = payloadJson,
+            extraBodyScript = buildCaptureScript(context)
+        )
+        val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
+        layoutWebView(webView, width, initialHeight(entry))
+        waitPageLoaded(webView, html, ShareNoteTemplateManager.baseUrl(entry))
+    }
+
+    private suspend fun preparePayloadAssets(context: Context, payload: Payload): Payload {
+        val cover = resolveImageDataUrl(context.applicationContext, payload.book.cover)
+        return payload.copy(book = payload.book.copy(cover = cover))
+    }
+
+    private suspend fun resolveImageDataUrl(context: Context, path: String?): String? = withContext(Dispatchers.IO) {
+        val value = path?.trim().orEmpty()
+        if (value.isBlank()) return@withContext null
+        if (value.startsWith("data:image/", ignoreCase = true)) return@withContext value
+        runCatching {
+            val isRemote = value.startsWith("http://", ignoreCase = true) ||
+                value.startsWith("https://", ignoreCase = true)
+            val options = RequestOptions()
+                .format(com.bumptech.glide.load.DecodeFormat.PREFER_ARGB_8888)
+                .disallowHardwareConfig()
+                .downsample(DownsampleStrategy.CENTER_INSIDE)
+            val builder = ImageLoader.loadBitmap(context, value)
+                .apply(options)
+                .let { if (isRemote) it.onlyRetrieveFromCache(true) else it }
+            val target = builder.submit(640, 900)
+            try {
+                target.get(4, TimeUnit.SECONDS).toDataUrl()
+            } finally {
+                Glide.with(context).clear(target)
+            }
+        }.getOrNull()
+    }
+
+    private fun Bitmap.toDataUrl(): String {
+        val output = ByteArrayOutputStream()
+        val format = if (hasAlpha()) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+        val mime = if (format == Bitmap.CompressFormat.PNG) "image/png" else "image/jpeg"
+        compress(format, if (format == Bitmap.CompressFormat.PNG) 100 else 88, output)
+        return "data:$mime;base64,${Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)}"
+    }
+
+    private suspend fun writePngBase64ToCache(context: Context, base64: String): File = withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, "share_note").apply { mkdirs() }
+        val file = File(dir, "share_note_${System.currentTimeMillis()}.png")
+        val clean = base64.substringAfter(",", base64).trim()
+        FileOutputStream(file).use {
+            it.write(Base64.decode(clean, Base64.DEFAULT))
+        }
+        file
     }
 
     private suspend fun loadHtml(
@@ -366,13 +528,19 @@ object ShareNoteImageRenderer {
         delay(32)
     }
 
-    private fun prepareHtml(html: String, payloadJson: String?): String {
-        if (payloadJson.isNullOrBlank()) return html
+    private fun prepareHtml(
+        html: String,
+        payloadJson: String?,
+        extraBodyScript: String? = null
+    ): String {
+        if (payloadJson.isNullOrBlank()) {
+            return appendBeforeBody(html, extraBodyScript)
+        }
         val escaped = payloadJson.replace("</script", "<\\/script")
         val directCall = "window.ReedenShareTemplate.render(window.ReedenShareTemplateMock);"
         val payloadCall = "window.ReedenShareTemplate.render($escaped);"
         if (html.contains(directCall)) {
-            return html.replace(directCall, payloadCall)
+            return appendBeforeBody(html.replace(directCall, payloadCall), extraBodyScript)
         }
         val script = """
             <script>
@@ -382,10 +550,204 @@ object ShareNoteImageRenderer {
             }
             </script>
         """.trimIndent()
+        return appendBeforeBody(html, script + extraBodyScript.orEmpty())
+    }
+
+    private fun appendBeforeBody(html: String, script: String?): String {
+        if (script.isNullOrBlank()) return html
         return if (html.contains("</body>", ignoreCase = true)) {
             html.replace(Regex("</body>", RegexOption.IGNORE_CASE), "$script</body>")
         } else {
             html + script
+        }
+    }
+
+    private fun buildCaptureScript(context: Context): String {
+        return """
+            <script>
+            ${html2CanvasScript(context)}
+            </script>
+            <script>
+            (function(){
+              var bridgeName = "$CAPTURE_BRIDGE_NAME";
+              var maxWidth = $MAX_EXPORT_WIDTH;
+              var maxHeight = $MAX_EXPORT_HEIGHT;
+              var maxPixels = $MAX_EXPORT_PIXELS;
+              var chunkSize = $BRIDGE_CHUNK_SIZE;
+              var imageTimeout = 3000;
+
+              function bridge() {
+                return window[bridgeName];
+              }
+
+              function reportError(error) {
+                try {
+                  var message = error && error.message ? error.message : String(error || "unknown");
+                  var stack = error && error.stack ? error.stack : "";
+                  bridge().onError(message, stack);
+                } catch (_) {}
+              }
+
+              function timeout(ms) {
+                return new Promise(function(resolve) { setTimeout(resolve, ms); });
+              }
+
+              function nextFrames() {
+                return new Promise(function(resolve) {
+                  requestAnimationFrame(function() {
+                    requestAnimationFrame(resolve);
+                  });
+                });
+              }
+
+              function waitFonts() {
+                if (!document.fonts || !document.fonts.ready) return Promise.resolve();
+                return Promise.race([document.fonts.ready, timeout(1500)]);
+              }
+
+              function waitImages() {
+                var imgs = Array.prototype.slice.call(document.images || []);
+                if (!imgs.length) return Promise.resolve();
+                return Promise.all(imgs.map(function(img) {
+                  return new Promise(function(resolve) {
+                    function done(ok) {
+                      clearTimeout(timer);
+                      img.onload = null;
+                      img.onerror = null;
+                      if (!ok || (!img.naturalWidth && !img.naturalHeight)) {
+                        img.style.visibility = "hidden";
+                      }
+                      resolve();
+                    }
+                    if (img.complete) {
+                      done(!!(img.naturalWidth || img.naturalHeight));
+                      return;
+                    }
+                    var timer = setTimeout(function() { done(false); }, imageTimeout);
+                    img.onload = function() { done(true); };
+                    img.onerror = function() { done(false); };
+                  });
+                }));
+              }
+
+              function captureScale(width, height) {
+                var byWidth = maxWidth / Math.max(width, 1);
+                var byHeight = maxHeight / Math.max(height, 1);
+                var byPixels = Math.sqrt(maxPixels / Math.max(width * height, 1));
+                var preferred = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+                return Math.max(0.2, Math.min(preferred, byWidth, byHeight, byPixels));
+              }
+
+              function sendCanvas(canvas) {
+                var dataUrl = canvas.toDataURL("image/png");
+                var comma = dataUrl.indexOf(",");
+                var base64 = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
+                var id = String(Date.now()) + "_" + String(Math.random()).slice(2);
+                bridge().onImageStart(id, canvas.width, canvas.height, base64.length);
+                for (var i = 0; i < base64.length; i += chunkSize) {
+                  bridge().onImageChunk(id, base64.substring(i, i + chunkSize));
+                }
+                bridge().onImageEnd(id);
+              }
+
+              async function runCapture() {
+                if (!window.html2canvas) throw new Error("html2canvas not loaded");
+                await waitFonts();
+                await waitImages();
+                await nextFrames();
+                var node = document.querySelector("[data-reeden-capture]") || document.body;
+                if (!node) throw new Error("capture node missing");
+                var rect = node.getBoundingClientRect();
+                var width = Math.ceil(Math.max(rect.width || 0, node.scrollWidth || 0, node.offsetWidth || 0, 1));
+                var height = Math.ceil(Math.max(rect.height || 0, node.scrollHeight || 0, node.offsetHeight || 0, 1));
+                var doc = document.documentElement || document.body;
+                var body = document.body || doc;
+                var scale = captureScale(width, height);
+                var canvas = await html2canvas(node, {
+                  backgroundColor: null,
+                  scale: scale,
+                  useCORS: false,
+                  allowTaint: false,
+                  logging: false,
+                  scrollX: 0,
+                  scrollY: 0,
+                  windowWidth: Math.ceil(Math.max(doc.scrollWidth || 0, body.scrollWidth || 0, width)),
+                  windowHeight: Math.ceil(Math.max(doc.scrollHeight || 0, body.scrollHeight || 0, height))
+                });
+                sendCanvas(canvas);
+              }
+
+              if (document.readyState === "complete") {
+                setTimeout(function() { runCapture().catch(reportError); }, 0);
+              } else {
+                window.addEventListener("load", function() {
+                  runCapture().catch(reportError);
+                }, { once: true });
+              }
+            })();
+            </script>
+        """.trimIndent()
+    }
+
+    private fun html2CanvasScript(context: Context): String {
+        html2CanvasScriptCache?.let { return it }
+        val script = context.assets.open(HTML2_CANVAS_ASSET).bufferedReader().use { it.readText() }
+        html2CanvasScriptCache = script
+        return script
+    }
+
+    private class CaptureBridge {
+        private val deferred = CompletableDeferred<JsPngResult>()
+        private val lock = Any()
+        private var imageId: String? = null
+        private var width = 0
+        private var height = 0
+        private var builder: StringBuilder? = null
+
+        suspend fun await(): JsPngResult = deferred.await()
+
+        @JavascriptInterface
+        fun onImageStart(id: String?, width: Int, height: Int, totalLength: Int) {
+            if (id.isNullOrBlank() || deferred.isCompleted) return
+            synchronized(lock) {
+                imageId = id
+                this.width = width.coerceAtLeast(1)
+                this.height = height.coerceAtLeast(1)
+                builder = StringBuilder(totalLength.coerceAtLeast(0))
+            }
+        }
+
+        @JavascriptInterface
+        fun onImageChunk(id: String?, chunk: String?) {
+            if (id.isNullOrBlank() || chunk == null || deferred.isCompleted) return
+            synchronized(lock) {
+                if (id == imageId) builder?.append(chunk)
+            }
+        }
+
+        @JavascriptInterface
+        fun onImageEnd(id: String?) {
+            if (id.isNullOrBlank() || deferred.isCompleted) return
+            val result = synchronized(lock) {
+                if (id != imageId) return
+                val data = builder?.toString().orEmpty()
+                builder = null
+                JsPngResult(data, width, height)
+            }
+            if (result.base64.isBlank()) {
+                deferred.completeExceptionally(IllegalStateException("empty captured image"))
+            } else {
+                deferred.complete(result)
+            }
+        }
+
+        @JavascriptInterface
+        fun onError(message: String?, stack: String?) {
+            if (deferred.isCompleted) return
+            val detail = listOfNotNull(message?.takeIf { it.isNotBlank() }, stack?.takeIf { it.isNotBlank() })
+                .joinToString("\n")
+                .ifBlank { "html2canvas capture failed" }
+            deferred.completeExceptionally(IllegalStateException(detail))
         }
     }
 
