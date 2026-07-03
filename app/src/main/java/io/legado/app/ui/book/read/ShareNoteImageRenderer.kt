@@ -74,8 +74,8 @@ object ShareNoteImageRenderer {
     )
 
     data class Profile(
-        val name: String = "Reeden",
-        val bio: String = "让阅读留下形状",
+        val name: String = "读者",
+        val bio: String = "一段认真读过的文字",
         val avatar: String? = null
     )
 
@@ -396,28 +396,28 @@ object ShareNoteImageRenderer {
         return Payload(
             generatedAt = "2026-06-20 15:30:00",
             profile = Profile(
-                name = "Reeden",
-                bio = "让阅读留下形状"
+                name = "读者",
+                bio = "一段认真读过的文字"
             ),
             book = Book(
-                title = "海边的阅读练习",
-                author = "Reeden",
-                description = "一本关于阅读节奏的示例书。真正稳定的模板，应该先让内容自然生长，再决定边界。",
-                type = "文学",
-                kind = "文学",
-                tags = "文学",
+                title = "清平乐",
+                author = "佚名",
+                description = "一本留给夜晚慢慢翻阅的书。",
+                type = "古典文学",
+                kind = "古典文学",
+                tags = "古典文学",
                 wordCountText = "13 万字",
                 readTimeText = "2小时18分钟",
                 readStatusText = "在读",
-                readProgressText = "读到 72%",
+                readProgressText = "72%",
                 readProgressPercent = 0.72f,
                 lastReadTime = "2026-06-20 15:30:00"
             ),
             note = Note(
                 createAt = "2026-06-20 15:30:00",
-                sectionName = "第一章 让内容先自然生长",
-                description = "真正稳定的模板，应该先让内容自然生长，再决定边界。",
-                comment = "这里是用户写下的想法。长文本会自动换行，海报高度由内容撑开。"
+                sectionName = "第一章",
+                description = "一段文字被认真读过以后，便不只是书中的句子，也会成为某一日的风声与光。",
+                comment = "这里记录当时的想法。卡片会随着文字内容自然变高，邮票齿孔不会被截图裁掉。"
             )
         )
     }

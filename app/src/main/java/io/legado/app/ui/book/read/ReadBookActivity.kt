@@ -87,6 +87,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.removeType
+import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BubblePackageManager
@@ -1493,7 +1494,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         return ShareNoteImageRenderer.Payload(
             generatedAt = DateFormat.getDateTimeInstance().format(now),
             profile = ShareNoteImageRenderer.Profile(
-                name = goalConfig.userName.orEmpty().ifBlank { "Reeden" },
+                name = goalConfig.userName.orEmpty().ifBlank { "读者" },
                 avatar = goalConfig.avatar
             ),
             book = ShareNoteImageRenderer.Book(
@@ -1508,7 +1509,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 readTimeText = readTimeText,
                 readStatusText = readTimeText.takeIf { it.isNotBlank() }?.let { "阅读 $it" }.orEmpty(),
                 readProgressText = progressText,
-                readProgressPercent = progressText.trim().removeSuffix("%").toFloatOrNull()?.div(100f),
+                readProgressPercent = parseShareNoteProgressPercent(progressText),
                 lastReadTime = book?.durChapterTime?.takeIf { it > 0L }?.let {
                     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it))
                 }.orEmpty()
@@ -1551,10 +1552,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         return runCatching {
             if (epubCoreActive) {
                 val page = binding.epubReadView.currentPage() ?: return@runCatching ""
-                val chapterSize = ReadBook.simulatedChapterSize.takeIf { it > 0 }
-                    ?: ReadBook.chapterSize.takeIf { it > 0 }
-                    ?: ReadBook.book?.totalChapterNum
-                    ?: 0
+                val chapterSize = currentShareNoteChapterSize()
                 val chapterPageIndex = binding.epubReadView.currentChapterPageIndex()
                 val chapterPageCount = binding.epubReadView.currentChapterPageCount()
                 shareNoteProgressText(
@@ -1564,9 +1562,55 @@ class ReadBookActivity : BaseReadBookActivity(),
                     pageSize = chapterPageCount
                 )
             } else {
-                binding.readView.getCurVisiblePage().readProgress
+                currentTextShareNoteProgressText()
             }
         }.getOrDefault("")
+    }
+
+    private fun currentTextShareNoteProgressText(): String {
+        val chapterSize = currentShareNoteChapterSize()
+        if (chapterSize <= 0) return ""
+        val textChapter = ReadBook.curTextChapter
+        val currentPage = runCatching { binding.readView.curPage.textPage }.getOrNull()
+        val chapterIndex = firstValidChapterIndex(
+            chapterSize,
+            textChapter?.chapter?.index,
+            ReadBook.durChapterIndex,
+            ReadBook.book?.durChapterIndex,
+            currentPage?.takeIf { it.chapterSize > 0 }?.chapterIndex
+        )
+        val pageSize = textChapter?.pageSize?.takeIf { it > 0 }
+            ?: currentPage?.pageSize?.takeIf { it > 0 }
+            ?: 0
+        val pageIndex = textChapter
+            ?.getPageIndexByCharIndex(ReadBook.durChapterPos)
+            ?.takeIf { it >= 0 }
+            ?: currentPage?.index?.takeIf { it >= 0 }
+            ?: 0
+        return shareNoteProgressText(chapterIndex, chapterSize, pageIndex, pageSize)
+    }
+
+    private fun currentShareNoteChapterSize(): Int {
+        return ReadBook.simulatedChapterSize.takeIf { it > 0 }
+            ?: ReadBook.chapterSize.takeIf { it > 0 }
+            ?: ReadBook.book?.simulatedTotalChapterNum()?.takeIf { it > 0 }
+            ?: ReadBook.book?.totalChapterNum?.takeIf { it > 0 }
+            ?: 0
+    }
+
+    private fun firstValidChapterIndex(chapterSize: Int, vararg candidates: Int?): Int {
+        return candidates.firstOrNull { it != null && it in 0 until chapterSize } ?: 0
+    }
+
+    private fun parseShareNoteProgressPercent(progressText: String): Float? {
+        val valueText = shareNoteProgressPercentRegex.find(progressText)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: progressText.trim()
+        return valueText.replace(',', '.')
+            .toFloatOrNull()
+            ?.div(100f)
+            ?.coerceIn(0f, 1f)
     }
 
     private fun shareNoteProgressText(
@@ -1576,11 +1620,18 @@ class ReadBookActivity : BaseReadBookActivity(),
         pageSize: Int
     ): String {
         if (chapterSize <= 0) return ""
-        val progress = if (pageSize <= 0) {
-            (chapterIndex + 1.0) / chapterSize.toDouble()
+        val safeChapterIndex = chapterIndex.coerceIn(0, chapterSize - 1)
+        val safePageSize = pageSize.coerceAtLeast(0)
+        val safePageIndex = if (safePageSize > 0) {
+            pageIndex.coerceIn(0, safePageSize - 1)
         } else {
-            chapterIndex.toDouble() / chapterSize.toDouble() +
-                (pageIndex + 1.0) / pageSize.toDouble() / chapterSize.toDouble()
+            0
+        }
+        val progress = if (safePageSize <= 0) {
+            (safeChapterIndex + 1.0) / chapterSize.toDouble()
+        } else {
+            safeChapterIndex.toDouble() / chapterSize.toDouble() +
+                (safePageIndex + 1.0) / safePageSize.toDouble() / chapterSize.toDouble()
         }.coerceIn(0.0, 1.0)
         return java.text.DecimalFormat("0.0%").format(progress)
     }
@@ -5067,6 +5118,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     companion object {
         const val RESULT_DELETED = 100
+        private val shareNoteProgressPercentRegex = Regex("""(\d+(?:[,.]\d+)?)\s*%""")
     }
 
 }

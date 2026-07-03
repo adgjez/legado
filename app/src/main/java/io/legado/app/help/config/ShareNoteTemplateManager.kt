@@ -165,6 +165,7 @@ object ShareNoteTemplateManager {
 
     fun apply(entry: Entry) {
         appCtx.putPrefString(PREF_ACTIVE_TEMPLATE, entry.dirName)
+        appCtx.putPrefString(PREF_LAST_TEMPLATE, entry.dirName)
     }
 
     fun rememberLast(entry: Entry) {
