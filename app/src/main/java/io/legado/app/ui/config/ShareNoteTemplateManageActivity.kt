@@ -36,6 +36,7 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
     private val entriesState = mutableStateOf<List<ShareNoteTemplateManager.Entry>>(emptyList())
     private val activeDirNameState = mutableStateOf(ShareNoteTemplateManager.activeDirName())
     private val previewFilesState = mutableStateOf<Map<String, File>>(emptyMap())
+    private val shareStyleState = mutableStateOf(ShareNoteTemplateManager.currentStyle())
     private var editingEntry: ShareNoteTemplateManager.Entry? = null
 
     private val importTemplate = registerForActivityResult(HandleFileContract()) { result ->
@@ -113,8 +114,10 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
                 ShareNoteTemplateManageScreen(
                     entries = entriesState.value,
                     activeDirName = activeDirNameState.value,
+                    shareStyle = shareStyleState.value,
                     previewFiles = previewFilesState.value,
                     onApply = ::applyTemplate,
+                    onStyleChange = ::updateShareStyle,
                     onEdit = ::editTemplate,
                     onMoreActions = ::templateActions,
                     onAddClick = ::showAddActions
@@ -133,10 +136,19 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
         }
     }
 
-    private fun refreshPreviews(entries: List<ShareNoteTemplateManager.Entry>) {
+    private fun refreshPreviews(
+        entries: List<ShareNoteTemplateManager.Entry>,
+        force: Boolean = false
+    ) {
+        val style = shareStyleState.value
         entries.forEach { entry ->
             lifecycleScope.launch {
-                ShareNoteImageRenderer.renderPreview(this@ShareNoteTemplateManageActivity, entry)?.let { file ->
+                ShareNoteImageRenderer.renderPreview(
+                    context = this@ShareNoteTemplateManageActivity,
+                    entry = entry,
+                    force = force,
+                    style = style
+                )?.let { file ->
                     previewFilesState.value = previewFilesState.value + (entry.dirName to file)
                 }
             }
@@ -147,6 +159,14 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
         ShareNoteTemplateManager.apply(entry)
         activeDirNameState.value = entry.dirName
         toastOnUi(R.string.success)
+    }
+
+    private fun updateShareStyle(style: ShareNoteTemplateManager.ShareStyle) {
+        if (style == shareStyleState.value) return
+        ShareNoteTemplateManager.saveStyle(style)
+        shareStyleState.value = ShareNoteTemplateManager.currentStyle()
+        previewFilesState.value = emptyMap()
+        refreshPreviews(entriesState.value, force = false)
     }
 
     private fun showAddActions() {
@@ -187,7 +207,12 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
 
     private fun openPreview(entry: ShareNoteTemplateManager.Entry) {
         lifecycleScope.launch {
-            val file = ShareNoteImageRenderer.renderPreview(this@ShareNoteTemplateManageActivity, entry, force = true)
+            val file = ShareNoteImageRenderer.renderPreview(
+                context = this@ShareNoteTemplateManageActivity,
+                entry = entry,
+                force = true,
+                style = shareStyleState.value
+            )
             if (file == null) {
                 toastOnUi("预览生成失败")
             } else {

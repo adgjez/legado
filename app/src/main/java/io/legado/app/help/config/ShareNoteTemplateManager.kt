@@ -20,7 +20,93 @@ object ShareNoteTemplateManager {
     private const val TEMPLATE_FILE_NAME = "template.html"
     private const val PREF_ACTIVE_TEMPLATE = "shareNoteTemplateActive"
     private const val PREF_LAST_TEMPLATE = "shareNoteTemplateLast"
+    private const val PREF_STYLE_PALETTE = "shareNoteStylePalette"
+    private const val PREF_STYLE_FONT = "shareNoteStyleFont"
     private const val ASSET_ROOT = "share_note_templates/default"
+    const val FONT_SYSTEM = "system"
+    const val FONT_SERIF = "serif"
+    const val FONT_ROUND = "round"
+    const val FONT_MONO = "mono"
+    val fontFamilies = listOf(FONT_SYSTEM, FONT_SERIF, FONT_ROUND, FONT_MONO)
+
+    data class StylePalette(
+        val id: String,
+        val name: String,
+        val background: String,
+        val surface: String,
+        val text: String,
+        val secondaryText: String,
+        val accent: String,
+        val divider: String
+    )
+
+    data class ShareStyle(
+        val paletteId: String = "classic",
+        val fontFamily: String = FONT_SYSTEM
+    )
+
+    val stylePalettes: List<StylePalette> = listOf(
+        StylePalette(
+            id = "classic",
+            name = "经典",
+            background = "#FFF7D8",
+            surface = "#FFF7D8",
+            text = "#3E3427",
+            secondaryText = "#8A7B68",
+            accent = "#8C6B2F",
+            divider = "#D8C9A2"
+        ),
+        StylePalette(
+            id = "mint",
+            name = "青绿",
+            background = "#DFF4E8",
+            surface = "#F5FFF9",
+            text = "#223B31",
+            secondaryText = "#648174",
+            accent = "#2E8B70",
+            divider = "#B7D9C8"
+        ),
+        StylePalette(
+            id = "rose",
+            name = "淡粉",
+            background = "#F8DDDF",
+            surface = "#FFF3F4",
+            text = "#453033",
+            secondaryText = "#8A6A6E",
+            accent = "#B66D78",
+            divider = "#E2BFC4"
+        ),
+        StylePalette(
+            id = "coffee",
+            name = "咖啡",
+            background = "#3A2617",
+            surface = "#442C19",
+            text = "#F3E2C8",
+            secondaryText = "#C1A98E",
+            accent = "#D6A15D",
+            divider = "#6B4A2F"
+        ),
+        StylePalette(
+            id = "navy",
+            name = "深蓝",
+            background = "#172234",
+            surface = "#1D2A40",
+            text = "#EAF0F7",
+            secondaryText = "#A7B5C8",
+            accent = "#80B7E8",
+            divider = "#38506F"
+        ),
+        StylePalette(
+            id = "paper",
+            name = "纸白",
+            background = "#F8F6EF",
+            surface = "#FFFDF7",
+            text = "#2F2F2B",
+            secondaryText = "#77736A",
+            accent = "#7B6F4A",
+            divider = "#DDD8C9"
+        )
+    )
 
     val rootDir: File
         get() = appCtx.externalFiles.getFile("shareNoteTemplates").apply { mkdirs() }
@@ -83,6 +169,36 @@ object ShareNoteTemplateManager {
 
     fun rememberLast(entry: Entry) {
         appCtx.putPrefString(PREF_LAST_TEMPLATE, entry.dirName)
+    }
+
+    fun currentStyle(): ShareStyle {
+        val paletteId = appCtx.getPrefString(PREF_STYLE_PALETTE, "classic")
+            ?.takeIf { id -> stylePalettes.any { it.id == id } }
+            ?: "classic"
+        val fontFamily = appCtx.getPrefString(PREF_STYLE_FONT, FONT_SYSTEM)
+            ?.takeIf { it in fontFamilies }
+            ?: FONT_SYSTEM
+        return ShareStyle(paletteId = paletteId, fontFamily = fontFamily)
+    }
+
+    fun saveStyle(style: ShareStyle) {
+        val paletteId = style.paletteId.takeIf { id -> stylePalettes.any { it.id == id } } ?: "classic"
+        val fontFamily = style.fontFamily.takeIf { it in fontFamilies } ?: FONT_SYSTEM
+        appCtx.putPrefString(PREF_STYLE_PALETTE, paletteId)
+        appCtx.putPrefString(PREF_STYLE_FONT, fontFamily)
+    }
+
+    fun palette(id: String): StylePalette {
+        return stylePalettes.firstOrNull { it.id == id } ?: stylePalettes.first()
+    }
+
+    fun fontLabel(fontFamily: String): String {
+        return when (fontFamily) {
+            FONT_SERIF -> "衬线字体"
+            FONT_ROUND -> "圆体"
+            FONT_MONO -> "等宽字体"
+            else -> "系统字体"
+        }
     }
 
     suspend fun loadEntries(): List<Entry> = withContext(IO) {
@@ -216,12 +332,24 @@ object ShareNoteTemplateManager {
         return readTemplateHtml(entry).toByteArray()
     }
 
-    fun previewFile(entry: Entry): File {
-        return previewDir.getFile("${entry.dirName}.png")
+    fun previewFile(
+        entry: Entry,
+        style: ShareStyle = currentStyle()
+    ): File {
+        return previewDir.getFile("${entry.dirName}_${previewStyleKey(style)}.png")
     }
 
     fun clearPreview(dirName: String) {
         previewDir.getFile("$dirName.png").delete()
+        previewDir.listFiles()
+            ?.filter { it.name.startsWith("${dirName}_") && it.name.endsWith(".png") }
+            ?.forEach { it.delete() }
+    }
+
+    private fun previewStyleKey(style: ShareStyle): String {
+        val paletteId = style.paletteId.takeIf { id -> stylePalettes.any { it.id == id } } ?: "classic"
+        val fontFamily = style.fontFamily.takeIf { it in fontFamilies } ?: FONT_SYSTEM
+        return "${paletteId}_${fontFamily}"
     }
 
     fun parseMeta(html: String): Meta {

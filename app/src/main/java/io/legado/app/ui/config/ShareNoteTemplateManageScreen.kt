@@ -2,30 +2,25 @@ package io.legado.app.ui.config
 
 import android.widget.ImageView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,12 +28,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.signature.ObjectKey
+import io.legado.app.R
 import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.ui.widget.compose.AppManagementCard
-import io.legado.app.ui.widget.compose.AppManagementLazyColumn
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
-import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
-import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.AppManagementPalette
+import io.legado.app.ui.widget.compose.AppPackageManageActionButton
+import io.legado.app.ui.widget.compose.AppPackageManageItemCard
+import io.legado.app.ui.widget.compose.AppPackageManageScreen
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import java.io.File
 import java.text.SimpleDateFormat
@@ -51,111 +49,127 @@ private val noteTemplateDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale
 internal fun ShareNoteTemplateManageScreen(
     entries: List<ShareNoteTemplateManager.Entry>,
     activeDirName: String,
+    shareStyle: ShareNoteTemplateManager.ShareStyle,
     previewFiles: Map<String, File>,
     onApply: (ShareNoteTemplateManager.Entry) -> Unit,
+    onStyleChange: (ShareNoteTemplateManager.ShareStyle) -> Unit,
     onEdit: (ShareNoteTemplateManager.Entry) -> Unit,
     onMoreActions: (ShareNoteTemplateManager.Entry) -> List<AppManagementMenuAction>,
     onAddClick: () -> Unit
 ) {
-    val palette = rememberAppManagementPalette()
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(palette.settings.page)
-            .windowInsetsPadding(WindowInsets.navigationBars)
-    ) {
-        Text(
-            text = "管理正文长按摘录分享图片使用的 HTML 模板。预览只显示模板头部，分享时会生成完整图片。",
-            color = palette.settings.secondaryText,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
-        )
-        AppManagementLazyColumn(
-            palette = palette,
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(vertical = 6.dp, horizontal = 0.dp)
-        ) {
-            items(entries, key = { it.dirName }) { entry ->
-                ShareNoteTemplateItemRow(
-                    entry = entry,
-                    active = activeDirName == entry.dirName,
-                    previewFile = previewFiles[entry.dirName],
-                    onApply = { onApply(entry) },
-                    onEdit = { onEdit(entry) },
-                    moreActions = onMoreActions(entry)
+    val applyText = stringResource(R.string.theme_apply)
+    val appliedText = stringResource(R.string.theme_applied_state)
+    val editText = stringResource(R.string.edit)
+    AppPackageManageScreen(
+        isNightMode = false,
+        summaryText = "管理正文长按摘录分享图片使用的 HTML 模板。预览只显示模板头部，分享时会生成完整图片。",
+        addText = stringResource(R.string.theme_add),
+        onSwitchDayNight = {},
+        onAdd = onAddClick,
+        showDayNightTabs = false,
+        headerContent = { palette ->
+            item {
+                ShareNoteStyleQuickCard(
+                    shareStyle = shareStyle,
+                    palette = palette,
+                    onStyleChange = onStyleChange
                 )
             }
         }
-        LegadoMiuixActionButton(
-            text = "添加模板",
-            palette = palette.miuix,
-            onClick = onAddClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            minHeight = 48.dp
-        )
+    ) { palette ->
+        items(entries, key = { it.dirName }) { entry ->
+            val active = activeDirName == entry.dirName
+            AppPackageManageItemCard(
+                title = entry.meta.name,
+                info = buildInfoText(entry),
+                isActive = active,
+                canEdit = entry.source == ShareNoteTemplateManager.Source.LOCAL,
+                applyText = if (active) appliedText else applyText,
+                editText = editText,
+                moreActions = onMoreActions(entry),
+                palette = palette,
+                onApply = { onApply(entry) },
+                onEdit = { onEdit(entry) },
+                leadingContent = {
+                    ShareNoteTemplatePreview(previewFile = previewFiles[entry.dirName])
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun ShareNoteTemplateItemRow(
-    entry: ShareNoteTemplateManager.Entry,
-    active: Boolean,
-    previewFile: File?,
-    onApply: () -> Unit,
-    onEdit: () -> Unit,
-    moreActions: List<AppManagementMenuAction>
+private fun ShareNoteStyleQuickCard(
+    shareStyle: ShareNoteTemplateManager.ShareStyle,
+    palette: AppManagementPalette,
+    onStyleChange: (ShareNoteTemplateManager.ShareStyle) -> Unit
 ) {
-    val palette = rememberAppManagementPalette()
     AppManagementCard(
         palette = palette,
         modifier = Modifier.fillMaxWidth(),
-        insidePadding = PaddingValues(12.dp)
+        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
     ) {
+        Text(
+            text = "分享样式",
+            color = palette.settings.primaryText,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = "快速切换摘录分享图片的配色和字体，预览与分享图片会同步更新。",
+            color = palette.settings.secondaryText,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        Spacer(modifier = Modifier.size(10.dp))
+        Text(
+            text = "配色",
+            color = palette.settings.secondaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ShareNoteTemplatePreview(previewFile = previewFile)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = entry.meta.name,
-                    color = palette.settings.primaryText,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            ShareNoteTemplateManager.stylePalettes.forEach { stylePalette ->
+                AppPackageManageActionButton(
+                    text = stylePalette.name,
+                    palette = palette.miuix,
+                    selected = stylePalette.id == shareStyle.paletteId,
+                    onClick = { onStyleChange(shareStyle.copy(paletteId = stylePalette.id)) }
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = buildInfoText(entry),
-                    color = palette.settings.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            }
+        }
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = "字体",
+            color = palette.settings.secondaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ShareNoteTemplateManager.fontFamilies.forEach { font ->
+                AppPackageManageActionButton(
+                    text = ShareNoteTemplateManager.fontLabel(font),
+                    palette = palette.miuix,
+                    selected = font == shareStyle.fontFamily,
+                    onClick = { onStyleChange(shareStyle.copy(fontFamily = font)) }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ShareNoteTemplateActionButton(
-                        text = if (active) "已应用" else "应用",
-                        accent = true,
-                        onClick = onApply
-                    )
-                    if (entry.source == ShareNoteTemplateManager.Source.LOCAL) {
-                        ShareNoteTemplateActionButton(text = "编辑", onClick = onEdit)
-                    }
-                    AppManagementMoreActionButton(
-                        actionsProvider = { moreActions },
-                        palette = palette,
-                        contentDescription = "更多"
-                    )
-                }
             }
         }
     }
@@ -174,7 +188,7 @@ internal fun ShareNoteTemplatePreview(
             .background(palette.miuix.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
-        if (previewFile != null && previewFile.exists()) {
+        if (previewFile != null && previewFile.exists() && previewFile.length() > 0L) {
             AndroidView(
                 factory = { context ->
                     ImageView(context).apply {
@@ -184,6 +198,9 @@ internal fun ShareNoteTemplatePreview(
                 update = { imageView ->
                     Glide.with(imageView.context.applicationContext ?: imageView.context)
                         .load(previewFile)
+                        .signature(
+                            ObjectKey("${previewFile.absolutePath}:${previewFile.length()}:${previewFile.lastModified()}")
+                        )
                         .centerCrop()
                         .into(imageView)
                 },
@@ -195,38 +212,6 @@ internal fun ShareNoteTemplatePreview(
                 color = palette.settings.secondaryText,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-private fun ShareNoteTemplateActionButton(
-    text: String,
-    accent: Boolean = false,
-    onClick: () -> Unit
-) {
-    val palette = rememberAppManagementPalette()
-    androidx.compose.material3.Surface(
-        modifier = Modifier
-            .height(34.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
-        color = if (accent) palette.settings.accent.copy(alpha = 0.14f) else palette.miuix.surfaceVariant,
-        contentColor = if (accent) palette.settings.accent else palette.settings.primaryText,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = text,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
             )
         }
     }

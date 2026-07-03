@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -124,7 +125,8 @@ object ShareNoteImageRenderer {
     suspend fun renderShareImage(
         context: Context,
         entry: ShareNoteTemplateManager.Entry,
-        payload: Payload
+        payload: Payload,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ): File = renderMutex.withLock {
         runCatching {
             val result = withContext(Dispatchers.Main) {
@@ -138,7 +140,8 @@ object ShareNoteImageRenderer {
                         webView = webView,
                         entry = entry,
                         payload = payload,
-                        targetWidth = initialWidth(entry)
+                        targetWidth = initialWidth(entry),
+                        style = style
                     )
                 } finally {
                     webView.stopLoading()
@@ -155,7 +158,7 @@ object ShareNoteImageRenderer {
                 visibility = View.VISIBLE
             }
             try {
-                loadInto(webView, entry, payload, width)
+                loadInto(webView, entry, payload, width, style)
                 drawWebViewToBitmap(webView)
             } finally {
                 webView.stopLoading()
@@ -170,7 +173,8 @@ object ShareNoteImageRenderer {
         webView: WebView,
         entry: ShareNoteTemplateManager.Entry,
         payload: Payload,
-        targetWidth: Int
+        targetWidth: Int,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ): RenderResult = renderMutex.withLock {
         withContext(Dispatchers.Main) {
             renderHtmlToPngFile(
@@ -178,7 +182,8 @@ object ShareNoteImageRenderer {
                 webView = webView,
                 entry = entry,
                 payload = payload,
-                targetWidth = targetWidth
+                targetWidth = targetWidth,
+                style = style
             )
         }
     }
@@ -186,33 +191,37 @@ object ShareNoteImageRenderer {
     suspend fun renderPreview(
         context: Context,
         entry: ShareNoteTemplateManager.Entry,
-        force: Boolean = false
+        force: Boolean = false,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ): File? = renderMutex.withLock {
-        val file = ShareNoteTemplateManager.previewFile(entry)
-        if (!force && file.exists() && file.length() > 0L) return@withLock file
+        val file = ShareNoteTemplateManager.previewFile(entry, style)
+        if (!force && isUsablePng(file)) return@withLock file
+        file.delete()
         runCatching {
-            val bitmap = withContext(Dispatchers.Main) {
+            val result = withContext(Dispatchers.Main) {
                 val webView = WebView(context).apply {
                     configureWebView(this)
                     visibility = View.VISIBLE
                 }
                 try {
-                    loadHtml(webView, entry, null)
-                    val size = evaluateCaptureSize(webView, initialWidth(entry), initialHeight(entry))
-                    layoutWebView(webView, size.width, minOf(size.height, 260).coerceAtLeast(180))
-                    waitForDraw()
-                    drawWebViewToBitmap(webView)
+                    renderHtmlToPngFile(
+                        context = context,
+                        webView = webView,
+                        entry = entry,
+                        payload = null,
+                        targetWidth = initialWidth(entry),
+                        maxCaptureHeight = 260,
+                        style = style
+                    )
                 } finally {
                     webView.stopLoading()
                     webView.destroy()
                 }
             }
             withContext(Dispatchers.IO) {
-                FileOutputStream(file).use {
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 92, it)
-                }
-                bitmap.recycle()
-                file
+                result.file.copyTo(file, overwrite = true)
+                result.file.delete()
+                file.takeIf(::isUsablePng)
             }
         }.getOrNull()
     }
@@ -241,10 +250,11 @@ object ShareNoteImageRenderer {
         webView: WebView,
         entry: ShareNoteTemplateManager.Entry,
         payload: Payload,
-        targetWidth: Int
+        targetWidth: Int,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ): CaptureSize = withContext(Dispatchers.Main) {
         val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
-        loadHtml(webView, entry, GSON.toJson(payload), width)
+        loadHtml(webView, entry, GSON.toJson(payload), width, style)
         val capture = evaluateCaptureSize(webView, width, initialHeight(entry))
         val height = capture.height.coerceIn(180, MAX_EXPORT_HEIGHT)
         layoutWebView(webView, width, height)
@@ -300,12 +310,14 @@ object ShareNoteImageRenderer {
         context: Context,
         webView: WebView,
         entry: ShareNoteTemplateManager.Entry,
-        payload: Payload,
-        targetWidth: Int
+        payload: Payload?,
+        targetWidth: Int,
+        maxCaptureHeight: Int? = null,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ): RenderResult {
         check(Looper.myLooper() == Looper.getMainLooper())
         val bridge = CaptureBridge()
-        val preparedPayload = preparePayloadAssets(context, payload)
+        val payloadJson = payload?.let { GSON.toJson(preparePayloadAssets(context, it)) }
         webView.removeJavascriptInterface(CAPTURE_BRIDGE_NAME)
         webView.addJavascriptInterface(bridge, CAPTURE_BRIDGE_NAME)
         return try {
@@ -313,8 +325,10 @@ object ShareNoteImageRenderer {
                 context = context,
                 webView = webView,
                 entry = entry,
-                payloadJson = GSON.toJson(preparedPayload),
-                targetWidth = targetWidth
+                payloadJson = payloadJson,
+                targetWidth = targetWidth,
+                maxCaptureHeight = maxCaptureHeight,
+                style = style
             )
             val png = withTimeout(CAPTURE_TIMEOUT_MS) { bridge.await() }
             val file = writePngBase64ToCache(context, png.base64)
@@ -328,13 +342,16 @@ object ShareNoteImageRenderer {
         context: Context,
         webView: WebView,
         entry: ShareNoteTemplateManager.Entry,
-        payloadJson: String,
-        targetWidth: Int
+        payloadJson: String?,
+        targetWidth: Int,
+        maxCaptureHeight: Int? = null,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ) {
         val html = prepareHtml(
             html = ShareNoteTemplateManager.readTemplateHtml(entry),
             payloadJson = payloadJson,
-            extraBodyScript = buildCaptureScript(context)
+            style = style,
+            extraBodyScript = buildCaptureScript(context, maxCaptureHeight)
         )
         val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
         layoutWebView(webView, width, initialHeight(entry))
@@ -391,9 +408,10 @@ object ShareNoteImageRenderer {
         webView: WebView,
         entry: ShareNoteTemplateManager.Entry,
         payloadJson: String?,
-        targetWidth: Int = initialWidth(entry)
+        targetWidth: Int = initialWidth(entry),
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ) {
-        val html = prepareHtml(ShareNoteTemplateManager.readTemplateHtml(entry), payloadJson)
+        val html = prepareHtml(ShareNoteTemplateManager.readTemplateHtml(entry), payloadJson, style)
         val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
         layoutWebView(webView, width, initialHeight(entry))
         waitPageLoaded(webView, html, ShareNoteTemplateManager.baseUrl(entry))
@@ -531,16 +549,18 @@ object ShareNoteImageRenderer {
     private fun prepareHtml(
         html: String,
         payloadJson: String?,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle(),
         extraBodyScript: String? = null
     ): String {
+        val styleTag = buildStyleTag(style)
         if (payloadJson.isNullOrBlank()) {
-            return appendBeforeBody(html, extraBodyScript)
+            return appendBeforeBody(appendBeforeHeadEnd(html, styleTag), extraBodyScript)
         }
         val escaped = payloadJson.replace("</script", "<\\/script")
         val directCall = "window.ReedenShareTemplate.render(window.ReedenShareTemplateMock);"
         val payloadCall = "window.ReedenShareTemplate.render($escaped);"
         if (html.contains(directCall)) {
-            return appendBeforeBody(html.replace(directCall, payloadCall), extraBodyScript)
+            return appendBeforeBody(appendBeforeHeadEnd(html.replace(directCall, payloadCall), styleTag), extraBodyScript)
         }
         val script = """
             <script>
@@ -550,7 +570,96 @@ object ShareNoteImageRenderer {
             }
             </script>
         """.trimIndent()
-        return appendBeforeBody(html, script + extraBodyScript.orEmpty())
+        return appendBeforeBody(appendBeforeHeadEnd(html, styleTag), script + extraBodyScript.orEmpty())
+    }
+
+    private fun buildStyleTag(style: ShareNoteTemplateManager.ShareStyle): String {
+        val palette = ShareNoteTemplateManager.palette(style.paletteId)
+        val fontFamily = when (style.fontFamily) {
+            ShareNoteTemplateManager.FONT_SERIF -> "Georgia, 'Noto Serif CJK SC', 'Source Han Serif SC', serif"
+            ShareNoteTemplateManager.FONT_ROUND -> "'MiSans', 'HarmonyOS Sans SC', 'Noto Sans CJK SC', sans-serif"
+            ShareNoteTemplateManager.FONT_MONO -> "'JetBrains Mono', 'Roboto Mono', monospace"
+            else -> "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', sans-serif"
+        }
+        val accentSoft = cssColorWithAlpha(palette.accent, 0.12f)
+        return """
+            <style id="reeden-share-runtime-style">
+            :root {
+              --reeden-share-bg: ${palette.background};
+              --reeden-share-surface: ${palette.surface};
+              --reeden-share-text: ${palette.text};
+              --reeden-share-secondary: ${palette.secondaryText};
+              --reeden-share-accent: ${palette.accent};
+              --reeden-share-divider: ${palette.divider};
+              --reeden-share-font: $fontFamily;
+            }
+            html, body {
+              background: var(--reeden-share-bg) !important;
+              color: var(--reeden-share-text) !important;
+              font-family: var(--reeden-share-font) !important;
+            }
+            [data-reeden-capture] {
+              background: var(--reeden-share-surface) !important;
+              color: var(--reeden-share-text) !important;
+              border-color: var(--reeden-share-divider) !important;
+              font-family: var(--reeden-share-font) !important;
+            }
+            [data-reeden-capture] * {
+              font-family: inherit !important;
+            }
+            [data-reeden-capture] .eyebrow,
+            [data-reeden-capture] h2,
+            [data-reeden-capture] .chip {
+              color: var(--reeden-share-accent) !important;
+            }
+            [data-reeden-capture] .subtitle,
+            [data-reeden-capture] .footer,
+            [data-reeden-capture] .info-row b {
+              color: var(--reeden-share-secondary) !important;
+            }
+            [data-reeden-capture] .body-text,
+            [data-reeden-capture] .info-row span,
+            [data-reeden-capture] blockquote {
+              color: var(--reeden-share-text) !important;
+            }
+            [data-reeden-capture] .chip {
+              border-color: var(--reeden-share-accent) !important;
+              background: $accentSoft !important;
+            }
+            [data-reeden-capture] blockquote {
+              border-left-color: var(--reeden-share-accent) !important;
+            }
+            [data-reeden-capture] .section,
+            [data-reeden-capture] .footer {
+              border-top-color: var(--reeden-share-divider) !important;
+            }
+            </style>
+        """.trimIndent()
+    }
+
+    private fun cssColorWithAlpha(hex: String, alpha: Float): String {
+        val clean = hex.trim().removePrefix("#")
+        val rgb = when (clean.length) {
+            6 -> clean
+            8 -> clean.takeLast(6)
+            else -> return "rgba(0,0,0,0)"
+        }
+        return runCatching {
+            val r = rgb.substring(0, 2).toInt(16)
+            val g = rgb.substring(2, 4).toInt(16)
+            val b = rgb.substring(4, 6).toInt(16)
+            "rgba($r,$g,$b,${alpha.coerceIn(0f, 1f)})"
+        }.getOrDefault("rgba(0,0,0,0)")
+    }
+
+    private fun appendBeforeHeadEnd(html: String, content: String): String {
+        if (content.isBlank()) return html
+        val headEnd = Regex("</head>", RegexOption.IGNORE_CASE).find(html)
+        return if (headEnd != null) {
+            html.replaceRange(headEnd.range, "$content${headEnd.value}")
+        } else {
+            "$content$html"
+        }
     }
 
     private fun appendBeforeBody(html: String, script: String?): String {
@@ -563,7 +672,8 @@ object ShareNoteImageRenderer {
         }
     }
 
-    private fun buildCaptureScript(context: Context): String {
+    private fun buildCaptureScript(context: Context, maxCaptureHeight: Int? = null): String {
+        val previewMaxHeight = maxCaptureHeight?.coerceIn(1, MAX_EXPORT_HEIGHT) ?: 0
         return """
             <script>
             ${html2CanvasScript(context)}
@@ -576,6 +686,7 @@ object ShareNoteImageRenderer {
               var maxPixels = $MAX_EXPORT_PIXELS;
               var chunkSize = $BRIDGE_CHUNK_SIZE;
               var imageTimeout = 3000;
+              var previewMaxHeight = $previewMaxHeight;
 
               function bridge() {
                 return window[bridgeName];
@@ -663,7 +774,8 @@ object ShareNoteImageRenderer {
                 var height = Math.ceil(Math.max(rect.height || 0, node.scrollHeight || 0, node.offsetHeight || 0, 1));
                 var doc = document.documentElement || document.body;
                 var body = document.body || doc;
-                var scale = captureScale(width, height);
+                var captureHeight = previewMaxHeight > 0 ? Math.min(height, previewMaxHeight) : height;
+                var scale = captureScale(width, captureHeight);
                 var canvas = await html2canvas(node, {
                   backgroundColor: null,
                   scale: scale,
@@ -672,6 +784,8 @@ object ShareNoteImageRenderer {
                   logging: false,
                   scrollX: 0,
                   scrollY: 0,
+                  width: width,
+                  height: captureHeight,
                   windowWidth: Math.ceil(Math.max(doc.scrollWidth || 0, body.scrollWidth || 0, width)),
                   windowHeight: Math.ceil(Math.max(doc.scrollHeight || 0, body.scrollHeight || 0, height))
                 });
@@ -802,6 +916,17 @@ object ShareNoteImageRenderer {
         val byHeight = MAX_EXPORT_HEIGHT.toFloat() / height.toFloat()
         val byPixels = sqrt(MAX_EXPORT_PIXELS.toFloat() / (width.toFloat() * height.toFloat()))
         return minOf(1f, byWidth, byHeight, byPixels).coerceAtMost(1f)
+    }
+
+    private fun isUsablePng(file: File): Boolean {
+        if (!file.exists() || file.length() <= 512L) return false
+        return runCatching {
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(file.absolutePath, options)
+            options.outWidth > 1 && options.outHeight > 1
+        }.getOrDefault(false)
     }
 
     private suspend fun writeBitmapToCache(context: Context, bitmap: Bitmap): File = withContext(Dispatchers.IO) {

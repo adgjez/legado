@@ -54,6 +54,7 @@ fun AppPackageManageScreen(
     onSwitchDayNight: (Boolean) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
+    showDayNightTabs: Boolean = true,
     headerContent: LazyListScope.(AppManagementPalette) -> Unit = {},
     listContent: LazyListScope.(AppManagementPalette) -> Unit
 ) {
@@ -71,20 +72,24 @@ fun AppPackageManageScreen(
                     .fillMaxSize()
                     .navigationBarsPadding()
             ) {
-                AppPackageManageTabs(
-                    isNightMode = isNightMode,
-                    palette = palette,
-                    onSwitch = onSwitchDayNight
-                )
-                Text(
-                    text = summaryText,
-                    color = palette.settings.secondaryText,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, top = 10.dp, end = 16.dp)
-                )
+                if (showDayNightTabs) {
+                    AppPackageManageTabs(
+                        isNightMode = isNightMode,
+                        palette = palette,
+                        onSwitch = onSwitchDayNight
+                    )
+                }
+                if (summaryText.isNotBlank()) {
+                    Text(
+                        text = summaryText,
+                        color = palette.settings.secondaryText,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, top = 10.dp, end = 16.dp)
+                    )
+                }
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
