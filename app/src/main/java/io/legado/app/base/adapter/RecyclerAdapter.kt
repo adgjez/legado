@@ -37,6 +37,8 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
     private var itemLongClickListener: ((holder: ItemViewHolder, item: ITEM) -> Boolean)? = null
 
     private var diffJob: Coroutine<*>? = null
+    @Volatile
+    private var diffVersion = 0L
 
     private var isResumed = false
 
@@ -98,6 +100,8 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
     @Synchronized
     fun setItems(items: List<ITEM>?) {
         kotlin.runCatching {
+            diffVersion++
+            diffJob?.cancel()
             if (this.items.isNotEmpty()) {
                 this.items.clear()
             }
@@ -126,7 +130,7 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
             val footerCount = getFooterCount()
             val callback = object : DiffUtil.Callback() {
                 override fun getOldListSize(): Int {
-                    return itemCount
+                    return oldItems.size + headerCount + footerCount
                 }
 
                 override fun getNewListSize(): Int {
@@ -165,6 +169,7 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
                 return@runCatching
             }
             diffJob?.cancel()
+            val version = ++diffVersion
             diffJob = Coroutine.async {
                 val diffResult = if (skipDiff) withTimeoutOrNullAsync(500L) {
                     DiffUtil.calculateDiff(callback, itemsSize < 2000)
@@ -173,6 +178,9 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
                 }
                 ensureActive()
                 handler.post {
+                    if (version != diffVersion) {
+                        return@post
+                    }
                     // 非活跃或 diff 计算失败才全量刷新；活跃且 diff 成功走增量 dispatch。
                     // 原写法 `if (isResumed || diffResult == null)` 把活跃态也导向全量刷新，
                     // 导致 dispatchUpdatesTo 永远走不到、DiffUtil 形同虚设。
@@ -186,7 +194,6 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
                     if (items != null) {
                         this@RecyclerAdapter.items.addAll(items)
                     }
-                    ensureActive()
                     diffResult.dispatchUpdatesTo(this@RecyclerAdapter)
                     onCurrentListChanged()
                 }

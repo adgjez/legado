@@ -25,15 +25,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.coroutineContext
 import kotlin.math.ceil
 import kotlin.math.sqrt
 
@@ -345,8 +346,11 @@ object ShareNoteImageRenderer {
     }
 
     private suspend fun evaluateString(webView: WebView, script: String): String {
-        return suspendCoroutine { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             webView.evaluateJavascript(script) { raw ->
+                if (!continuation.isActive) {
+                    return@evaluateJavascript
+                }
                 val value = raw
                     ?.trim()
                     ?.trim('"')
@@ -386,21 +390,33 @@ object ShareNoteImageRenderer {
     }
 
     private suspend fun waitPageLoaded(webView: WebView, html: String, baseUrl: String) {
-        suspendCoroutine<Unit> { continuation ->
-            var resumed = false
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val resumed = AtomicBoolean(false)
+            var finishRunnable: Runnable? = null
+            lateinit var timeoutRunnable: Runnable
             fun resumeOnce(error: Throwable? = null) {
-                if (resumed) return
-                resumed = true
-                if (error != null) continuation.resumeWithException(error)
-                else continuation.resume(Unit)
+                if (!resumed.compareAndSet(false, true)) return
+                webView.removeCallbacks(timeoutRunnable)
+                finishRunnable?.let(webView::removeCallbacks)
+                if (!continuation.isActive) return
+                if (error != null) continuation.resumeWithException(error) else continuation.resume(Unit)
+            }
+            timeoutRunnable = Runnable {
+                resumeOnce()
             }
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    webView.postDelayed({ resumeOnce() }, 120)
+                    val runnable = Runnable { resumeOnce() }
+                    finishRunnable = runnable
+                    webView.postDelayed(runnable, 120)
                 }
             }
+            continuation.invokeOnCancellation {
+                webView.removeCallbacks(timeoutRunnable)
+                finishRunnable?.let(webView::removeCallbacks)
+            }
             webView.loadDataWithBaseURL(baseUrl, html, "text/html", "UTF-8", null)
-            webView.postDelayed({ resumeOnce() }, READY_TIMEOUT_MS)
+            webView.postDelayed(timeoutRunnable, READY_TIMEOUT_MS)
         }
     }
 

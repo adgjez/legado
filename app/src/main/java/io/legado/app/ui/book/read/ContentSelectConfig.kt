@@ -20,15 +20,25 @@ object ContentSelectConfig {
     const val ACTION_GENERATE_IMAGE = "generate_image"
     const val ACTION_SHARE_IMAGE = "share_image"
 
-    private val oldDefaultActions = setOf(
+    private val legacyDefaultActions = setOf(
         ACTION_REPLACE,
         ACTION_COPY,
         ACTION_BOOKMARK,
         ACTION_ALOUD,
         ACTION_DICT,
         ACTION_ASK_AI,
-        ACTION_GENERATE_IMAGE,
-        ACTION_SHARE_IMAGE
+        ACTION_GENERATE_IMAGE
+    )
+
+    private val defaultActionsBeforeShare = setOf(
+        ACTION_WEB_SEARCH,
+        ACTION_REPLACE,
+        ACTION_COPY,
+        ACTION_BOOKMARK,
+        ACTION_ALOUD,
+        ACTION_DICT,
+        ACTION_ASK_AI,
+        ACTION_GENERATE_IMAGE
     )
 
     val defaultActions = setOf(
@@ -39,7 +49,8 @@ object ContentSelectConfig {
         ACTION_ALOUD,
         ACTION_DICT,
         ACTION_ASK_AI,
-        ACTION_GENERATE_IMAGE
+        ACTION_GENERATE_IMAGE,
+        ACTION_SHARE_IMAGE
     )
 
     val defaultOpenValues = listOf("", ACTION_WEB_SEARCH, ACTION_DICT, ACTION_ASK_AI)
@@ -126,7 +137,11 @@ object ContentSelectConfig {
             ?.filterNot { it in removedActionIds }
             ?.toSet()
             ?: return defaultActions
-        return if (saved == oldDefaultActions) defaultActions else saved
+        return if (saved == legacyDefaultActions || saved == defaultActionsBeforeShare) {
+            defaultActions
+        } else {
+            saved
+        }
     }
 
     fun searchEngines(context: Context): List<SearchEngine> {
