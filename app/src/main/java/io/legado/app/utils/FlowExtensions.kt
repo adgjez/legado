@@ -206,7 +206,6 @@ fun <T> Flow<T>.flowWithLifecycleFirst(
         lifecycle.repeatOnLifecycle(minActiveState) {
             this@flowWithLifecycleFirst.collect {
                 trySend(it)
-                currentCoroutineContext().ensureActive()
             }
         }
     } finally {
@@ -233,7 +232,6 @@ fun <T> Flow<T>.flowWithLifecycleAndDatabaseChange(
             this@flowWithLifecycleAndDatabaseChange.collect {
                 update = 0
                 trySend(it)
-                currentCoroutineContext().ensureActive()
             }
         }
     } finally {
@@ -267,7 +265,6 @@ fun <T> Flow<T>.flowWithLifecycleAndDatabaseChangeFirst(
             this@flowWithLifecycleAndDatabaseChangeFirst.collect {
                 update = 0
                 trySend(it)
-                currentCoroutineContext().ensureActive()
             }
         }
     } finally {
