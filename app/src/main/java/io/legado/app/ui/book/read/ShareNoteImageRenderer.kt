@@ -66,6 +66,7 @@ object ShareNoteImageRenderer {
     data class Payload(
         val type: String = "note",
         val generatedAt: String,
+        val posterWidth: Int = 375,
         val profile: Profile = Profile(),
         val appearance: Appearance = Appearance(),
         val book: Book,
@@ -79,7 +80,22 @@ object ShareNoteImageRenderer {
     )
 
     data class Appearance(
-        val hideComment: Boolean = false
+        val hideComment: Boolean = false,
+        val colorTheme: ColorTheme? = null,
+        val fontFamily: String = "",
+        val fontFace: Any? = null,
+        val backgroundImage: String? = null,
+        val backgroundCssSize: String = "cover",
+        val backgroundMaskOpacity: Float = 0f
+    )
+
+    data class ColorTheme(
+        val backgroundColor: String,
+        val textColor: String,
+        val mutedColor: String,
+        val surfaceColor: String = backgroundColor,
+        val secondaryTextColor: String = textColor,
+        val dividerColor: String = mutedColor
     )
 
     data class Book(
@@ -88,11 +104,15 @@ object ShareNoteImageRenderer {
         val description: String = "",
         val cover: String? = null,
         val type: String = "",
+        val kind: String = "",
+        val tags: String = "",
         val rating: Float? = null,
         val sizeText: String = "",
         val wordCountText: String = "",
+        val readTimeText: String = "",
         val readStatusText: String = "",
         val readProgressText: String = "",
+        val readProgressPercent: Float? = null,
         val lastReadTime: String = ""
     )
 
@@ -208,7 +228,7 @@ object ShareNoteImageRenderer {
                         context = context,
                         webView = webView,
                         entry = entry,
-                        payload = null,
+                        payload = previewPayload(),
                         targetWidth = initialWidth(entry),
                         maxCaptureHeight = 260,
                         style = style
@@ -255,7 +275,7 @@ object ShareNoteImageRenderer {
     ): CaptureSize = withContext(Dispatchers.Main) {
         val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
         loadHtml(webView, entry, GSON.toJson(payload), width, style)
-        val capture = evaluateCaptureSize(webView, width, initialHeight(entry))
+        val capture = evaluateCaptureSize(webView, width, captureViewportHeight(entry))
         val height = capture.height.coerceIn(180, MAX_EXPORT_HEIGHT)
         layoutWebView(webView, width, height)
         waitForDraw()
@@ -317,7 +337,7 @@ object ShareNoteImageRenderer {
     ): RenderResult {
         check(Looper.myLooper() == Looper.getMainLooper())
         val bridge = CaptureBridge()
-        val payloadJson = payload?.let { GSON.toJson(preparePayloadAssets(context, it)) }
+        val payloadJson = payload?.let { GSON.toJson(preparePayloadAssets(context, it, style)) }
         webView.removeJavascriptInterface(CAPTURE_BRIDGE_NAME)
         webView.addJavascriptInterface(bridge, CAPTURE_BRIDGE_NAME)
         return try {
@@ -354,13 +374,67 @@ object ShareNoteImageRenderer {
             extraBodyScript = buildCaptureScript(context, maxCaptureHeight)
         )
         val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
-        layoutWebView(webView, width, initialHeight(entry))
+        layoutWebView(webView, width, captureViewportHeight(entry))
         waitPageLoaded(webView, html, ShareNoteTemplateManager.baseUrl(entry))
     }
 
-    private suspend fun preparePayloadAssets(context: Context, payload: Payload): Payload {
+    private suspend fun preparePayloadAssets(
+        context: Context,
+        payload: Payload,
+        style: ShareNoteTemplateManager.ShareStyle
+    ): Payload {
         val cover = resolveImageDataUrl(context.applicationContext, payload.book.cover)
-        return payload.copy(book = payload.book.copy(cover = cover))
+        val avatar = resolveImageDataUrl(context.applicationContext, payload.profile.avatar)
+        return payload.copy(
+            profile = payload.profile.copy(avatar = avatar),
+            appearance = payload.appearance.withRuntimeStyle(style),
+            book = payload.book.copy(cover = cover)
+        )
+    }
+
+    private fun previewPayload(): Payload {
+        return Payload(
+            generatedAt = "2026-06-20 15:30:00",
+            profile = Profile(
+                name = "Reeden",
+                bio = "让阅读留下形状"
+            ),
+            book = Book(
+                title = "海边的阅读练习",
+                author = "Reeden",
+                description = "一本关于阅读节奏的示例书。真正稳定的模板，应该先让内容自然生长，再决定边界。",
+                type = "文学",
+                kind = "文学",
+                tags = "文学",
+                wordCountText = "13 万字",
+                readTimeText = "2小时18分钟",
+                readStatusText = "在读",
+                readProgressText = "读到 72%",
+                readProgressPercent = 0.72f,
+                lastReadTime = "2026-06-20 15:30:00"
+            ),
+            note = Note(
+                createAt = "2026-06-20 15:30:00",
+                sectionName = "第一章 让内容先自然生长",
+                description = "真正稳定的模板，应该先让内容自然生长，再决定边界。",
+                comment = "这里是用户写下的想法。长文本会自动换行，海报高度由内容撑开。"
+            )
+        )
+    }
+
+    private fun Appearance.withRuntimeStyle(style: ShareNoteTemplateManager.ShareStyle): Appearance {
+        val palette = ShareNoteTemplateManager.palette(style.paletteId)
+        return copy(
+            colorTheme = colorTheme ?: ColorTheme(
+                backgroundColor = palette.background,
+                textColor = palette.text,
+                mutedColor = palette.accent,
+                surfaceColor = palette.surface,
+                secondaryTextColor = palette.secondaryText,
+                dividerColor = palette.divider
+            ),
+            fontFamily = fontFamily.ifBlank { fontFamilyCss(style) }
+        )
     }
 
     private suspend fun resolveImageDataUrl(context: Context, path: String?): String? = withContext(Dispatchers.IO) {
@@ -413,7 +487,7 @@ object ShareNoteImageRenderer {
     ) {
         val html = prepareHtml(ShareNoteTemplateManager.readTemplateHtml(entry), payloadJson, style)
         val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
-        layoutWebView(webView, width, initialHeight(entry))
+        layoutWebView(webView, width, captureViewportHeight(entry))
         waitPageLoaded(webView, html, ShareNoteTemplateManager.baseUrl(entry))
         waitUntilReady(webView)
     }
@@ -432,6 +506,14 @@ object ShareNoteImageRenderer {
         } else {
             900
         }.coerceIn(240, 2400)
+    }
+
+    private fun captureViewportHeight(entry: ShareNoteTemplateManager.Entry): Int {
+        return if (entry.meta.canvas == ShareNoteTemplateManager.CANVAS_WIDE) {
+            initialHeight(entry)
+        } else {
+            1
+        }
     }
 
     private fun layoutWebView(webView: WebView, width: Int, height: Int) {
@@ -556,11 +638,11 @@ object ShareNoteImageRenderer {
         if (payloadJson.isNullOrBlank()) {
             return appendBeforeBody(appendBeforeHeadEnd(html, styleTag), extraBodyScript)
         }
-        val escaped = payloadJson.replace("</script", "<\\/script")
-        val directCall = "window.ReedenShareTemplate.render(window.ReedenShareTemplateMock);"
+        val escaped = escapeJsonForScript(payloadJson)
         val payloadCall = "window.ReedenShareTemplate.render($escaped);"
-        if (html.contains(directCall)) {
-            return appendBeforeBody(appendBeforeHeadEnd(html.replace(directCall, payloadCall), styleTag), extraBodyScript)
+        val replacedHtml = replaceMockRenderCalls(html, payloadCall)
+        if (replacedHtml != html) {
+            return appendBeforeBody(appendBeforeHeadEnd(replacedHtml, styleTag), extraBodyScript)
         }
         val script = """
             <script>
@@ -573,14 +655,25 @@ object ShareNoteImageRenderer {
         return appendBeforeBody(appendBeforeHeadEnd(html, styleTag), script + extraBodyScript.orEmpty())
     }
 
+    private fun replaceMockRenderCalls(html: String, payloadCall: String): String {
+        val regex = Regex(
+            """(?:window\s*\.\s*)?ReedenShareTemplate\s*\.\s*render\s*\(\s*(?:window\s*\.\s*)?ReedenShareTemplateMock\s*\)\s*;?"""
+        )
+        return regex.replace(html) { payloadCall }
+    }
+
+    private fun escapeJsonForScript(json: String): String {
+        return json
+            .replace("<", "\\u003C")
+            .replace(">", "\\u003E")
+            .replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029")
+    }
+
     private fun buildStyleTag(style: ShareNoteTemplateManager.ShareStyle): String {
         val palette = ShareNoteTemplateManager.palette(style.paletteId)
-        val fontFamily = when (style.fontFamily) {
-            ShareNoteTemplateManager.FONT_SERIF -> "Georgia, 'Noto Serif CJK SC', 'Source Han Serif SC', serif"
-            ShareNoteTemplateManager.FONT_ROUND -> "'MiSans', 'HarmonyOS Sans SC', 'Noto Sans CJK SC', sans-serif"
-            ShareNoteTemplateManager.FONT_MONO -> "'JetBrains Mono', 'Roboto Mono', monospace"
-            else -> "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', sans-serif"
-        }
+        val fontFamily = fontFamilyCss(style)
         val accentSoft = cssColorWithAlpha(palette.accent, 0.12f)
         return """
             <style id="reeden-share-runtime-style">
@@ -635,6 +728,15 @@ object ShareNoteImageRenderer {
             }
             </style>
         """.trimIndent()
+    }
+
+    private fun fontFamilyCss(style: ShareNoteTemplateManager.ShareStyle): String {
+        return when (style.fontFamily) {
+            ShareNoteTemplateManager.FONT_SERIF -> "Georgia, 'Noto Serif CJK SC', 'Source Han Serif SC', serif"
+            ShareNoteTemplateManager.FONT_ROUND -> "'MiSans', 'HarmonyOS Sans SC', 'Noto Sans CJK SC', sans-serif"
+            ShareNoteTemplateManager.FONT_MONO -> "'JetBrains Mono', 'Roboto Mono', monospace"
+            else -> "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', sans-serif"
+        }
     }
 
     private fun cssColorWithAlpha(hex: String, alpha: Float): String {
@@ -750,6 +852,20 @@ object ShareNoteImageRenderer {
                 return Math.max(0.2, Math.min(preferred, byWidth, byHeight, byPixels));
               }
 
+              function normalizeCaptureNode(node) {
+                if (!node || !node.hasAttribute || !node.hasAttribute("data-reeden-capture")) return;
+                if (node.getAttribute("data-reeden-fixed-viewport") === "true") return;
+                var viewportHeight = Math.max(window.innerHeight || document.documentElement.clientHeight || 1, 1);
+                var computedHeight = 0;
+                try {
+                  computedHeight = parseFloat(window.getComputedStyle(node).height) || 0;
+                } catch (_) {}
+                node.style.setProperty("min-height", "0", "important");
+                if (computedHeight > 0 && computedHeight <= viewportHeight + 1 && node.scrollHeight > computedHeight + 1) {
+                  node.style.setProperty("height", "auto", "important");
+                }
+              }
+
               function sendCanvas(canvas) {
                 var dataUrl = canvas.toDataURL("image/png");
                 var comma = dataUrl.indexOf(",");
@@ -769,6 +885,8 @@ object ShareNoteImageRenderer {
                 await nextFrames();
                 var node = document.querySelector("[data-reeden-capture]") || document.body;
                 if (!node) throw new Error("capture node missing");
+                normalizeCaptureNode(node);
+                await nextFrames();
                 var rect = node.getBoundingClientRect();
                 var width = Math.ceil(Math.max(rect.width || 0, node.scrollWidth || 0, node.offsetWidth || 0, 1));
                 var height = Math.ceil(Math.max(rect.height || 0, node.scrollHeight || 0, node.offsetHeight || 0, 1));

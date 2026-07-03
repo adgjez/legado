@@ -16,27 +16,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -44,9 +37,11 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.book.read.config.ReaderOption
 import io.legado.app.ui.book.read.config.ReaderSectionCard
 import io.legado.app.ui.book.read.config.ReaderSegmentedOptions
+import io.legado.app.ui.book.read.config.ReaderSheetHeader
 import io.legado.app.ui.book.read.config.ReaderTextAction
 import io.legado.app.ui.book.read.config.rememberReaderMenuDialogStyle
 import io.legado.app.ui.config.ShareNoteTemplateManageActivity
@@ -68,8 +63,8 @@ class ShareNotePreviewOverlay private constructor(
 
     private val cardMargin = 22.dpToPx()
     private val topPadding = 72.dpToPx()
-    private val bottomBarHeight = 270.dpToPx()
-    private val bottomContentPadding = bottomBarHeight + 44.dpToPx()
+    private val mainBottomBarHeight = 96.dpToPx()
+    private val templateBottomBarHeight = 286.dpToPx()
     private val scrollView = ScrollView(activity)
     private val cardContainer = FrameLayout(activity)
     private val webView = WebView(activity)
@@ -82,6 +77,7 @@ class ShareNotePreviewOverlay private constructor(
     private var templateEntries by mutableStateOf(listOf(initialEntry))
     private var shareStyle by mutableStateOf(ShareNoteTemplateManager.currentStyle())
     private var busyState by mutableStateOf(false)
+    private var bottomPanelMode by mutableStateOf(BottomPanelMode.Actions)
     private var renderedResult: ShareNoteImageRenderer.RenderResult? = null
     private var renderJob: Job? = null
     private var closed = false
@@ -101,7 +97,7 @@ class ShareNotePreviewOverlay private constructor(
     private fun setupScrollLayer() {
         scrollView.clipToPadding = false
         scrollView.isFillViewport = false
-        scrollView.setPadding(0, topPadding, 0, bottomContentPadding)
+        updateScrollPadding()
         scrollView.overScrollMode = View.OVER_SCROLL_NEVER
         addView(
             scrollView,
@@ -178,12 +174,16 @@ class ShareNotePreviewOverlay private constructor(
         }
         addView(
             bottomBar,
-            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-                leftMargin = 12.dpToPx()
-                rightMargin = 12.dpToPx()
-                bottomMargin = 12.dpToPx()
-            }
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM)
         )
+    }
+
+    private fun updateScrollPadding() {
+        val bottomPadding = when (bottomPanelMode) {
+            BottomPanelMode.Actions -> mainBottomBarHeight
+            BottomPanelMode.Templates -> templateBottomBarHeight
+        } + 24.dpToPx()
+        scrollView.setPadding(0, topPadding, 0, bottomPadding)
     }
 
     private fun setBusy(message: String?, busy: Boolean) {
@@ -207,10 +207,8 @@ class ShareNotePreviewOverlay private constructor(
     private fun ShareNoteQuickPanel() {
         val style = rememberReaderMenuDialogStyle(activity.bottomBackground)
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding(),
-            shape = RoundedCornerShape(style.panelRadius),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(topStart = style.panelRadius, topEnd = style.panelRadius),
             color = style.surface,
             contentColor = style.primaryText,
             tonalElevation = 0.dp,
@@ -219,118 +217,140 @@ class ShareNotePreviewOverlay private constructor(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "摘录分享",
-                            color = style.primaryText,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = selectedTemplateName,
-                            color = style.secondaryText,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    ReaderTextAction(
-                        text = "管理",
-                        style = style,
-                        modifier = Modifier.width(72.dp),
-                        enabled = !busyState,
-                        onClick = ::openTemplateManage
-                    )
-                }
-                ReaderSectionCard(
-                    style = style,
-                    title = "模板",
-                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 8.dp)
-                ) {
-                    ReaderSegmentedOptions(
-                        options = templateEntries.map { ReaderOption(it.dirName, it.meta.name) },
-                        selectedValue = selectedDirName,
-                        style = style,
-                        scrollable = true,
-                        pillStyle = true,
-                        onSelected = { dirName ->
-                            if (!busyState) templateEntries.firstOrNull { it.dirName == dirName }?.let(::selectTemplate)
-                        }
-                    )
-                }
-                ReaderSectionCard(
-                    style = style,
-                    title = "配色",
-                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 8.dp)
-                ) {
-                    ReaderSegmentedOptions(
-                        options = ShareNoteTemplateManager.stylePalettes.map { ReaderOption(it.id, it.name) },
-                        selectedValue = shareStyle.paletteId,
-                        style = style,
-                        scrollable = true,
-                        pillStyle = true,
-                        onSelected = { paletteId ->
-                            if (!busyState) updateShareStyle(shareStyle.copy(paletteId = paletteId))
-                        }
-                    )
-                }
-                ReaderSectionCard(
-                    style = style,
-                    title = "字体",
-                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 8.dp)
-                ) {
-                    ReaderSegmentedOptions(
-                        options = ShareNoteTemplateManager.fontFamilies.map {
-                            ReaderOption(it, ShareNoteTemplateManager.fontLabel(it))
-                        },
-                        selectedValue = shareStyle.fontFamily,
-                        style = style,
-                        scrollable = true,
-                        pillStyle = true,
-                        onSelected = { font ->
-                            if (!busyState) updateShareStyle(shareStyle.copy(fontFamily = font))
-                        }
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ReaderTextAction(
-                        text = activity.getString(R.string.action_save),
-                        style = style,
-                        enabled = !busyState,
-                        onClick = ::exportAndSave,
-                        modifier = Modifier.weight(1f)
-                    )
-                    ReaderTextAction(
-                        text = activity.getString(R.string.share),
-                        style = style,
-                        enabled = !busyState,
-                        onClick = ::exportAndShare,
-                        modifier = Modifier.weight(1f)
-                    )
-                    ReaderTextAction(
-                        text = activity.getString(R.string.cancel),
-                        style = style,
-                        enabled = !busyState,
-                        onClick = ::dismiss,
-                        modifier = Modifier.weight(1f)
-                    )
+                when (bottomPanelMode) {
+                    BottomPanelMode.Actions -> ShareNoteActionBar(style)
+                    BottomPanelMode.Templates -> ShareNoteTemplatePanel(style)
                 }
             }
         }
+    }
+
+    @Composable
+    private fun ShareNoteActionBar(style: AppDialogStyle) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ReaderTextAction(
+                text = "模板",
+                style = style,
+                enabled = !busyState,
+                onClick = ::showTemplatePanel,
+                modifier = Modifier.weight(1f)
+            )
+            ReaderTextAction(
+                text = activity.getString(R.string.action_save),
+                style = style,
+                enabled = !busyState,
+                onClick = ::exportAndSave,
+                modifier = Modifier.weight(1f)
+            )
+            ReaderTextAction(
+                text = activity.getString(R.string.share),
+                style = style,
+                enabled = !busyState,
+                onClick = ::exportAndShare,
+                modifier = Modifier.weight(1f)
+            )
+            ReaderTextAction(
+                text = activity.getString(R.string.cancel),
+                style = style,
+                enabled = !busyState,
+                onClick = ::dismiss,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+
+    @Composable
+    private fun ShareNoteTemplatePanel(style: AppDialogStyle) {
+        ReaderSheetHeader(
+            title = "更换模板",
+            subtitle = selectedTemplateName,
+            style = style,
+            trailing = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReaderTextAction(
+                        text = "管理",
+                        style = style,
+                        modifier = Modifier.width(70.dp),
+                        enabled = !busyState,
+                        onClick = ::openTemplateManage
+                    )
+                    ReaderTextAction(
+                        text = "完成",
+                        style = style,
+                        modifier = Modifier.width(70.dp),
+                        enabled = !busyState,
+                        onClick = ::showActionPanel
+                    )
+                }
+            }
+        )
+        ReaderSectionCard(
+            style = style,
+            title = "模板",
+            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 8.dp)
+        ) {
+            ReaderSegmentedOptions(
+                options = templateEntries.map { ReaderOption(it.dirName, it.meta.name) },
+                selectedValue = selectedDirName,
+                style = style,
+                scrollable = true,
+                pillStyle = true,
+                onSelected = { dirName ->
+                    if (!busyState) templateEntries.firstOrNull { it.dirName == dirName }?.let(::selectTemplate)
+                }
+            )
+        }
+        ReaderSectionCard(
+            style = style,
+            title = "配色",
+            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 8.dp)
+        ) {
+            ReaderSegmentedOptions(
+                options = ShareNoteTemplateManager.stylePalettes.map { ReaderOption(it.id, it.name) },
+                selectedValue = shareStyle.paletteId,
+                style = style,
+                scrollable = true,
+                pillStyle = true,
+                onSelected = { paletteId ->
+                    if (!busyState) updateShareStyle(shareStyle.copy(paletteId = paletteId))
+                }
+            )
+        }
+        ReaderSectionCard(
+            style = style,
+            title = "字体",
+            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 8.dp)
+        ) {
+            ReaderSegmentedOptions(
+                options = ShareNoteTemplateManager.fontFamilies.map {
+                    ReaderOption(it, ShareNoteTemplateManager.fontLabel(it))
+                },
+                selectedValue = shareStyle.fontFamily,
+                style = style,
+                scrollable = true,
+                pillStyle = true,
+                onSelected = { font ->
+                    if (!busyState) updateShareStyle(shareStyle.copy(fontFamily = font))
+                }
+            )
+        }
+    }
+
+    private fun showTemplatePanel() {
+        bottomPanelMode = BottomPanelMode.Templates
+        updateScrollPadding()
+    }
+
+    private fun showActionPanel() {
+        bottomPanelMode = BottomPanelMode.Actions
+        updateScrollPadding()
     }
 
     private fun selectTemplate(entry: ShareNoteTemplateManager.Entry) {
@@ -469,6 +489,11 @@ class ShareNotePreviewOverlay private constructor(
             webView.destroy()
         }
         (parent as? ViewGroup)?.removeView(this)
+    }
+
+    private enum class BottomPanelMode {
+        Actions,
+        Templates
     }
 
     companion object {

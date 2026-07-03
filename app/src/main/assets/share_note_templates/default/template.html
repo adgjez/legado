@@ -33,7 +33,9 @@
     .info-row { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; font-size: 12px; line-height: 1.45; }
     .info-row b { color: rgba(238,233,223,.5); font-weight: 500; }
     .info-row span { color: rgba(238,233,223,.84); overflow-wrap: anywhere; white-space: pre-wrap; }
-    .footer { padding-top: 12px; border-top: 1px solid rgba(238,233,223,.12); font-size: 11px; }
+    .footer { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid rgba(238,233,223,.12); font-size: 11px; }
+    .profile-avatar { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; flex: 0 0 auto; background: rgba(238,233,223,.1); }
+    .footer-text { min-width: 0; }
   </style>
 </head>
 <body>
@@ -48,7 +50,10 @@
     </header>
     <div class="chips" data-red-chips></div>
     <div class="content" data-red-content></div>
-    <div class="footer" data-red-text="footer"></div>
+    <div class="footer">
+      <img class="profile-avatar" data-red-src="profile.avatar" data-red-show="profile.avatar" alt="">
+      <span class="footer-text" data-red-text="footer"></span>
+    </div>
   </main>
   <script>
     window.ReedenShareTemplateMock = {
@@ -62,9 +67,12 @@
         description: "一本关于阅读节奏的示例书。",
         cover: "",
         type: "epub",
+        kind: "文学 · 随笔",
+        tags: "文学 · 随笔",
         rating: 4.5,
         sizeText: "7.87 MB",
         wordCountText: "13 万字",
+        readTimeText: "2小时18分钟",
         readStatusText: "在读",
         readProgressText: "读到 65%",
         lastReadTime: "2026-06-10 20:00:00"
@@ -101,6 +109,12 @@
             const hero = root.querySelector(".hero");
             const image = root.querySelector('[data-red-src="book.cover"]');
             if (hero) hero.classList.toggle("no-cover", !compact(value));
+            if (!image) return;
+            if (compact(value)) { image.src = value; image.style.display = ""; }
+            else { image.removeAttribute("src"); image.style.display = "none"; }
+          },
+          setProfileImage(value) {
+            const image = root.querySelector('[data-red-src="profile.avatar"]');
             if (!image) return;
             if (compact(value)) { image.src = value; image.style.display = ""; }
             else { image.removeAttribute("src"); image.style.display = "none"; }
@@ -157,8 +171,9 @@
         page.setText("subtitle", [book.author, profile.name, R.formatDate(payload.generatedAt)].filter(R.compact).join(" · "));
         page.setText("footer", [profile.name || "Reeden", profile.bio, R.formatDate(payload.generatedAt)].filter(R.compact).join(" · "));
         page.setHeroImage(book.cover);
-        page.addChip(book.readStatusText);
-        page.addChip(book.type ? String(book.type).toUpperCase() : "");
+        page.setProfileImage(profile.avatar);
+        page.addChip(book.readStatusText || (book.readTimeText ? "阅读 " + book.readTimeText : ""));
+        page.addChip(book.tags || book.kind || book.type);
         page.addChip(book.sizeText);
         page.addChip(book.wordCountText);
         page.section("摘录", [page.quote(note.description)]);
@@ -166,6 +181,8 @@
         page.section("细节", [page.infoList([
           page.infoRow("章节", note.sectionName),
           page.infoRow("记录时间", note.createAt),
+          page.infoRow("分类", book.tags || book.kind || book.type),
+          page.infoRow("阅读时长", book.readTimeText),
           page.infoRow("阅读进度", book.readProgressText),
           page.infoRow("最后阅读", book.lastReadTime),
           page.infoRow("书籍简介", book.description)

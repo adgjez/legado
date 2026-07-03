@@ -126,6 +126,7 @@ import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
 import io.legado.app.model.localBook.MobiFile
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.receiver.TimeBatteryReceiver
+import io.legado.app.ui.about.ReadRecordWidgetStore
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
@@ -174,6 +175,7 @@ import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.BottomWebViewDialog
 import io.legado.app.ui.widget.dialog.CommentWebViewSession
 import io.legado.app.utils.ACache
+import io.legado.app.utils.BookIntroUtils
 import io.legado.app.utils.Debounce
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.NetworkUtils
@@ -1483,12 +1485,33 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun buildShareNotePayload(text: String): ShareNoteImageRenderer.Payload {
         val book = ReadBook.book
         val now = Date()
+        val goalConfig = ReadRecordWidgetStore.loadGoalConfig()
+        val readTimeMs = book?.let { currentShareNoteReadTime(it, now.time) } ?: 0L
+        val readTimeText = readTimeMs.takeIf { it > 0L }?.let(::formatShareNoteDuration).orEmpty()
+        val progressText = currentShareNoteProgressText()
+        val tags = book?.shareNoteTags().orEmpty()
         return ShareNoteImageRenderer.Payload(
             generatedAt = DateFormat.getDateTimeInstance().format(now),
+            profile = ShareNoteImageRenderer.Profile(
+                name = goalConfig.userName.orEmpty().ifBlank { "Reeden" },
+                avatar = goalConfig.avatar
+            ),
             book = ShareNoteImageRenderer.Book(
                 title = book?.name.orEmpty().ifBlank { getString(R.string.book_name) },
                 author = book?.getRealAuthor().orEmpty(),
-                cover = book?.getDisplayCover()?.let(::normalizeShareNoteCoverUrl)
+                description = BookIntroUtils.listIntro(book?.getDisplayIntro()).orEmpty(),
+                cover = book?.getDisplayCover()?.let(::normalizeShareNoteCoverUrl),
+                type = tags,
+                kind = tags,
+                tags = tags,
+                wordCountText = book?.wordCount.orEmpty(),
+                readTimeText = readTimeText,
+                readStatusText = readTimeText.takeIf { it.isNotBlank() }?.let { "阅读 $it" }.orEmpty(),
+                readProgressText = progressText,
+                readProgressPercent = progressText.trim().removeSuffix("%").toFloatOrNull()?.div(100f),
+                lastReadTime = book?.durChapterTime?.takeIf { it > 0L }?.let {
+                    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it))
+                }.orEmpty()
             ),
             note = ShareNoteImageRenderer.Note(
                 createAt = DateFormat.getDateInstance().format(now),
@@ -1496,6 +1519,83 @@ class ReadBookActivity : BaseReadBookActivity(),
                 description = text
             )
         )
+    }
+
+    private fun currentShareNoteReadTime(book: Book, now: Long): Long {
+        val saved = appDb.readRecordDao.getReadTime(book.name) ?: 0L
+        val live = if (AppConfig.enableReadRecord && ReadBook.book?.bookUrl == book.bookUrl) {
+            (now - ReadBook.readStartTime).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        return saved + live
+    }
+
+    private fun formatShareNoteDuration(mss: Long): String {
+        val days = mss / (1000 * 60 * 60 * 24)
+        val hours = mss % (1000 * 60 * 60 * 24) / (1000 * 60 * 60)
+        val minutes = mss % (1000 * 60 * 60) / (1000 * 60)
+        val seconds = mss % (1000 * 60) / 1000
+        val d = if (days > 0) getString(R.string.duration_day, days) else ""
+        val h = if (hours > 0) getString(R.string.duration_hour, hours) else ""
+        val m = if (minutes > 0) getString(R.string.duration_minute, minutes) else ""
+        val s = if (seconds > 0 && days == 0L && hours == 0L) {
+            getString(R.string.duration_second, seconds)
+        } else {
+            ""
+        }
+        return "$d$h$m$s".ifBlank { getString(R.string.duration_zero) }
+    }
+
+    private fun currentShareNoteProgressText(): String {
+        return runCatching {
+            if (epubCoreActive) {
+                val page = binding.epubReadView.currentPage() ?: return@runCatching ""
+                val chapterSize = ReadBook.simulatedChapterSize.takeIf { it > 0 }
+                    ?: ReadBook.chapterSize.takeIf { it > 0 }
+                    ?: ReadBook.book?.totalChapterNum
+                    ?: 0
+                val chapterPageIndex = binding.epubReadView.currentChapterPageIndex()
+                val chapterPageCount = binding.epubReadView.currentChapterPageCount()
+                shareNoteProgressText(
+                    chapterIndex = page.chapterIndex,
+                    chapterSize = chapterSize,
+                    pageIndex = chapterPageIndex,
+                    pageSize = chapterPageCount
+                )
+            } else {
+                binding.readView.getCurVisiblePage().readProgress
+            }
+        }.getOrDefault("")
+    }
+
+    private fun shareNoteProgressText(
+        chapterIndex: Int,
+        chapterSize: Int,
+        pageIndex: Int,
+        pageSize: Int
+    ): String {
+        if (chapterSize <= 0) return ""
+        val progress = if (pageSize <= 0) {
+            (chapterIndex + 1.0) / chapterSize.toDouble()
+        } else {
+            chapterIndex.toDouble() / chapterSize.toDouble() +
+                (pageIndex + 1.0) / pageSize.toDouble() / chapterSize.toDouble()
+        }.coerceIn(0.0, 1.0)
+        return java.text.DecimalFormat("0.0%").format(progress)
+    }
+
+    private fun Book.shareNoteTags(): String {
+        return customTag?.trim()?.takeIf { it.isNotBlank() }
+            ?: kind?.trim()?.takeIf { it.isNotBlank() }
+            ?: when {
+                isAudio -> "音频"
+                isEpub -> "EPUB"
+                isMobi -> "MOBI"
+                isLocalTxt -> "TXT"
+                isLocal -> getString(R.string.local)
+                else -> ""
+            }
     }
 
     private fun shareSelectionAsNoteImage(
