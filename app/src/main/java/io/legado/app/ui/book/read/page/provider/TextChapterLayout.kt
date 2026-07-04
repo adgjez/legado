@@ -2389,8 +2389,14 @@ class TextChapterLayout(
             """(?:^|[?&,])(?:displayColor|color|\${'$'}color|\${'$'}\{color\}|\{\{color\}\})=([^&,\s]{1,32})""",
             RegexOption.IGNORE_CASE
         )
+        val forcedBubbleCreateSvgCountRegex = Regex(
+            """createSvg2?\s*\((?:[^,)]*,){3}\s*([0-9]{1,8})""",
+            RegexOption.IGNORE_CASE
+        )
         val forcedBubbleTypes = setOf(
             "qd",
+            "fqpl",
+            "fanqie",
             "cmt",
             "comment",
             "comments",
@@ -2435,12 +2441,19 @@ class TextChapterLayout(
         tryParseForcedParagraphBubble(src, renderSrc, urlOption, pclick ?: click)?.let {
             return it.also { imageInfo -> imageInfoCache[src] = imageInfo }
         }
-        return ImageInfo(
+        val imageInfo = ImageInfo(
             renderSrc = renderSrc,
             style = urlOption.valueIgnoreCase("style"),
             width = urlOption.valueIgnoreCase("width"),
             click = pclick ?: click
-        ).also { imageInfoCache[src] = it }
+        )
+        if (AppConfig.forceSoftwareParagraphBubble &&
+            !ParagraphBubbleRenderer.isBubbleSrc(renderSrc) &&
+            isForcedParagraphBubbleCandidate(src, urlOption)
+        ) {
+            return imageInfo
+        }
+        return imageInfo.also { imageInfoCache[src] = it }
     }
 
     private fun tryParseForcedParagraphBubble(
@@ -2494,6 +2507,9 @@ class TextChapterLayout(
         listOf("displayText", "num", "\$num", "\${num}", "{{num}}", "count", "text", "label").forEach { key ->
             normalizeForcedBubbleText(option.valueIgnoreCase(key).orEmpty())?.let { return it }
         }
+        listOf("click", "pclick", "js").forEach { key ->
+            extractForcedBubbleTextFromScript(option.valueIgnoreCase(key).orEmpty())?.let { return it }
+        }
         listOf(src, renderSrc).distinct().forEach { source ->
             forcedBubbleDisplayParamRegex.find(source)?.groupValues?.getOrNull(1)?.let {
                 normalizeForcedBubbleText(Uri.decode(it))?.let { value -> return value }
@@ -2509,6 +2525,14 @@ class TextChapterLayout(
                 ?.let { return it }
         }
         return null
+    }
+
+    private fun extractForcedBubbleTextFromScript(script: String): String? {
+        if (script.isBlank()) return null
+        return forcedBubbleCreateSvgCountRegex.find(script)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.let { normalizeForcedBubbleText(it) }
     }
 
     private fun extractForcedParagraphBubbleColor(
