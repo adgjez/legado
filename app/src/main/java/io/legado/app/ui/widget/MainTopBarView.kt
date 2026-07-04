@@ -378,8 +378,8 @@ class MainTopBarView @JvmOverloads constructor(
             it.setPadding(padding, padding, padding, padding)
         }
         titleText.gravity = Gravity.CENTER_VERTICAL
-        titleText.setTextColor(ContextCompat.getColor(context, R.color.primaryText))
-        searchEntryText.setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+        titleText.setTextColor(context.primaryTextColor)
+        searchEntryText.setTextColor(context.primaryTextColor)
         primaryBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         selectsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         tagsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
@@ -483,7 +483,7 @@ class MainTopBarView @JvmOverloads constructor(
                     includeFontPadding = false
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
-                    setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+                    setTextColor(context.primaryTextColor)
                     applyUiTitleTypeface(context)
                 })
                 addView(titleArrow.apply {
@@ -538,7 +538,7 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     private fun updateIconColors() {
-        val color = ContextCompat.getColor(context, R.color.primaryText)
+        val color = context.primaryTextColor
         titleArrow.setColorFilter(color)
         searchEntryIcon.setColorFilter(color)
         listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton, filterToggleButton).forEach {

@@ -6,12 +6,12 @@ import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import android.view.Menu
 import android.view.MenuItem
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ActivityAboutBinding
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.share
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -23,7 +23,7 @@ class AboutActivity : BaseActivity<ActivityAboutBinding>() {
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.llAbout.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this, R.color.background_card),
+            themeCardColorOrDefault(),
             UiCorner.panelRadius(this)
         )
         val fTag = "aboutFragment"

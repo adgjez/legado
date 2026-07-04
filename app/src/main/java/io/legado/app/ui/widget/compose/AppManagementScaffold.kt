@@ -39,8 +39,9 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.utils.ColorUtils
 
 data class AppManagementAction(
     val text: String,
@@ -110,14 +111,15 @@ private fun AppManagementTopBar(
 ) {
     val context = LocalContext.current
     val topBarColor = if (AppConfig.immersiveManageBar) {
-        Color(context.backgroundColor)
+        context.backgroundColor
     } else {
-        Color(context.primaryColor)
+        context.primaryColor
     }
+    val topBarContentColor = Color(context.getPrimaryTextColor(ColorUtils.isColorLight(topBarColor)))
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(topBarColor)
+            .background(Color(topBarColor))
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
         Row(
@@ -131,13 +133,13 @@ private fun AppManagementTopBar(
                 AppManagementIconAction(
                     iconRes = R.drawable.ic_arrow_back,
                     contentDescription = null,
-                    tint = palette.settings.primaryText,
+                    tint = topBarContentColor,
                     onClick = it
                 )
             }
             Text(
                 text = title,
-                color = palette.settings.primaryText,
+                color = topBarContentColor,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = palette.settings.titleFontFamily,
@@ -148,7 +150,11 @@ private fun AppManagementTopBar(
                     .padding(horizontal = 12.dp)
             )
             actions.forEach { action ->
-                AppManagementTopAction(action = action, palette = palette)
+                AppManagementTopAction(
+                    action = action,
+                    palette = palette,
+                    contentColor = topBarContentColor
+                )
             }
         }
         if (onSearchChange != null) {
@@ -166,7 +172,8 @@ private fun AppManagementTopBar(
 @Composable
 private fun AppManagementTopAction(
     action: AppManagementAction,
-    palette: AppManagementPalette
+    palette: AppManagementPalette,
+    contentColor: Color
 ) {
     val iconRes = action.iconRes ?: R.drawable.ic_more_vert
     val menuActions = action.menuActions
@@ -176,13 +183,13 @@ private fun AppManagementTopAction(
             palette = palette,
             iconRes = iconRes,
             contentDescription = action.text,
-            tint = if (action.danger) palette.settings.danger else palette.settings.primaryText
+            tint = if (action.danger) palette.settings.danger else contentColor
         )
     } else {
         AppManagementIconAction(
             iconRes = iconRes,
             contentDescription = action.text,
-            tint = if (action.danger) palette.settings.danger else palette.settings.primaryText,
+            tint = if (action.danger) palette.settings.danger else contentColor,
             onClick = action.onClick
         )
     }
@@ -264,20 +271,19 @@ private fun AppManagementSelectionBottomBar(
     onInvertSelection: (() -> Unit)?
 ) {
     AnimatedVisibility(visible = selectedCount > 0) {
-        val context = LocalContext.current
         val mainAction = actions.lastOrNull { it.danger } ?: actions.lastOrNull()
         val moreActions = if (mainAction == null) actions else actions.filterNot { it === mainAction }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(context.bottomBackground))
+                .background(Color(palette.settings.bottomBar))
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(start = 16.dp, top = 6.dp, end = 8.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = stringResource(R.string.select_all_count, selectedCount, totalCount),
-                color = palette.settings.primaryText,
+                color = palette.settings.bottomBarText,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = palette.settings.bodyFontFamily,

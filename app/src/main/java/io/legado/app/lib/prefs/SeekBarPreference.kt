@@ -6,9 +6,16 @@ import android.util.AttributeSet
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.core.view.isGone
 import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
 import io.legado.app.R
+import io.legado.app.lib.theme.applyUiTitleTypeface
+import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.progressAdd
 
 class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs) {
@@ -45,8 +52,24 @@ class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(cont
         mValueText = holder.findViewById(R.id.tv_seek_value) as? TextView
         seekPlus = holder.findViewById(R.id.iv_seek_plus) as? ImageView
         seekReduce = holder.findViewById(R.id.iv_seek_reduce) as? ImageView
-        (holder.findViewById(R.id.preference_title) as? TextView)?.text = title
-        (holder.findViewById(R.id.preference_desc) as? TextView)?.text = summary
+        val titleView = holder.findViewById(R.id.preference_title) as? TextView
+        val summaryView = holder.findViewById(R.id.preference_desc) as? TextView
+        titleView?.text = title
+        summaryView?.text = summary
+        summaryView?.isGone = summary.isNullOrEmpty()
+        if (!holder.itemView.isInEditMode) {
+            val rowLight = ColorUtils.isColorLight(context.themeCardColorOrDefault())
+            val primaryText = context.getPrimaryTextColor(rowLight)
+            val secondaryText = context.getSecondaryTextColor(rowLight)
+            titleView?.applyUiTitleTypeface(context)
+            titleView?.setTextColor(primaryText)
+            summaryView?.typeface = context.uiTypeface()
+            summaryView?.setTextColor(secondaryText)
+            mValueText?.typeface = context.uiTypeface()
+            mValueText?.setTextColor(primaryText)
+            seekPlus?.setColorFilter(primaryText)
+            seekReduce?.setColorFilter(primaryText)
+        }
         mSeekBar?.apply {
             max = maxValue - minValue
             progress = value - minValue

@@ -32,7 +32,6 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.AppCompatSpinner
 import androidx.core.widget.NestedScrollView
-import androidx.core.content.ContextCompat
 import com.google.android.flexbox.FlexboxLayout
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
@@ -84,6 +83,8 @@ import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.model.webBook.WebBook
@@ -2111,7 +2112,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             orientation = LinearLayout.VERTICAL
             layoutParams = ViewGroup.LayoutParams(dialogWidth, dialogHeight)
             background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeCardColorOrDefault(),
                 UiCorner.panelRadius(context)
             )
             setPadding(8.dpToPx(), 8.dpToPx(), 8.dpToPx(), 10.dpToPx())
@@ -2129,7 +2130,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             root.background = null
             llTitle.isClickable = false
             llTitle.background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_menu),
+                context.themeMutedColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             tvName.text = source.bookSourceName

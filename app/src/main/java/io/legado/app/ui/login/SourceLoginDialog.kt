@@ -54,8 +54,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatSpinner
-import androidx.core.content.ContextCompat
 import io.legado.app.data.entities.rule.RowUi.Type
+import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.widget.text.TextInputLayout
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.indexOf
@@ -690,8 +692,12 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
             rowUis = loginUi(loginUiStr)
             buttonUi(source, rowUis)
         }
+        binding.vwBg.background = UiCorner.opaqueRounded(
+            requireContext().themeCardColorOrDefault(),
+            UiCorner.panelRadius(requireContext())
+        )
         binding.toolBar.background = requireContext().filletTopBackground(
-            ContextCompat.getColor(requireContext(), R.color.background_menu)
+            requireContext().themeMutedColorOrDefault()
         )
         binding.toolBar.title = getString(R.string.login_source, source.getTag())
         binding.toolBar.inflateMenu(R.menu.source_login)

@@ -10,7 +10,6 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.lib.dialogs.AndroidAlertBuilder
@@ -18,6 +17,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.cache.WebDavTaskManager
 import io.legado.app.ui.book.cache.WebDavTaskState
@@ -86,7 +86,7 @@ private fun taskRow(context: Context, task: WebDavTaskState): View {
         orientation = LinearLayout.VERTICAL
         setPadding(14.dp(context), 12.dp(context), 14.dp(context), 12.dp(context))
         background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(context, R.color.background_card),
+            context.themeCardColorOrDefault(),
             UiCorner.actionRadius(context)
         )
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

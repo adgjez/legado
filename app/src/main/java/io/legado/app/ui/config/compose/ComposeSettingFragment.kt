@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.edit
 import androidx.fragment.app.Fragment
 import io.legado.app.R
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
@@ -53,14 +54,16 @@ abstract class ComposeSettingFragment : Fragment(),
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 refreshTick.intValue
-                SettingSpecScreen(
-                    page = buildPageSpec(),
-                    scrollTargetKey = scrollTargetKey.value,
-                    drawPanelImage = drawPanelImage,
-                    onTargetReady = ::handleTargetReady,
-                    onTargetMissing = ::consumeMissingTarget,
-                    onItemClick = ::handleItemClick
-                )
+                LegadoComposeTheme {
+                    SettingSpecScreen(
+                        page = buildPageSpec(),
+                        scrollTargetKey = scrollTargetKey.value,
+                        drawPanelImage = drawPanelImage,
+                        onTargetReady = ::handleTargetReady,
+                        onTargetMissing = ::consumeMissingTarget,
+                        onItemClick = ::handleItemClick
+                    )
+                }
             }
         }
     }

@@ -446,7 +446,9 @@ private fun PanelRows(
 ) {
     val context = LocalContext.current
     val radiusPx = palette.settings.panelRadiusPx
-    val panelImage = UiCorner.panelImageDrawable(context, radiusPx)
+    val panelImage = remember(context, radiusPx, palette.settings.themeSignature) {
+        UiCorner.panelImageDrawable(context, radiusPx)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()

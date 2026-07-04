@@ -146,7 +146,9 @@ private fun SettingSectionPanel(
 ) {
     val context = LocalContext.current
     val panelImage = if (drawPanelImage) {
-        UiCorner.panelImageDrawable(context, panelRadiusPx)
+        remember(context, panelRadiusPx, colors.themeSignature) {
+            UiCorner.panelImageDrawable(context, panelRadiusPx)
+        }
     } else {
         null
     }

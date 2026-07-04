@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -19,6 +18,8 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.gone
 import io.legado.app.utils.postEvent
@@ -62,8 +63,8 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
             dismissAllowingStateLoss()
         }
         val actionBackground = UiCorner.actionSelector(
-            ContextCompat.getColor(requireContext(), R.color.background_card),
-            ContextCompat.getColor(requireContext(), R.color.background_menu),
+            requireContext().themeCardColorOrDefault(),
+            requireContext().themeMutedColorOrDefault(),
             UiCorner.actionRadius(requireContext())
         )
         listOf(binding.btnOptimizePrompt, binding.btnRegenerate, binding.btnInsert).forEach {
@@ -71,7 +72,7 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
         }
         binding.etPrompt.background = UiCorner.panelRounded(
             requireContext(),
-            ContextCompat.getColor(requireContext(), R.color.background_card),
+            requireContext().themeCardColorOrDefault(),
             UiCorner.panelRadius(requireContext())
         )
         binding.etPrompt.setText(prompt)

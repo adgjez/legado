@@ -3,11 +3,14 @@ package io.legado.app.help.config
 import android.content.Context
 import android.graphics.Color
 import androidx.annotation.Keep
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppCloudStorage
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeColorOrNull
+import io.legado.app.lib.theme.themeMutedColorOrDefault
+import io.legado.app.lib.theme.themeUiSignature
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.ImageTypeUtils
@@ -91,9 +94,10 @@ object TopBarConfig {
             name = defaultName(isNight),
             isNightMode = isNight,
             style = style,
-            tagBarColor = ContextCompat.getColor(context, R.color.background_menu),
+            tagBarColor = context.themeColorOrNull(PreferKey.themeTabBackgroundColor)
+                ?: context.themeMutedColorOrDefault(),
             tagBarAlpha = if (style == STYLE_REGULAR) 0 else 100,
-            tagSelectedColor = ContextCompat.getColor(context, R.color.background_card),
+            tagSelectedColor = context.themeCardColorOrDefault(),
             backgroundColor = defaultBackgroundColor(isNight),
             cornerScale = if (style == STYLE_REGULAR) 0f else 1f,
             showSearchInDefaultStyle = MainLayoutPresetConfig.defaultTopBarShowSearch(),
@@ -114,7 +118,7 @@ object TopBarConfig {
     fun currentSignature(isNight: Boolean): String {
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) {
-            return "$isNight|$DEFAULT_DIR_NAME|${MainLayoutPresetConfig.defaultTopBarStyle()}|${MainLayoutPresetConfig.defaultTopBarShowSearch()}"
+            return "$isNight|$DEFAULT_DIR_NAME|${MainLayoutPresetConfig.defaultTopBarStyle()}|${MainLayoutPresetConfig.defaultTopBarShowSearch()}|${appCtx.themeUiSignature()}"
         }
         val configFile = File(localDir(isNight, dirName), packageFileName)
         return "$isNight|$dirName|${configFile.lastModified()}"

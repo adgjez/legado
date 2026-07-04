@@ -8,7 +8,6 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -155,7 +154,7 @@ class SelectionSearchEngineManageDialog(
             val palette = ReaderSheetStyle.resolve(requireContext())
             rootView.background = UiCorner.panelRounded(
                 requireContext(),
-                ContextCompat.getColor(requireContext(), R.color.background_card),
+                palette.panel,
                 UiCorner.panelRadius(requireContext())
             )
             titleView.text = engine.name
@@ -177,8 +176,8 @@ class SelectionSearchEngineManageDialog(
             setTextColor(palette.accentColor)
             setPadding(12.dpToPx(), 7.dpToPx(), 12.dpToPx(), 7.dpToPx())
             background = UiCorner.actionSelector(
-                ContextCompat.getColor(requireContext(), R.color.background_menu),
-                ContextCompat.getColor(requireContext(), R.color.background_card),
+                palette.panel,
+                palette.panelStrong,
                 UiCorner.actionRadius(requireContext())
             )
             layoutParams = LinearLayout.LayoutParams(

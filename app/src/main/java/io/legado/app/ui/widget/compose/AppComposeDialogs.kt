@@ -78,6 +78,8 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.rememberThemeUiPalette
+import io.legado.app.lib.theme.themeDividerColorOrDefault
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
@@ -123,15 +125,22 @@ fun rememberAppDialogStyle(): AppDialogStyle {
     } else {
         AppConfig.dialogAlpha.coerceIn(0, 100) / 100f
     }
-    val surfaceBase = context.bottomBackground
-    val fieldSurface = ColorUtils.blendColors(
+    val themeUiPalette = rememberThemeUiPalette()
+    val customSurface = themeUiPalette.cardColor.takeIf { themeUiPalette.hasCustomCardColor }
+    val customFieldSurface = themeUiPalette.mutedColor.takeIf { themeUiPalette.hasCustomMutedColor }
+    val surfaceBase = customSurface ?: context.bottomBackground
+    val fieldSurface = customFieldSurface ?: ColorUtils.blendColors(
         surfaceBase,
         accent,
         if (night) 0.10f else 0.05f
     )
     val fieldAlpha = (layoutAlpha + if (night) 0.10f else 0.08f).coerceIn(0f, 1f)
     val stroke = UiCorner.panelBorderColor(context)
-        ?: UiCorner.effectStrokeColor(surfaceBase)
+        ?: if (customSurface != null || customFieldSurface != null) {
+            context.themeDividerColorOrDefault()
+        } else {
+            UiCorner.effectStrokeColor(surfaceBase)
+        }
     // 文字色按对话框实际背景明暗推导，而非全局 night 标志，避免深底深字/浅底白字
     val surfaceLight = ColorUtils.isColorLight(surfaceBase)
     return AppDialogStyle(

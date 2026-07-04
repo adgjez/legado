@@ -7,7 +7,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -32,6 +31,8 @@ import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.file.HandleFileContract
@@ -124,8 +125,8 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         tabBar.visibility = View.GONE
         btnAdd.text = getString(R.string.add)
         btnAdd.background = UiCorner.actionSelector(
-            ContextCompat.getColor(this@ParagraphRuleManageActivity, R.color.background_card),
-            ContextCompat.getColor(this@ParagraphRuleManageActivity, R.color.background_menu),
+            themeCardColorOrDefault(),
+            themeMutedColorOrDefault(),
             UiCorner.actionRadius(this@ParagraphRuleManageActivity)
         )
         btnAdd.setOnClickListener { showAddActions() }
@@ -431,7 +432,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 val enabled = enabledIds.contains(rule.id)
                 root.background = UiCorner.panelRounded(
                     this@ParagraphRuleManageActivity,
-                    ContextCompat.getColor(this@ParagraphRuleManageActivity, R.color.background_card),
+                    themeCardColorOrDefault(),
                     UiCorner.panelRadius(this@ParagraphRuleManageActivity)
                 )
                 cardPreview.visibility = View.GONE
@@ -448,7 +449,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 listOf(btnApply, btnEdit, btnMore).forEach {
                     it.background = UiCorner.actionSelector(
                         Color.TRANSPARENT,
-                        ContextCompat.getColor(this@ParagraphRuleManageActivity, R.color.background_menu),
+                        themeMutedColorOrDefault(),
                         UiCorner.actionRadius(this@ParagraphRuleManageActivity)
                     )
                     it.typeface = this@ParagraphRuleManageActivity.uiTypeface()

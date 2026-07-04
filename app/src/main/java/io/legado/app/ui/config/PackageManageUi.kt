@@ -8,12 +8,12 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
-import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiInputStyle
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 
 object PackageManageUi {
@@ -25,7 +25,7 @@ object PackageManageUi {
             this.hint = hint
             applyUiInputStyle(context)
             background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeCardColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 44.dp(context))
@@ -42,7 +42,7 @@ object PackageManageUi {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dp(context), 0, 14.dp(context), 0)
             background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeCardColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 46.dp(context)).apply {
@@ -60,7 +60,7 @@ object PackageManageUi {
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
                         setColor(colorPreview)
-                        setStroke(1.dp(context), ContextCompat.getColor(context, R.color.background_menu))
+                        setStroke(1.dp(context), context.themeMutedColorOrDefault())
                     }
                     layoutParams = LinearLayout.LayoutParams(18.dp(context), 18.dp(context)).apply {
                         marginEnd = 8.dp(context)

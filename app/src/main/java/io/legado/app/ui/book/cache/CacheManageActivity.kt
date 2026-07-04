@@ -8,7 +8,6 @@ import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.R as AppCompatR
 import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
@@ -26,6 +25,8 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.utils.gone
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.applyTint
@@ -83,13 +84,13 @@ class CacheManageActivity :
 
     private fun initView() = binding.run {
         tabBar.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this@CacheManageActivity, R.color.background_menu),
+            themeMutedColorOrDefault(),
             UiCorner.panelRadius(this@CacheManageActivity)
         )
         listOf(btnBooks, btnAudio, btnManga).forEach {
             it.background = UiCorner.actionSelector(
                 Color.TRANSPARENT,
-                ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
+                themeCardColorOrDefault(),
                 UiCorner.actionRadius(this@CacheManageActivity)
             )
         }

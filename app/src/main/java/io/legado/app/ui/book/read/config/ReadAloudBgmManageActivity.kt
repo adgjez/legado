@@ -12,7 +12,6 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -32,6 +31,8 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.MD5Utils
@@ -145,7 +146,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         titleBar.title = "智能音频"
         tabBar.visibility = View.VISIBLE
         tabBar.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_card),
+            themeCardColorOrDefault(),
             UiCorner.actionRadius(this@ReadAloudBgmManageActivity)
         )
         btnDay.text = "配乐"
@@ -214,8 +215,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             typeface = uiTypeface()
             setTextColor(primaryTextColor)
             background = UiCorner.actionSelector(
-                ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_card),
-                ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_menu),
+                themeCardColorOrDefault(),
+                themeMutedColorOrDefault(),
                 UiCorner.actionRadius(this@ReadAloudBgmManageActivity)
             )
             setOnClickListener { action() }
@@ -1050,8 +1051,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     orientation = LinearLayout.VERTICAL
                     setPadding(10.dpToPx(), 10.dpToPx(), 10.dpToPx(), 10.dpToPx())
                     background = UiCorner.actionSelector(
-                        ContextCompat.getColor(parent.context, R.color.background_menu),
-                        ContextCompat.getColor(parent.context, R.color.background_card),
+                        parent.context.themeMutedColorOrDefault(),
+                        parent.context.themeCardColorOrDefault(),
                         UiCorner.actionRadius(parent.context)
                     )
                 }
@@ -1080,8 +1081,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(18.dpToPx(), 12.dpToPx(), 14.dpToPx(), 12.dpToPx())
                 background = UiCorner.actionSelector(
-                    ContextCompat.getColor(parent.context, R.color.background_card),
-                    ContextCompat.getColor(parent.context, R.color.background_menu),
+                    parent.context.themeCardColorOrDefault(),
+                    parent.context.themeMutedColorOrDefault(),
                     UiCorner.panelRadius(parent.context)
                 )
             }

@@ -29,8 +29,10 @@ import io.legado.app.databinding.DialogChapterChangeSourceBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -81,10 +83,9 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     private val tocAdapter by lazy {
         ChangeChapterTocAdapter(requireContext(), this)
     }
-    private val contentSuccess: (content: String) -> Unit = {
-        if (view != null) {
-            binding.loadingToc.gone()
-        }
+    private val contentSuccess: (content: String) -> Unit = contentSuccess@{
+        if (!isViewAlive()) return@contentSuccess
+        binding.loadingToc.gone()
         callBack?.replaceContent(it)
         dismissAllowingStateLoss()
     }
@@ -100,7 +101,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
                     noButton()
                     yesButton {
                         AppConfig.searchGroup = ""
-                        if (view != null) {
+                        if (isViewAlive()) {
                             upGroupMenu()
                         }
                         viewModel.startSearch()
@@ -117,6 +118,12 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
+        val backgroundColor = requireContext().backgroundColor
+        val mutedColor = requireContext().themeMutedColorOrDefault()
+        view.setBackgroundColor(backgroundColor)
+        binding.llBottomBar.setBackgroundColor(mutedColor)
+        binding.clToc.setBackgroundColor(backgroundColor)
+        binding.flHideToc.setBackgroundColor(mutedColor)
         viewModel.initData(arguments, callBack?.oldBook, activity is ReadBookActivity)
         showTitle()
         initMenu()
@@ -181,13 +188,13 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
         binding.recyclerView.adapter = searchBookAdapter
         searchBookAdapterDataObserver = object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                if (positionStart == 0 && view != null) {
+                if (positionStart == 0 && isViewAlive()) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
 
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                if (toPosition == 0 && view != null) {
+                if (toPosition == 0 && isViewAlive()) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
@@ -324,18 +331,21 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     }
 
     override fun openToc(searchBook: SearchBook) {
+        if (!isViewAlive()) return
         this.searchBook = searchBook
         tocAdapter.setItems(null)
         binding.clToc.visible()
         binding.loadingToc.visible()
         val book = searchBook.toBook()
-        viewModel.getToc(book, { toc: List<BookChapter>, _: BookSource ->
+        viewModel.getToc(book, tocSuccess@{ toc: List<BookChapter>, _: BookSource ->
+            if (!isViewAlive()) return@tocSuccess
             tocAdapter.durChapterIndex =
                 BookHelp.getDurChapter(viewModel.chapterIndex, viewModel.chapterTitle, toc)
             binding.loadingToc.gone()
             tocAdapter.setItems(toc)
             binding.recyclerViewToc.scrollToPosition(tocAdapter.durChapterIndex - 5)
-        }, {
+        }, tocError@{
+            if (!isViewAlive()) return@tocError
             binding.clToc.gone()
             AppLog.put("单章换源获取目录出错\n$it", it, true)
         })
@@ -380,14 +390,21 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     }
 
     override fun clickChapter(bookChapter: BookChapter, nextChapterUrl: String?) {
+        if (!isViewAlive()) return
         searchBook?.let {
             binding.loadingToc.visible()
-            viewModel.getContent(it.toBook(), bookChapter, nextChapterUrl, contentSuccess) { msg ->
+            viewModel.getContent(it.toBook(), bookChapter, nextChapterUrl, contentSuccess, contentError@{ msg ->
+                if (!isViewAlive()) return@contentError
                 binding.loadingToc.gone()
                 binding.clToc.gone()
                 toastOnUi(msg)
-            }
+            })
         }
+    }
+
+    private fun isViewAlive(): Boolean {
+        val owner = viewLifecycleOwnerLiveData.value ?: return false
+        return view != null && owner.lifecycle.currentState.isAtLeast(STARTED)
     }
 
     /**

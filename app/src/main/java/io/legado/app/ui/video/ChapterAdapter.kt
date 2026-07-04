@@ -5,11 +5,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
+import io.legado.app.lib.theme.primaryTextColor
 
 class ChapterAdapter(
     private var chapters: List<BookChapter>,
@@ -67,7 +67,7 @@ class ChapterAdapter(
             if (isSelected) {
                 tvChapterName.setTextColor(accentColor)
             } else {
-                tvChapterName.setTextColor(ContextCompat.getColor(itemView.context,R.color.primaryText))
+                tvChapterName.setTextColor(itemView.context.primaryTextColor)
             }
             itemView.setOnClickListener {
                 val previousPosition = selectedPosition

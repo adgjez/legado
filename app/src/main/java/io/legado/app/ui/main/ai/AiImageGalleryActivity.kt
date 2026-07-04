@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
@@ -28,7 +27,10 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -55,7 +57,7 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
         binding.titleBar.title = fixedTitle.ifBlank { getString(R.string.ai_image_gallery) }
         binding.etSearch.background = UiCorner.panelRounded(
             this,
-            ContextCompat.getColor(this, R.color.background_card),
+            themeCardColorOrDefault(),
             UiCorner.actionRadius(this)
         )
         binding.etSearch.doAfterTextChanged { reload() }
@@ -64,8 +66,8 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
         (binding.recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
         binding.recyclerView.setPadding(10.dpToPx(), 0, 10.dpToPx(), 16.dpToPx())
         val actionBackground = UiCorner.actionSelector(
-            ContextCompat.getColor(this, R.color.background_card),
-            ContextCompat.getColor(this, R.color.background_menu),
+            themeCardColorOrDefault(),
+            themeMutedColorOrDefault(),
             UiCorner.actionRadius(this)
         )
         listOf(
@@ -151,8 +153,12 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
             setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
             setTextColor(if (selected) accentColor else secondaryTextColor)
             background = UiCorner.actionSelector(
-                ContextCompat.getColor(this@AiImageGalleryActivity, if (selected) R.color.background_card else R.color.background_menu),
-                ContextCompat.getColor(this@AiImageGalleryActivity, R.color.background_card),
+                if (selected) {
+                    this@AiImageGalleryActivity.themeCardColorOrDefault()
+                } else {
+                    this@AiImageGalleryActivity.themeMutedColorOrDefault()
+                },
+                this@AiImageGalleryActivity.themeCardColorOrDefault(),
                 UiCorner.actionRadius(this@AiImageGalleryActivity)
             )
             setOnClickListener { onClick() }
@@ -272,7 +278,7 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
         ) = binding.run {
             val selected = item.id in selectedIds
             root.setCardBackgroundColor(
-                ContextCompat.getColor(root.context, if (selected) R.color.background_menu else R.color.background_card)
+                if (selected) root.context.themeMutedColorOrDefault() else root.context.themeCardColorOrDefault()
             )
             ImageLoader.load(this@AiImageGalleryActivity, item.localPath)
                 .error(R.drawable.image_loading_error)
@@ -283,18 +289,18 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
             tvSelected.isVisible = selected
             tvSelected.setTextColor(accentColor)
             tvSelected.background = UiCorner.actionSelector(
-                ContextCompat.getColor(this@AiImageGalleryActivity, R.color.background_card),
-                ContextCompat.getColor(this@AiImageGalleryActivity, R.color.background_menu),
+                this@AiImageGalleryActivity.themeCardColorOrDefault(),
+                this@AiImageGalleryActivity.themeMutedColorOrDefault(),
                 UiCorner.actionRadius(this@AiImageGalleryActivity)
             )
             tvName.applyUiSectionTitleStyle(this@AiImageGalleryActivity)
             tvPrompt.applyUiLabelStyle(this@AiImageGalleryActivity)
             tvState.applyUiLabelStyle(this@AiImageGalleryActivity)
             tvPrompt.setTextColor(secondaryTextColor)
-            tvState.setTextColor(if (item.favorite) accentColor else ContextCompat.getColor(this@AiImageGalleryActivity, R.color.primaryText))
+            tvState.setTextColor(if (item.favorite) accentColor else primaryTextColor)
             tvState.background = UiCorner.actionSelector(
-                ContextCompat.getColor(this@AiImageGalleryActivity, R.color.background_card),
-                ContextCompat.getColor(this@AiImageGalleryActivity, R.color.background_menu),
+                this@AiImageGalleryActivity.themeCardColorOrDefault(),
+                this@AiImageGalleryActivity.themeMutedColorOrDefault(),
                 UiCorner.actionRadius(this@AiImageGalleryActivity)
             )
         }

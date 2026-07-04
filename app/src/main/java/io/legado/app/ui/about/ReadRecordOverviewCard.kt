@@ -35,13 +35,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
@@ -49,6 +51,7 @@ import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CircleImageView
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.ColorUtils
 
 @Immutable
 data class ReadRecordOverviewUi(
@@ -103,11 +106,37 @@ data class ReadRecordGoalUi(
     val progressPercent: Int
 )
 
+@Immutable
+private data class ReadRecordThemeColors(
+    val cardColor: Int,
+    val primaryText: Color,
+    val secondaryText: Color,
+    val divider: Color,
+    val signature: String
+)
+
+@Composable
+private fun rememberReadRecordThemeColors(): ReadRecordThemeColors {
+    val context = LocalContext.current
+    val themeUiPalette = rememberThemeUiPalette()
+    val rowLight = ColorUtils.isColorLight(themeUiPalette.cardColor)
+    return remember(context, themeUiPalette.signature) {
+        ReadRecordThemeColors(
+            cardColor = themeUiPalette.cardColor,
+            primaryText = Color(context.getPrimaryTextColor(rowLight)),
+            secondaryText = Color(context.getSecondaryTextColor(rowLight)),
+            divider = Color(themeUiPalette.dividerColor),
+            signature = themeUiPalette.signature
+        )
+    }
+}
+
 @Composable
 fun ReadRecordOverviewCard(
     ui: ReadRecordOverviewUi,
     modifier: Modifier = Modifier
 ) {
+    val colors = rememberReadRecordThemeColors()
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -119,11 +148,13 @@ fun ReadRecordOverviewCard(
             ReadRecordOverviewMetric(
                 value = ui.todayValue,
                 label = ui.todayLabel,
+                colors = colors,
                 modifier = Modifier.weight(1f)
             )
             ReadRecordOverviewMetric(
                 value = ui.monthValue,
                 label = ui.monthLabel,
+                colors = colors,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -134,11 +165,13 @@ fun ReadRecordOverviewCard(
             ReadRecordOverviewMetric(
                 value = ui.totalValue,
                 label = ui.totalLabel,
+                colors = colors,
                 modifier = Modifier.weight(1f)
             )
             ReadRecordOverviewMetric(
                 value = ui.activeDaysValue,
                 label = ui.activeDaysLabel,
+                colors = colors,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -152,15 +185,17 @@ fun ReadRecordRecentBooksList(
     onLongClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = rememberReadRecordThemeColors()
     Column(modifier = modifier.fillMaxWidth()) {
         items.forEachIndexed { index, item ->
             ReadRecordRecentBookRow(
                 item = item,
+                colors = colors,
                 onClick = { onClick(index) },
                 onLongClick = { onLongClick(index) }
             )
             if (index < items.lastIndex) {
-                ReadRecordDivider()
+                ReadRecordDivider(colors.divider)
             }
         }
     }
@@ -172,14 +207,16 @@ fun ReadRecordDailyList(
     onLongClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = rememberReadRecordThemeColors()
     Column(modifier = modifier.fillMaxWidth()) {
         items.forEachIndexed { index, item ->
             ReadRecordDayRow(
                 item = item,
+                colors = colors,
                 onLongClick = { onLongClick(index) }
             )
             if (index < items.lastIndex) {
-                ReadRecordDivider()
+                ReadRecordDivider(colors.divider)
             }
         }
     }
@@ -192,15 +229,17 @@ fun ReadRecordRankList(
     onLongClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = rememberReadRecordThemeColors()
     Column(modifier = modifier.fillMaxWidth()) {
         items.forEachIndexed { index, item ->
             ReadRecordRankRow(
                 item = item,
+                colors = colors,
                 onClick = { onClick(index) },
                 onLongClick = { onLongClick(index) }
             )
             if (index < items.lastIndex) {
-                ReadRecordDivider()
+                ReadRecordDivider(colors.divider)
             }
         }
     }
@@ -213,6 +252,7 @@ fun ReadRecordRankLazyList(
     onLongClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = rememberReadRecordThemeColors()
     LazyColumn(modifier = modifier.fillMaxWidth()) {
         itemsIndexed(
             items = items,
@@ -220,11 +260,12 @@ fun ReadRecordRankLazyList(
         ) { index, item ->
             ReadRecordRankRow(
                 item = item,
+                colors = colors,
                 onClick = { onClick(index) },
                 onLongClick = { onLongClick(index) }
             )
             if (index < items.lastIndex) {
-                ReadRecordDivider()
+                ReadRecordDivider(colors.divider)
             }
         }
     }
@@ -304,10 +345,12 @@ fun ReadRecordGoalCardContent(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val themeUiPalette = rememberThemeUiPalette()
+    val rowLight = ColorUtils.isColorLight(themeUiPalette.cardColor)
     val titleFont = FontFamily(context.titleTypeface())
     val bodyFont = FontFamily(context.uiTypeface())
-    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
-    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
+    val primaryText = Color(context.getPrimaryTextColor(rowLight))
+    val secondaryText = Color(context.getSecondaryTextColor(rowLight))
     val accent = Color(context.accentColor)
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -402,14 +445,13 @@ fun ReadRecordGoalCardContent(
 @Composable
 private fun ReadRecordRecentBookRow(
     item: ReadRecordRecentBookUi,
+    colors: ReadRecordThemeColors,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val context = LocalContext.current
     val titleFont = FontFamily(context.titleTypeface())
     val bodyFont = FontFamily(context.uiTypeface())
-    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
-    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -431,7 +473,7 @@ private fun ReadRecordRecentBookRow(
         ) {
             Text(
                 text = item.name,
-                color = primaryText,
+                color = colors.primaryText,
                 fontSize = 15.sp,
                 fontFamily = titleFont,
                 maxLines = 1,
@@ -439,7 +481,7 @@ private fun ReadRecordRecentBookRow(
             )
             Text(
                 text = item.meta,
-                color = secondaryText,
+                color = colors.secondaryText,
                 fontSize = 12.sp,
                 fontFamily = bodyFont,
                 maxLines = 1,
@@ -449,7 +491,7 @@ private fun ReadRecordRecentBookRow(
         }
         Text(
             text = item.readTime,
-            color = secondaryText,
+            color = colors.secondaryText,
             fontSize = 12.sp,
             fontFamily = bodyFont,
             maxLines = 1,
@@ -463,13 +505,12 @@ private fun ReadRecordRecentBookRow(
 @Composable
 private fun ReadRecordDayRow(
     item: ReadRecordDayUi,
+    colors: ReadRecordThemeColors,
     onLongClick: () -> Unit
 ) {
     val context = LocalContext.current
     val titleFont = FontFamily(context.titleTypeface())
     val bodyFont = FontFamily(context.uiTypeface())
-    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
-    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -481,7 +522,7 @@ private fun ReadRecordDayRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
-                color = primaryText,
+                color = colors.primaryText,
                 fontSize = 15.sp,
                 fontFamily = titleFont,
                 maxLines = 1,
@@ -489,7 +530,7 @@ private fun ReadRecordDayRow(
             )
             Text(
                 text = item.subtitle,
-                color = secondaryText,
+                color = colors.secondaryText,
                 fontSize = 12.sp,
                 fontFamily = bodyFont,
                 maxLines = 1,
@@ -499,7 +540,7 @@ private fun ReadRecordDayRow(
         }
         Text(
             text = item.readTime,
-            color = primaryText,
+            color = colors.primaryText,
             fontSize = 14.sp,
             fontFamily = bodyFont,
             maxLines = 1,
@@ -512,14 +553,13 @@ private fun ReadRecordDayRow(
 @Composable
 private fun ReadRecordRankRow(
     item: ReadRecordRankUi,
+    colors: ReadRecordThemeColors,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val context = LocalContext.current
     val titleFont = FontFamily(context.titleTypeface())
     val bodyFont = FontFamily(context.uiTypeface())
-    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
-    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
     val alpha = if (item.dimmed) 0.72f else 1f
     Row(
         modifier = Modifier
@@ -545,7 +585,7 @@ private fun ReadRecordRankRow(
         ) {
             Text(
                 text = item.name,
-                color = primaryText.copy(alpha = alpha),
+                color = colors.primaryText.copy(alpha = alpha),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = titleFont,
@@ -554,7 +594,7 @@ private fun ReadRecordRankRow(
             )
             Text(
                 text = item.meta,
-                color = secondaryText.copy(alpha = alpha),
+                color = colors.secondaryText.copy(alpha = alpha),
                 fontSize = 12.sp,
                 fontFamily = bodyFont,
                 maxLines = 1,
@@ -564,7 +604,7 @@ private fun ReadRecordRankRow(
         }
         Text(
             text = item.readTime,
-            color = secondaryText.copy(alpha = alpha),
+            color = colors.secondaryText.copy(alpha = alpha),
             fontSize = 12.sp,
             fontFamily = bodyFont,
             maxLines = 1,
@@ -641,8 +681,7 @@ private fun android.content.Context.composeReadRecordPanelRadius() = androidx.co
 )
 
 @Composable
-private fun ReadRecordDivider() {
-    val color = Color(ContextCompat.getColor(LocalContext.current, R.color.divider))
+private fun ReadRecordDivider(color: Color) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -655,21 +694,16 @@ private fun ReadRecordDivider() {
 private fun ReadRecordOverviewMetric(
     value: String,
     label: String,
+    colors: ReadRecordThemeColors,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val surfaceColor = UiCorner.surfaceColor(ContextCompat.getColor(context, R.color.background_card))
+    val surfaceColor = UiCorner.surfaceColor(colors.cardColor)
     val borderColor = UiCorner.panelBorderColor(context)
     val radiusPx = UiCorner.panelRadius(context)
-    val panelImage = androidx.compose.runtime.remember(context, radiusPx) {
+    val panelImage = androidx.compose.runtime.remember(context, radiusPx, colors.signature) {
         UiCorner.panelImageDrawable(context, radiusPx)
     }
-    val primaryText = androidx.compose.ui.graphics.Color(
-        ContextCompat.getColor(context, R.color.primaryText)
-    )
-    val secondaryText = androidx.compose.ui.graphics.Color(
-        ContextCompat.getColor(context, R.color.secondaryText)
-    )
     val titleFont = FontFamily(context.titleTypeface())
     val bodyFont = FontFamily(context.uiTypeface())
     Column(
@@ -685,7 +719,7 @@ private fun ReadRecordOverviewMetric(
     ) {
         Text(
             text = value,
-            color = primaryText,
+            color = colors.primaryText,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = titleFont,
@@ -694,7 +728,7 @@ private fun ReadRecordOverviewMetric(
         )
         Text(
             text = label,
-            color = secondaryText,
+            color = colors.secondaryText,
             fontSize = 12.sp,
             fontFamily = bodyFont,
             maxLines = 1,

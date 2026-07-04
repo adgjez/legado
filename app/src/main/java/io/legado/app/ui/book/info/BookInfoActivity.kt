@@ -103,6 +103,8 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.BookCover
@@ -359,7 +361,7 @@ class BookInfoActivity :
             minHeight = 48.dpToPx()
             setLineSpacing(3.dpToPx().toFloat(), 1f)
             setPadding(12.dpToPx(), 10.dpToPx(), 12.dpToPx(), 10.dpToPx())
-            setTextColor(ContextCompat.getColor(this@BookInfoActivity, R.color.secondaryText))
+            setTextColor(secondaryTextColor)
             textSize = 13.5f
             includeFontPadding = true
             typeface = uiTypeface()
@@ -379,7 +381,7 @@ class BookInfoActivity :
             setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 14.dpToPx())
             background = UiCorner.panelRounded(
                 this@BookInfoActivity,
-                ContextCompat.getColor(this@BookInfoActivity, R.color.background_card),
+                this@BookInfoActivity.themeCardColorOrDefault(),
                 UiCorner.panelRadius(this@BookInfoActivity)
             )
             addView(LinearLayout(context).apply {
@@ -400,8 +402,8 @@ class BookInfoActivity :
                     minHeight = 30.dpToPx()
                     setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
                     background = UiCorner.actionSelector(
-                        ContextCompat.getColor(context, R.color.background_menu),
-                        ContextCompat.getColor(context, R.color.background_card),
+                        context.themeMutedColorOrDefault(),
+                        context.themeCardColorOrDefault(),
                         UiCorner.actionRadius(context)
                     )
                     applyUiBodyTypefaceDeep(context.uiTypeface())
@@ -945,8 +947,8 @@ class BookInfoActivity :
     }
 
     private fun applyUiCorners() = binding.run {
-        val panelColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_card)
-        val menuColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_menu)
+        val panelColor = themeCardColorOrDefault()
+        val menuColor = themeMutedColorOrDefault()
         val actionColor = ContextCompat.getColor(this@BookInfoActivity, R.color.book_info_frost)
         val strokeColor = ContextCompat.getColor(this@BookInfoActivity, R.color.glass_stroke)
         val transparent = Color.TRANSPARENT
@@ -993,7 +995,7 @@ class BookInfoActivity :
     }
 
     private fun restoreBookInfoComponentBackgrounds() = binding.run {
-        val panelColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_card)
+        val panelColor = themeCardColorOrDefault()
         listOfNotNull(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, aiImagesPanel).forEach {
             it.background = UiCorner.panelRounded(this@BookInfoActivity, panelColor, UiCorner.panelRadius(this@BookInfoActivity))
         }
@@ -1691,7 +1693,7 @@ class BookInfoActivity :
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
             background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeCardColorOrDefault(),
                 UiCorner.panelRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(
@@ -1814,7 +1816,7 @@ class BookInfoActivity :
             orientation = LinearLayout.VERTICAL
             setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
             background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeCardColorOrDefault(),
                 UiCorner.panelRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(
@@ -2600,7 +2602,7 @@ class BookInfoActivity :
                 )
                 icon.setColorFilter(secondaryTextColor)
                 root.background = UiCorner.opaqueRounded(
-                    ContextCompat.getColor(this, R.color.background_menu),
+                    themeMutedColorOrDefault(),
                     UiCorner.actionRadius(this)
                 )
             }

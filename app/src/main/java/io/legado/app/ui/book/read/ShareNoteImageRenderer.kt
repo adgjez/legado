@@ -24,11 +24,16 @@ import android.webkit.WebViewClient
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.RequestOptions
+import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.utils.GSON
+import io.legado.app.utils.normalizeFileName
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -54,11 +59,13 @@ object ShareNoteImageRenderer {
     private const val MAX_EXPORT_WIDTH = 1080
     private const val MAX_EXPORT_HEIGHT = 16000
     private const val MAX_EXPORT_PIXELS = 16_000_000
+    private const val MAX_FALLBACK_EXPORT_PIXELS = 8_000_000
     private const val READY_TIMEOUT_MS = 8000L
-    private const val CAPTURE_TIMEOUT_MS = 15000L
+    private const val CAPTURE_TIMEOUT_MS = 25000L
     private const val HTML2_CANVAS_ASSET = "share_note_templates/lib/html2canvas.min.js"
     private const val CAPTURE_BRIDGE_NAME = "ReedenShareBridge"
     private const val BRIDGE_CHUNK_SIZE = 256 * 1024
+    private const val MAX_CAPTURE_BASE64_LENGTH = 32 * 1024 * 1024
 
     private val renderMutex = Mutex()
     private var html2CanvasScriptCache: String? = null
@@ -155,7 +162,7 @@ object ShareNoteImageRenderer {
                     visibility = View.VISIBLE
                 }
                 try {
-                    renderHtmlToPngFile(
+                    renderHtmlToPngFileWithFallback(
                         context = context,
                         webView = webView,
                         entry = entry,
@@ -169,6 +176,9 @@ object ShareNoteImageRenderer {
                 }
             }
             return@withLock result.file
+        }.onFailure {
+            if (it is CancellationException && it !is TimeoutCancellationException) throw it
+            if (it is VirtualMachineError || it is ThreadDeath || it is LinkageError) throw it
         }
 
         val bitmap = withContext(Dispatchers.Main) {
@@ -179,7 +189,7 @@ object ShareNoteImageRenderer {
             }
             try {
                 loadInto(webView, entry, payload, width, style)
-                drawWebViewToBitmap(webView)
+                drawWebViewToBitmap(webView, MAX_FALLBACK_EXPORT_PIXELS)
             } finally {
                 webView.stopLoading()
                 webView.destroy()
@@ -197,7 +207,7 @@ object ShareNoteImageRenderer {
         style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
     ): RenderResult = renderMutex.withLock {
         withContext(Dispatchers.Main) {
-            renderHtmlToPngFile(
+            renderHtmlToPngFileWithFallback(
                 context = context,
                 webView = webView,
                 entry = entry,
@@ -217,14 +227,14 @@ object ShareNoteImageRenderer {
         val file = ShareNoteTemplateManager.previewFile(entry, style)
         if (!force && isUsablePng(file)) return@withLock file
         file.delete()
-        runCatching {
+        try {
             val result = withContext(Dispatchers.Main) {
                 val webView = WebView(context).apply {
                     configureWebView(this)
                     visibility = View.VISIBLE
                 }
                 try {
-                    renderHtmlToPngFile(
+                    renderHtmlToPngFileWithFallback(
                         context = context,
                         webView = webView,
                         entry = entry,
@@ -243,7 +253,12 @@ object ShareNoteImageRenderer {
                 result.file.delete()
                 file.takeIf(::isUsablePng)
             }
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            if (e !is TimeoutCancellationException) throw e
+            null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -290,12 +305,13 @@ object ShareNoteImageRenderer {
     }
 
     suspend fun savePngToGallery(context: Context, pngFile: File): Uri = withContext(Dispatchers.IO) {
-        val name = "Reeden_${System.currentTimeMillis()}.png"
+        val albumName = context.shareNoteAlbumName()
+        val name = "${albumName}_${System.currentTimeMillis()}.png"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, name)
                 put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Reeden")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$albumName")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
             val resolver = context.contentResolver
@@ -316,7 +332,7 @@ object ShareNoteImageRenderer {
         } else {
             val dir = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                "Reeden"
+                albumName
             ).apply { mkdirs() }
             val target = File(dir, name)
             pngFile.inputStream().use { input ->
@@ -324,6 +340,13 @@ object ShareNoteImageRenderer {
             }
             Uri.fromFile(target)
         }
+    }
+
+    private fun Context.shareNoteAlbumName(): String {
+        return getString(R.string.app_name)
+            .trim()
+            .normalizeFileName()
+            .ifBlank { "Archive" }
     }
 
     private suspend fun renderHtmlToPngFile(
@@ -352,9 +375,56 @@ object ShareNoteImageRenderer {
             )
             val png = withTimeout(CAPTURE_TIMEOUT_MS) { bridge.await() }
             val file = writePngBase64ToCache(context, png.base64)
+            if (!isUsablePng(file)) {
+                file.delete()
+                throw IllegalStateException("captured image is invalid")
+            }
             RenderResult(file, png.width, png.height)
         } finally {
             webView.removeJavascriptInterface(CAPTURE_BRIDGE_NAME)
+        }
+    }
+
+    private suspend fun renderHtmlToPngFileWithFallback(
+        context: Context,
+        webView: WebView,
+        entry: ShareNoteTemplateManager.Entry,
+        payload: Payload?,
+        targetWidth: Int,
+        maxCaptureHeight: Int? = null,
+        style: ShareNoteTemplateManager.ShareStyle = ShareNoteTemplateManager.currentStyle()
+    ): RenderResult {
+        return runCatching {
+            renderHtmlToPngFile(
+                context = context,
+                webView = webView,
+                entry = entry,
+                payload = payload,
+                targetWidth = targetWidth,
+                maxCaptureHeight = maxCaptureHeight,
+                style = style
+            )
+        }.getOrElse { error ->
+            if (error is CancellationException && error !is TimeoutCancellationException) throw error
+            if (error is VirtualMachineError || error is ThreadDeath || error is LinkageError) throw error
+            AppLog.put("Share note html2canvas render failed, fallback to WebView draw\n${error.localizedMessage}", error)
+            val width = targetWidth.coerceIn(240, MAX_EXPORT_WIDTH)
+            val payloadJson = payload?.let { GSON.toJson(preparePayloadAssets(context, it, style)) }
+            loadHtml(webView, entry, payloadJson, width, style)
+            val size = evaluateCaptureSize(webView, width, maxCaptureHeight ?: captureViewportHeight(entry))
+            val height = (maxCaptureHeight?.let { size.height.coerceAtMost(it) } ?: size.height)
+                .coerceIn(180, MAX_EXPORT_HEIGHT)
+            layoutWebView(webView, width, height)
+            waitForDraw()
+            val bitmap = drawWebViewToBitmap(webView, MAX_FALLBACK_EXPORT_PIXELS)
+            val outWidth = bitmap.width
+            val outHeight = bitmap.height
+            val file = writeBitmapToCache(context, bitmap)
+            if (!isUsablePng(file)) {
+                file.delete()
+                throw IllegalStateException("fallback captured image is invalid")
+            }
+            RenderResult(file, outWidth.takeIf { it > 0 } ?: width, outHeight.takeIf { it > 0 } ?: height)
         }
     }
 
@@ -472,6 +542,9 @@ object ShareNoteImageRenderer {
         val dir = File(context.cacheDir, "share_note").apply { mkdirs() }
         val file = File(dir, "share_note_${System.currentTimeMillis()}.png")
         val clean = base64.substringAfter(",", base64).trim()
+        if (clean.length > MAX_CAPTURE_BASE64_LENGTH) {
+            throw IllegalStateException("captured image is too large")
+        }
         FileOutputStream(file).use {
             it.write(Base64.decode(clean, Base64.DEFAULT))
         }
@@ -583,13 +656,20 @@ object ShareNoteImageRenderer {
             webView,
             """
                 (function(){
-                  var node = document.querySelector('[data-reeden-capture]') || document.body;
+                  var explicitNode = document.querySelector('[data-reeden-capture]');
+                  var node = explicitNode || document.body;
                   var rect = node.getBoundingClientRect();
+                  var widthSource = explicitNode
+                    ? Math.max(rect.width || 0, node.scrollWidth || 0, node.offsetWidth || 0, $fallbackWidth)
+                    : Math.max(rect.width || 0, document.body.scrollWidth || 0, $fallbackWidth);
+                  var heightSource = explicitNode
+                    ? Math.max(rect.height || 0, node.scrollHeight || 0, node.offsetHeight || 0, $fallbackHeight)
+                    : Math.max(rect.height || 0, document.body.scrollHeight || 0, $fallbackHeight);
                   return JSON.stringify({
                     left: Math.max(0, Math.floor(rect.left || 0)),
                     top: Math.max(0, Math.floor(rect.top || 0)),
-                    width: Math.ceil(Math.max(rect.width, document.body.scrollWidth, $fallbackWidth)),
-                    height: Math.ceil(Math.max(rect.height, document.body.scrollHeight, $fallbackHeight))
+                    width: Math.ceil(widthSource),
+                    height: Math.ceil(heightSource)
                   });
                 })();
             """.trimIndent()
@@ -687,7 +767,7 @@ object ShareNoteImageRenderer {
               --reeden-share-font: $fontFamily;
             }
             html, body {
-              background: var(--reeden-share-bg) !important;
+              background: transparent !important;
               color: var(--reeden-share-text) !important;
               font-family: var(--reeden-share-font) !important;
             }
@@ -910,12 +990,19 @@ object ShareNoteImageRenderer {
                 sendCanvas(canvas);
               }
 
-              if (document.readyState === "complete") {
+              var started = false;
+              function startCapture() {
+                if (started) return;
+                started = true;
                 setTimeout(function() { runCapture().catch(reportError); }, 0);
+              }
+
+              if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", startCapture, { once: true });
+                window.addEventListener("load", startCapture, { once: true });
+                setTimeout(startCapture, 1200);
               } else {
-                window.addEventListener("load", function() {
-                  runCapture().catch(reportError);
-                }, { once: true });
+                startCapture();
               }
             })();
             </script>
@@ -927,6 +1014,10 @@ object ShareNoteImageRenderer {
         val script = context.assets.open(HTML2_CANVAS_ASSET).bufferedReader().use { it.readText() }
         html2CanvasScriptCache = script
         return script
+    }
+
+    fun isUsableRenderResult(result: RenderResult): Boolean {
+        return result.width > 1 && result.height > 1 && isUsablePng(result.file)
     }
 
     private class CaptureBridge {
@@ -942,19 +1033,46 @@ object ShareNoteImageRenderer {
         @JavascriptInterface
         fun onImageStart(id: String?, width: Int, height: Int, totalLength: Int) {
             if (id.isNullOrBlank() || deferred.isCompleted) return
+            val pixels = width.toLong() * height.toLong()
+            if (
+                width <= 1 ||
+                height <= 1 ||
+                pixels > MAX_EXPORT_PIXELS.toLong() ||
+                totalLength <= 0 ||
+                totalLength > MAX_CAPTURE_BASE64_LENGTH
+            ) {
+                deferred.completeExceptionally(IllegalStateException("captured image is too large"))
+                return
+            }
             synchronized(lock) {
-                imageId = id
-                this.width = width.coerceAtLeast(1)
-                this.height = height.coerceAtLeast(1)
-                builder = StringBuilder(totalLength.coerceAtLeast(0))
+                if (!deferred.isCompleted) {
+                    imageId = id
+                    this.width = width
+                    this.height = height
+                    builder = StringBuilder(totalLength)
+                }
             }
         }
 
         @JavascriptInterface
         fun onImageChunk(id: String?, chunk: String?) {
             if (id.isNullOrBlank() || chunk == null || deferred.isCompleted) return
+            var tooLarge = false
             synchronized(lock) {
-                if (id == imageId) builder?.append(chunk)
+                if (id == imageId) {
+                    val current = builder
+                    if (current != null) {
+                        if (current.length + chunk.length > MAX_CAPTURE_BASE64_LENGTH) {
+                            builder = null
+                            tooLarge = true
+                        } else {
+                            current.append(chunk)
+                        }
+                    }
+                }
+            }
+            if (tooLarge && !deferred.isCompleted) {
+                deferred.completeExceptionally(IllegalStateException("captured image is too large"))
             }
         }
 
@@ -1015,11 +1133,14 @@ object ShareNoteImageRenderer {
         }
     }
 
-    private fun drawWebViewToBitmap(webView: WebView): Bitmap {
+    private fun drawWebViewToBitmap(
+        webView: WebView,
+        maxPixels: Int = MAX_EXPORT_PIXELS
+    ): Bitmap {
         check(Looper.myLooper() == Looper.getMainLooper())
         val width = webView.width.coerceAtLeast(1)
         val height = webView.height.coerceAtLeast(1)
-        val scale = exportScale(width, height)
+        val scale = exportScale(width, height, maxPixels)
         val outWidth = ceil(width * scale).toInt().coerceAtLeast(1)
         val outHeight = ceil(height * scale).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
@@ -1029,10 +1150,10 @@ object ShareNoteImageRenderer {
         return bitmap
     }
 
-    private fun exportScale(width: Int, height: Int): Float {
+    private fun exportScale(width: Int, height: Int, maxPixels: Int = MAX_EXPORT_PIXELS): Float {
         val byWidth = MAX_EXPORT_WIDTH.toFloat() / width.toFloat()
         val byHeight = MAX_EXPORT_HEIGHT.toFloat() / height.toFloat()
-        val byPixels = sqrt(MAX_EXPORT_PIXELS.toFloat() / (width.toFloat() * height.toFloat()))
+        val byPixels = sqrt(maxPixels.toFloat() / (width.toFloat() * height.toFloat()))
         return minOf(1f, byWidth, byHeight, byPixels).coerceAtMost(1f)
     }
 

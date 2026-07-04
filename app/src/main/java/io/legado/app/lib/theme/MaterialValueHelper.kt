@@ -11,6 +11,7 @@ import androidx.annotation.ColorInt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import io.legado.app.R
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.utils.dpToPx
@@ -155,7 +156,9 @@ val Context.filletBackground: Drawable
 
 val Context.dialogSurfaceBackground: GradientDrawable
     get() {
-        return UiCorner.opaqueRounded(ContextCompat.getColor(this, R.color.dialog_surface), UiCorner.panelRadius(this))
+        val surfaceColor = themeColorOrNull(PreferKey.themeCardColor)
+            ?: ContextCompat.getColor(this, R.color.dialog_surface)
+        return UiCorner.opaqueRounded(surfaceColor, UiCorner.panelRadius(this))
     }
 
 fun Context.filletTopBackground(@ColorInt color: Int): GradientDrawable {

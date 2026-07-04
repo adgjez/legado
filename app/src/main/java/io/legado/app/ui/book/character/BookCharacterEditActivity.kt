@@ -9,7 +9,6 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,7 +44,10 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.book.character.compose.CharacterEditDraft
 import io.legado.app.ui.book.character.compose.CharacterEditScreen
 import io.legado.app.ui.book.character.compose.CharacterSpeechEngineUi
@@ -243,7 +245,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
             setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
             background = UiCorner.panelRounded(
                 this@BookCharacterEditActivity,
-                ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
+                this@BookCharacterEditActivity.themeCardColorOrDefault(),
                 UiCorner.actionRadius(this@BookCharacterEditActivity)
             )
         }
@@ -284,8 +286,12 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                     setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
                     setTextColor(if (selected) accentColor else secondaryTextColor)
                     background = UiCorner.actionSelector(
-                        ContextCompat.getColor(this@BookCharacterEditActivity, if (selected) R.color.background_card else R.color.background_menu),
-                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
+                        if (selected) {
+                            this@BookCharacterEditActivity.themeCardColorOrDefault()
+                        } else {
+                            this@BookCharacterEditActivity.themeMutedColorOrDefault()
+                        },
+                        this@BookCharacterEditActivity.themeCardColorOrDefault(),
                         UiCorner.actionRadius(this@BookCharacterEditActivity)
                     )
                     setOnClickListener {
@@ -429,7 +435,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
             return ItemAiGeneratedImageBinding.inflate(inflater, parent, false).apply {
                 root.radius = UiCorner.scaledDp(12f)
                 root.cardElevation = 0f
-                root.setCardBackgroundColor(ContextCompat.getColor(root.context, R.color.background_card))
+                root.setCardBackgroundColor(root.context.themeCardColorOrDefault())
             }
         }
 
@@ -455,10 +461,10 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
             tvPrompt.applyUiLabelStyle(this@BookCharacterEditActivity)
             tvPrompt.setTextColor(secondaryTextColor)
             tvState.applyUiLabelStyle(this@BookCharacterEditActivity)
-            tvState.setTextColor(if (item.favorite) accentColor else ContextCompat.getColor(this@BookCharacterEditActivity, R.color.primaryText))
+            tvState.setTextColor(if (item.favorite) accentColor else primaryTextColor)
             tvState.background = UiCorner.actionSelector(
-                ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
-                ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_menu),
+                this@BookCharacterEditActivity.themeCardColorOrDefault(),
+                this@BookCharacterEditActivity.themeMutedColorOrDefault(),
                 UiCorner.actionRadius(this@BookCharacterEditActivity)
             )
         }

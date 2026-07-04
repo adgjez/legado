@@ -28,7 +28,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.PopupMenu
-import androidx.core.content.ContextCompat
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import io.legado.app.R
@@ -361,7 +360,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
             maxLines = 1
             includeFontPadding = false
             setTextColor(if (selected) palette.accentColor else palette.secondaryTextColor)
-            val fill = if (selected) palette.panelStrong else ContextCompat.getColor(requireContext(), R.color.background_card)
+            val fill = if (selected) palette.panelStrong else palette.panel
             background = UiCorner.actionSelector(
                 fill,
                 palette.panel,

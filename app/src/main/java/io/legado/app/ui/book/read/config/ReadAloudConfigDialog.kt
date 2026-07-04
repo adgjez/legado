@@ -9,7 +9,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.base.BasePrefDialogFragment
 import io.legado.app.constant.EventBus
@@ -27,6 +26,8 @@ import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.config.compose.ComposeSettingFragment
@@ -175,7 +176,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 isSingleLine = true
                 background = UiCorner.actionSelector(
                     Color.TRANSPARENT,
-                    ContextCompat.getColor(requireContext(), R.color.background_card),
+                    requireContext().themeCardColorOrDefault(),
                     UiCorner.actionRadius(requireContext())
                 )
                 setOnClickListener { selectGroup(group) }
@@ -224,7 +225,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             tab.isSelected = selected
             tab.setTextColor(
                 if (selected) requireContext().primaryColor
-                else ContextCompat.getColor(requireContext(), R.color.primaryText)
+                else requireContext().primaryTextColor
             )
         }
         (childFragmentManager.findFragmentByTag(readAloudPreferTag) as? ReadAloudPreferenceFragment)

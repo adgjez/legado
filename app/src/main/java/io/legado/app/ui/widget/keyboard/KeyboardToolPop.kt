@@ -24,6 +24,7 @@ import io.legado.app.databinding.PopupKeyboardToolBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.activity
 import io.legado.app.utils.showDialogFragment
@@ -100,6 +101,7 @@ class KeyboardToolPop(
     @SuppressLint("SetTextI18n")
     private fun initRecyclerView() {
         (binding.recyclerView.layoutManager as GridLayoutManager).spanCount = AppConfig.showBoardLine
+        binding.recyclerView.setBackgroundColor(context.themeCardColorOrDefault())
         binding.recyclerView.adapter = adapter
         adapter.addHeaderView {
             ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {

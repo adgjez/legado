@@ -155,7 +155,9 @@ private fun PreferenceSectionPanel(
     onScrollTargetConsumed: () -> Unit
 ) {
     val context = LocalContext.current
-    val panelImage = UiCorner.panelImageDrawable(context, panelRadiusPx)
+    val panelImage = remember(context, panelRadiusPx, colors.themeSignature) {
+        UiCorner.panelImageDrawable(context, panelRadiusPx)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()

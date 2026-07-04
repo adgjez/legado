@@ -28,6 +28,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.ui.about.ReadHeatmapCell
 import io.legado.app.ui.about.ReadRecordCoverRow
 import io.legado.app.ui.about.ReadRecordCoverUi
@@ -789,7 +790,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     }
 
     private fun applyPageChrome() {
-        val panelSurfaceColor = ContextCompat.getColor(requireContext(), R.color.background_card)
+        val panelSurfaceColor = requireContext().themeCardColorOrDefault()
 
         binding.panelOverview.background = null
         listOf(

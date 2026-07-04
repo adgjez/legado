@@ -8,7 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -22,6 +21,8 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
@@ -57,8 +58,8 @@ class AiReadAloudUsageRecordActivity : BaseActivity<ActivityThemeManageBinding>(
         tabBar.visibility = View.GONE
         btnAdd.text = "全选"
         btnAdd.background = UiCorner.actionSelector(
-            ContextCompat.getColor(this@AiReadAloudUsageRecordActivity, R.color.background_card),
-            ContextCompat.getColor(this@AiReadAloudUsageRecordActivity, R.color.background_menu),
+            themeCardColorOrDefault(),
+            themeMutedColorOrDefault(),
             UiCorner.actionRadius(this@AiReadAloudUsageRecordActivity)
         )
         btnAdd.setOnClickListener { toggleSelectAll() }
@@ -226,8 +227,8 @@ class AiReadAloudUsageRecordActivity : BaseActivity<ActivityThemeManageBinding>(
                 orientation = LinearLayout.VERTICAL
                 setPadding(14.dpToPx(), 12.dpToPx(), 14.dpToPx(), 12.dpToPx())
                 background = UiCorner.actionSelector(
-                    ContextCompat.getColor(parent.context, R.color.background_card),
-                    ContextCompat.getColor(parent.context, R.color.background_menu),
+                    parent.context.themeCardColorOrDefault(),
+                    parent.context.themeMutedColorOrDefault(),
                     UiCorner.panelRadius(parent.context)
                 )
             }

@@ -59,6 +59,7 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.model.BookCover
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.textHeight
@@ -375,8 +376,9 @@ private fun BookCoverNameOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val backgroundColor = remember(context) { context.backgroundColor }
-    val accentColor = remember(context) { context.accentColor }
+    val themeSignature = rememberThemeUiPalette().signature
+    val backgroundColor = remember(context, themeSignature) { context.backgroundColor }
+    val accentColor = remember(context, themeSignature) { context.accentColor }
     Canvas(modifier = modifier) {
         val viewWidth = size.width
         val viewHeight = size.height

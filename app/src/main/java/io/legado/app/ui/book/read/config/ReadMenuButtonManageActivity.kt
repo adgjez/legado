@@ -10,7 +10,6 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -35,6 +34,8 @@ import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.read.ReadMenuButtonIconHelper
 import io.legado.app.ui.book.read.ReadMenuButtonConfig
@@ -135,13 +136,13 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private fun initView() = binding.run {
         titleBar.title = getString(R.string.read_menu_button_manage)
         tabBar.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_menu),
+            themeMutedColorOrDefault(),
             UiCorner.panelRadius(this@ReadMenuButtonManageActivity)
         )
         listOf(btnDay, btnNight).forEach {
             it.background = UiCorner.actionSelector(
                 Color.TRANSPARENT,
-                ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_card),
+                themeCardColorOrDefault(),
                 UiCorner.actionRadius(this@ReadMenuButtonManageActivity)
             )
         }
@@ -149,8 +150,8 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         btnNight.text = getString(R.string.read_menu_second_row)
         btnAdd.text = getString(R.string.read_menu_add_button)
         btnAdd.background = UiCorner.actionSelector(
-            ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_card),
-            ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_menu),
+            themeCardColorOrDefault(),
+            themeMutedColorOrDefault(),
             UiCorner.actionRadius(this@ReadMenuButtonManageActivity)
         )
         btnAdd.setOnClickListener { showAddButtonDialog() }
@@ -655,7 +656,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
         fun bind(ref: ReadMenuButtonConfig.ButtonRef) = itemBinding.run {
             root.background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_card),
+                themeCardColorOrDefault(),
                 UiCorner.panelRadius(this@ReadMenuButtonManageActivity)
             )
             ivPreview.setImageDrawable(
@@ -695,8 +696,8 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             btnMore.contentDescription = getString(R.string.delete)
             listOf(btnApply, btnEdit, btnMore).forEach {
                 it.background = UiCorner.actionSelector(
-                    ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_menu),
-                    ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_card),
+                    themeMutedColorOrDefault(),
+                    themeCardColorOrDefault(),
                     UiCorner.actionRadius(this@ReadMenuButtonManageActivity)
                 )
                 it.typeface = this@ReadMenuButtonManageActivity.uiTypeface()

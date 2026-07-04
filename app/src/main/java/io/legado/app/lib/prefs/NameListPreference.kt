@@ -8,6 +8,7 @@ import androidx.preference.PreferenceViewHolder
 import io.legado.app.R
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 
@@ -25,6 +26,7 @@ class NameListPreference(context: Context, attrs: AttributeSet) : ListPreference
     }
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
         val v = Preference.bindView<TextView>(
             context, holder, icon, title, summary, widgetLayoutResource,
             R.id.text_view, isBottomBackground = isBottomBackground
@@ -34,13 +36,14 @@ class NameListPreference(context: Context, attrs: AttributeSet) : ListPreference
             if (!holder.itemView.isInEditMode) {
                 v.typeface = context.uiTypeface()
             }
-            if (isBottomBackground) {
-                val bgColor = context.bottomBackground
-                val pTextColor = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
-                v.setTextColor(pTextColor)
+            val bgColor = if (isBottomBackground) {
+                context.bottomBackground
+            } else {
+                context.themeCardColorOrDefault()
             }
+            val pTextColor = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
+            v.setTextColor(pTextColor)
         }
-        super.onBindViewHolder(holder)
         PreferenceItemStyle.apply(this, holder)
     }
 

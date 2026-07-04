@@ -42,6 +42,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +69,7 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.read.config.rememberReaderMenuDialogStyle
@@ -329,9 +331,14 @@ class ReadMenu @JvmOverloads constructor(
     @Composable
     private fun ReadMenuContent() {
         colorTick
+        val themeSignature = rememberThemeUiPalette().signature
         val style = rememberReadMenuStyle()
-        val bodyFontFamily = androidx.compose.ui.text.font.FontFamily(context.uiTypeface())
-        val titleFontFamily = androidx.compose.ui.text.font.FontFamily(context.titleTypeface())
+        val bodyFontFamily = remember(context, themeSignature) {
+            androidx.compose.ui.text.font.FontFamily(context.uiTypeface())
+        }
+        val titleFontFamily = remember(context, themeSignature) {
+            androidx.compose.ui.text.font.FontFamily(context.titleTypeface())
+        }
 
         CompositionLocalProvider(
             androidx.compose.material3.LocalTextStyle provides

@@ -16,7 +16,9 @@ import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.databinding.DialogTocRegexEditBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.utils.*
@@ -47,6 +49,11 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
+        (binding.root.getChildAt(0) as? View)?.background = UiCorner.panelRounded(
+            requireContext(),
+            requireContext().themeCardColorOrDefault(),
+            UiCorner.panelRadius(requireContext())
+        )
         initMenu()
         viewModel.initData(arguments?.getLong("id")) {
             upRuleView(it)

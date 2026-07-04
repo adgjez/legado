@@ -19,6 +19,8 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.searchContent.SearchResult
@@ -47,8 +49,8 @@ class SearchMenu @JvmOverloads constructor(
     private val bgColor: Int = context.bottomBackground
     private val textColor: Int = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
     private var bottomBackgroundList: ColorStateList = Selector.colorBuild()
-        .setDefaultColor(context.getCompatColor(R.color.background_card))
-        .setPressedColor(ColorUtils.darkenColor(context.getCompatColor(R.color.background_card)))
+        .setDefaultColor(context.themeCardColorOrDefault())
+        .setPressedColor(ColorUtils.darkenColor(context.themeCardColorOrDefault()))
         .create()
     private var onMenuOutEnd: (() -> Unit)? = null
     private var isMenuOutAnimating = false
@@ -80,8 +82,8 @@ class SearchMenu @JvmOverloads constructor(
 
     private fun initView() = binding.run {
         val isBgLight = ColorUtils.isColorLight(bgColor)
-        val themeSurfaceColor = context.getCompatColor(R.color.background_menu)
-        val themeCardColor = context.getCompatColor(R.color.background_card)
+        val themeSurfaceColor = context.themeMutedColorOrDefault()
+        val themeCardColor = context.themeCardColorOrDefault()
         val dividerColor = context.getCompatColor(R.color.divider)
         val panelBaseColor = ColorUtils.blendColors(
             bgColor,

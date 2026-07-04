@@ -10,6 +10,8 @@ import android.widget.PopupWindow
 import android.widget.SeekBar
 import io.legado.app.R
 import io.legado.app.databinding.PopupSeekBarBinding
+import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.model.AudioPlay
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
@@ -25,6 +27,11 @@ class SliderPopup(private val context: Context, private val name: Int) :
     private val binding = PopupSeekBarBinding.inflate(LayoutInflater.from(context))
     init {
         contentView = binding.root
+        binding.root.background = UiCorner.panelRounded(
+            context,
+            context.themeCardColorOrDefault(),
+            UiCorner.panelRadius(context)
+        )
         isTouchable = true
         isOutsideTouchable = false
         isFocusable = true

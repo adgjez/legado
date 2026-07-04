@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.ui.widget.compose.releaseComposeImage
-import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
@@ -91,6 +90,7 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.loadUiTypeface
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.cache.WebDavTaskManager
@@ -476,17 +476,17 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingBookInfoBackgroundPath = current.bookInfoBackgroundImgPath
         pendingPanelBackgroundPath = current.panelBackgroundImgPath
         pendingPanelBackgroundScaleType = current.panelBackgroundScaleType ?: ThemeConfig.PANEL_BG_CROP
-        pendingPanelBorderColor = current.panelBorderColor
+        pendingPanelBorderColor = normalizeOptionalColor(current.panelBorderColor)
         pendingPanelBorderAlpha = current.panelBorderAlpha ?: 100
         pendingBlur = current.backgroundImgBlur
         pendingUiCornerScale = current.uiCornerScale ?: AppConfig.uiCornerScale
         pendingUiLayoutAlpha = current.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha
         pendingDialogAlpha = current.dialogAlpha ?: AppConfig.dialogAlpha
-        pendingCardColor = current.cardColor
-        pendingMutedColor = current.mutedColor
-        pendingSearchFieldBackgroundColor = current.searchFieldBackgroundColor
-        pendingTabBackgroundColor = current.tabBackgroundColor
-        pendingShelfColor = current.shelfColor
+        pendingCardColor = normalizeOptionalColor(current.cardColor)
+        pendingMutedColor = normalizeOptionalColor(current.mutedColor)
+        pendingSearchFieldBackgroundColor = normalizeOptionalColor(current.searchFieldBackgroundColor)
+        pendingTabBackgroundColor = normalizeOptionalColor(current.tabBackgroundColor)
+        pendingShelfColor = normalizeOptionalColor(current.shelfColor)
         pendingCardShadow = current.cardShadow
         pendingCardBackgroundBlur = current.cardBackgroundBlur
         pendingFontScale = current.fontScale ?: getPrefInt(PreferKey.fontScale, 0)
@@ -496,10 +496,34 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingUiCornerReplyFollow = current.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow
         return DialogThemePackageEditBinding.inflate(layoutInflater).apply {
             etName.setText(current.themeName)
-            setupColorRow(rowPrimary, R.string.theme_color_primary, current.primaryColor, colorPrimary)
-            setupColorRow(rowAccent, R.string.theme_color_accent, current.accentColor, colorAccent)
-            setupColorRow(rowBackground, R.string.theme_color_background, current.backgroundColor, colorBackground)
-            setupColorRow(rowBottomBackground, R.string.theme_color_bottom_background, current.bottomBackground, colorBottomBackground)
+            setupColorRow(
+                rowPrimary,
+                R.string.theme_color_primary,
+                current.primaryColor,
+                colorPrimary,
+                ThemeStore.primaryColor(this@ThemeManageActivity)
+            )
+            setupColorRow(
+                rowAccent,
+                R.string.theme_color_accent,
+                current.accentColor,
+                colorAccent,
+                ThemeStore.accentColor(this@ThemeManageActivity)
+            )
+            setupColorRow(
+                rowBackground,
+                R.string.theme_color_background,
+                current.backgroundColor,
+                colorBackground,
+                ThemeStore.backgroundColor(this@ThemeManageActivity)
+            )
+            setupColorRow(
+                rowBottomBackground,
+                R.string.theme_color_bottom_background,
+                current.bottomBackground,
+                colorBottomBackground,
+                ThemeStore.bottomBackground(this@ThemeManageActivity)
+            )
             setupOptionalColorRow(rowCardColor, R.string.theme_color_card, pendingCardColor, colorCard)
             setupOptionalColorRow(rowMutedColor, R.string.theme_color_muted, pendingMutedColor, colorMuted)
             setupOptionalColorRow(
@@ -566,7 +590,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         tabs.forEach { (button, _) ->
             button.background = UiCorner.actionSelector(
                 Color.TRANSPARENT,
-                ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
+                themeCardColorOrDefault(),
                 UiCorner.actionRadius(this@ThemeManageActivity)
             )
             button.applyUiTitleTypeface(this@ThemeManageActivity)
@@ -669,12 +693,12 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         val actionRadius = UiCorner.actionRadius(this)
         binding.btnCancel.background = UiCorner.actionSelector(
             Color.TRANSPARENT,
-            ContextCompat.getColor(this, R.color.background_card),
+            themeCardColorOrDefault(),
             actionRadius
         )
         binding.btnConfirm.background = UiCorner.actionSelector(
             Color.TRANSPARENT,
-            ContextCompat.getColor(this, R.color.background_card),
+            themeCardColorOrDefault(),
             actionRadius
         )
     }
@@ -810,16 +834,18 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         row: ItemThemePackageOptionBinding,
         titleRes: Int,
         colorText: String,
-        target: Int
+        target: Int,
+        fallbackColor: Int
     ) {
         applyOptionRowBackground(row)
         row.tvTitle.text = getString(titleRes)
         row.viewSwatch.visibility = View.VISIBLE
-        row.tvValue.text = normalizeColor(colorText).uppercase(Locale.ROOT)
-        updateSwatch(row, normalizeColor(colorText).toColorInt())
+        val normalized = normalizeColor(colorText, fallbackColor)
+        row.tvValue.text = normalized
+        updateSwatch(row, normalized.toColorInt())
         row.root.setOnClickListener {
             ColorPickerDialog.newBuilder()
-                .setColor(normalizeColor(row.tvValue.text?.toString()).toColorInt())
+                .setColor(colorIntOrDefault(row.tvValue.text?.toString(), fallbackColor))
                 .setShowAlphaSlider(false)
                 .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
                 .setDialogId(target)
@@ -835,21 +861,42 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     ) {
         applyOptionRowBackground(row)
         row.tvTitle.text = getString(titleRes)
-        val normalized = colorText?.takeIf { it.isNotBlank() }
+        val normalized = normalizeOptionalColor(colorText)
         row.viewSwatch.visibility = if (normalized == null) View.INVISIBLE else View.VISIBLE
-        row.tvValue.text = normalized?.uppercase(Locale.ROOT) ?: getString(R.string.theme_value_follow_default)
-        normalized?.runCatching { toColorInt() }?.getOrNull()?.let { updateSwatch(row, it) }
+        row.tvValue.text = normalized ?: getString(R.string.theme_value_follow_default)
+        normalized?.toColorInt()?.let { updateSwatch(row, it) }
         row.root.setOnClickListener {
-            ColorPickerDialog.newBuilder()
-                .setColor((normalized ?: "#${accentColor.hexString}").toColorInt())
-                .setShowAlphaSlider(false)
-                .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
-                .setDialogId(target)
-                .show(this)
+            selector(
+                getString(titleRes),
+                listOf(getString(R.string.theme_value_follow_default), getString(R.string.select_color))
+            ) { _, index ->
+                if (index == 0) {
+                    setOptionalColor(target, null)
+                } else {
+                    val currentColor = optionalColorForTarget(target)
+                    ColorPickerDialog.newBuilder()
+                        .setColor(colorIntOrDefault(currentColor, accentColor))
+                        .setShowAlphaSlider(false)
+                        .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
+                        .setDialogId(target)
+                        .show(this)
+                }
+            }
         }
         row.root.setOnLongClickListener {
             setOptionalColor(target, null)
             true
+        }
+    }
+
+    private fun optionalColorForTarget(target: Int): String? {
+        return when (target) {
+            colorCard -> pendingCardColor
+            colorMuted -> pendingMutedColor
+            colorSearchFieldBackground -> pendingSearchFieldBackgroundColor
+            colorTabBackground -> pendingTabBackgroundColor
+            colorShelf -> pendingShelfColor
+            else -> null
         }
     }
 
@@ -934,10 +981,11 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private fun setupPanelBorderColorRow(row: ItemThemePackageOptionBinding) {
         applyOptionRowBackground(row)
         row.tvTitle.text = getString(R.string.theme_panel_border_color)
-        val colorText = pendingPanelBorderColor?.takeIf { it.isNotBlank() }
+        val colorText = normalizeOptionalColor(pendingPanelBorderColor)
+        pendingPanelBorderColor = colorText
         row.viewSwatch.visibility = if (colorText == null) View.INVISIBLE else View.VISIBLE
         row.tvValue.text = colorText?.uppercase(Locale.ROOT) ?: getString(R.string.disable)
-        colorText?.let { runCatching { updateSwatch(row, normalizeColor(it).toColorInt()) } }
+        colorText?.toColorInt()?.let { updateSwatch(row, it) }
         row.root.setOnClickListener {
             selector(
                 getString(R.string.theme_panel_border_color),
@@ -947,11 +995,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     pendingPanelBorderColor = null
                     setupPanelBorderColorRow(row)
                 } else {
-                    val initialColor = runCatching {
-                        colorText?.let { normalizeColor(it).toColorInt() } ?: accentColor
-                    }.getOrDefault(accentColor)
+                    val currentColor = normalizeOptionalColor(pendingPanelBorderColor)
                     ColorPickerDialog.newBuilder()
-                        .setColor(initialColor)
+                        .setColor(colorIntOrDefault(currentColor, accentColor))
                         .setShowAlphaSlider(false)
                         .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
                         .setDialogId(colorPanelBorder)
@@ -1077,7 +1123,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun applyOptionRowBackground(row: ItemThemePackageOptionBinding) {
         row.root.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this, R.color.background_card),
+            themeCardColorOrDefault(),
             UiCorner.panelRadius(this)
         )
     }
@@ -1116,10 +1162,22 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             baseConfig.copy(
                 themeName = name,
                 isNightTheme = isNightTheme,
-                primaryColor = normalizeColor(dialogBinding.rowPrimary.tvValue.text?.toString()),
-                accentColor = normalizeColor(dialogBinding.rowAccent.tvValue.text?.toString()),
-                backgroundColor = normalizeColor(dialogBinding.rowBackground.tvValue.text?.toString()),
-                bottomBackground = normalizeColor(dialogBinding.rowBottomBackground.tvValue.text?.toString()),
+                primaryColor = normalizeColor(
+                    dialogBinding.rowPrimary.tvValue.text?.toString(),
+                    ThemeStore.primaryColor(this)
+                ),
+                accentColor = normalizeColor(
+                    dialogBinding.rowAccent.tvValue.text?.toString(),
+                    ThemeStore.accentColor(this)
+                ),
+                backgroundColor = normalizeColor(
+                    dialogBinding.rowBackground.tvValue.text?.toString(),
+                    ThemeStore.backgroundColor(this)
+                ),
+                bottomBackground = normalizeColor(
+                    dialogBinding.rowBottomBackground.tvValue.text?.toString(),
+                    ThemeStore.bottomBackground(this)
+                ),
                 transparentNavBar = true,
                 backgroundImgPath = pendingMainBackgroundPath,
                 backgroundImgBlur = pendingBlur,
@@ -1381,12 +1439,45 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
     }
 
-    private fun normalizeColor(value: String?): String {
-        val color = value?.trim().orEmpty().let {
-            if (it.startsWith("#")) it else "#$it"
+    private fun normalizeColor(value: String?, fallbackColor: Int): String {
+        return normalizeOptionalColor(value) ?: colorToHex(fallbackColor)
+    }
+
+    private fun normalizeOptionalColor(value: String?): String? {
+        val normalized = value.normalizedEditableColorString() ?: return null
+        val color = kotlin.runCatching { normalized.toColorInt() }.getOrNull() ?: return null
+        return colorToHex(color)
+    }
+
+    private fun colorIntOrDefault(value: String?, fallbackColor: Int): Int {
+        return normalizeOptionalColor(value)
+            ?.let { kotlin.runCatching { it.toColorInt() }.getOrNull() }
+            ?: fallbackColor
+    }
+
+    private fun String?.normalizedEditableColorString(): String? {
+        val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val withoutPrefix = raw
+            .removePrefix("#")
+            .removePrefix("0x")
+            .removePrefix("0X")
+        val isHex = withoutPrefix.isNotEmpty() &&
+            withoutPrefix.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+        if (!isHex) {
+            return raw
         }
-        color.toColorInt()
-        return color
+        val argb = when (withoutPrefix.length) {
+            3 -> "FF" + withoutPrefix.map { "$it$it" }.joinToString("")
+            4 -> withoutPrefix.map { "$it$it" }.joinToString("")
+            6 -> "FF$withoutPrefix"
+            8 -> withoutPrefix
+            else -> return null
+        }
+        return "#${argb.uppercase(Locale.ROOT)}"
+    }
+
+    private fun colorToHex(color: Int): String {
+        return String.format(Locale.US, "#%06X", 0xFFFFFF and color)
     }
 
     private fun startImageCrop(uri: Uri, requestCode: Int) {
@@ -1823,7 +1914,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
     override fun onColorSelected(dialogId: Int, color: Int) {
         val binding = editDialogBinding ?: return
-        val hex = "#${color.hexString}".uppercase(Locale.ROOT)
+        val hex = colorToHex(color)
         if (setOptionalColor(dialogId, hex)) {
             return
         }

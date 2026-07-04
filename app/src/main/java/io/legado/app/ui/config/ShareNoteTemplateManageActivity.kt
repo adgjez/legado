@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
+import io.legado.app.constant.AppLog
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.ui.book.read.ShareNoteImageRenderer
@@ -24,7 +25,9 @@ import io.legado.app.utils.readText
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -38,6 +41,9 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
     private val previewFilesState = mutableStateOf<Map<String, File>>(emptyMap())
     private val shareStyleState = mutableStateOf(ShareNoteTemplateManager.currentStyle())
     private var editingEntry: ShareNoteTemplateManager.Entry? = null
+    private var loadTemplatesJob: Job? = null
+    private val previewJobs = mutableListOf<Job>()
+    private var previewBatch = 0
 
     private val importTemplate = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
@@ -97,6 +103,12 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
         loadTemplates()
     }
 
+    override fun onDestroy() {
+        loadTemplatesJob?.cancel()
+        cancelPreviewJobs()
+        super.onDestroy()
+    }
+
     private fun initComposeContent() {
         val container = binding.recyclerView.parent as? ViewGroup ?: return
         val index = container.indexOfChild(binding.recyclerView)
@@ -128,8 +140,18 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
     }
 
     private fun loadTemplates() {
-        lifecycleScope.launch {
-            val entries = withContext(Dispatchers.IO) { ShareNoteTemplateManager.loadEntries() }
+        loadTemplatesJob?.cancel()
+        cancelPreviewJobs()
+        loadTemplatesJob = lifecycleScope.launch {
+            val entries = try {
+                withContext(Dispatchers.IO) { ShareNoteTemplateManager.loadEntries() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.put("Share note template load failed\n${e.localizedMessage}", e)
+                toastOnUi(getString(R.string.theme_package_load_failed, e.localizedMessage ?: getString(R.string.error)))
+                return@launch
+            }
             entriesState.value = entries
             activeDirNameState.value = ShareNoteTemplateManager.activeDirName()
             refreshPreviews(entries)
@@ -140,19 +162,40 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
         entries: List<ShareNoteTemplateManager.Entry>,
         force: Boolean = false
     ) {
+        cancelPreviewJobs()
+        val currentDirs = entries.mapTo(hashSetOf()) { it.dirName }
+        previewFilesState.value = previewFilesState.value.filterKeys { it in currentDirs }
+        val batch = previewBatch
         val style = shareStyleState.value
         entries.forEach { entry ->
-            lifecycleScope.launch {
-                ShareNoteImageRenderer.renderPreview(
-                    context = this@ShareNoteTemplateManageActivity,
-                    entry = entry,
-                    force = force,
-                    style = style
-                )?.let { file ->
-                    previewFilesState.value = previewFilesState.value + (entry.dirName to file)
+            val job = lifecycleScope.launch {
+                val file = try {
+                    ShareNoteImageRenderer.renderPreview(
+                        context = this@ShareNoteTemplateManageActivity,
+                        entry = entry,
+                        force = force,
+                        style = style
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.put("Share note template preview failed: ${entry.dirName}\n${e.localizedMessage}", e)
+                    null
+                }
+                file?.let {
+                    if (batch == previewBatch) {
+                        previewFilesState.value = previewFilesState.value + (entry.dirName to it)
+                    }
                 }
             }
+            previewJobs += job
         }
+    }
+
+    private fun cancelPreviewJobs() {
+        previewBatch += 1
+        previewJobs.forEach { it.cancel() }
+        previewJobs.clear()
     }
 
     private fun applyTemplate(entry: ShareNoteTemplateManager.Entry) {
@@ -166,7 +209,7 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
         ShareNoteTemplateManager.saveStyle(style)
         shareStyleState.value = ShareNoteTemplateManager.currentStyle()
         previewFilesState.value = emptyMap()
-        refreshPreviews(entriesState.value, force = false)
+        refreshPreviews(entriesState.value, force = true)
     }
 
     private fun showAddActions() {
@@ -207,17 +250,24 @@ class ShareNoteTemplateManageActivity : BaseActivity<ActivityThemeManageBinding>
 
     private fun openPreview(entry: ShareNoteTemplateManager.Entry) {
         lifecycleScope.launch {
-            val file = ShareNoteImageRenderer.renderPreview(
-                context = this@ShareNoteTemplateManageActivity,
-                entry = entry,
-                force = true,
-                style = shareStyleState.value
-            )
+            val file = try {
+                ShareNoteImageRenderer.renderPreview(
+                    context = this@ShareNoteTemplateManageActivity,
+                    entry = entry,
+                    force = true,
+                    style = shareStyleState.value
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.put("Share note template manual preview failed: ${entry.dirName}\n${e.localizedMessage}", e, true)
+                null
+            }
             if (file == null) {
-                toastOnUi("预览生成失败")
+                toastOnUi(R.string.error)
             } else {
                 previewFilesState.value = previewFilesState.value + (entry.dirName to file)
-                toastOnUi("预览已刷新")
+                toastOnUi(R.string.success)
             }
         }
     }

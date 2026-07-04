@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.ui.config.ShareNoteTemplatePreview
 import io.legado.app.ui.widget.compose.AppDialogFrame
@@ -38,6 +39,7 @@ import io.legado.app.ui.widget.compose.AppManagementCard
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -55,6 +57,7 @@ class ShareNoteTemplateSelectDialog : ComposeDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        val appContext = requireContext().applicationContext
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
@@ -62,18 +65,36 @@ class ShareNoteTemplateSelectDialog : ComposeDialogFragment() {
                 var entries by remember { mutableStateOf<List<ShareNoteTemplateManager.Entry>>(emptyList()) }
                 var previews by remember { mutableStateOf<Map<String, File>>(emptyMap()) }
                 LaunchedEffect(Unit) {
-                    val loaded = withContext(Dispatchers.IO) { ShareNoteTemplateManager.loadEntries() }
+                    val loaded = try {
+                        withContext(Dispatchers.IO) { ShareNoteTemplateManager.loadEntries() }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLog.put("Share note template select load failed\n${e.localizedMessage}", e)
+                        return@LaunchedEffect
+                    }
                     val last = ShareNoteTemplateManager.lastDirName()
                     entries = loaded.sortedBy { if (it.dirName == last) 0 else 1 }
                     loaded.forEach { entry ->
-                        ShareNoteImageRenderer.renderPreview(requireContext(), entry)?.let { file ->
-                            previews = previews + (entry.dirName to file)
+                        val file = try {
+                            ShareNoteImageRenderer.renderPreview(appContext, entry)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            AppLog.put(
+                                "Share note template select preview failed: ${entry.dirName}\n${e.localizedMessage}",
+                                e
+                            )
+                            null
+                        }
+                        file?.let {
+                            previews = previews + (entry.dirName to it)
                         }
                     }
                 }
                 AppDialogFrame(
                     title = "选择分享模板",
-                    message = "预览只显示模板头部，选择后会生成完整分享图片。",
+                    message = null,
                     scrollContent = false,
                     content = {
                         LazyColumn(
@@ -98,7 +119,10 @@ class ShareNoteTemplateSelectDialog : ComposeDialogFragment() {
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        ShareNoteTemplatePreview(previewFile = previews[entry.dirName])
+                                        ShareNoteTemplatePreview(
+                                            previewFile = previews[entry.dirName],
+                                            palette = palette
+                                        )
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
@@ -124,10 +148,9 @@ class ShareNoteTemplateSelectDialog : ComposeDialogFragment() {
                         }
                     },
                     actions = {
-                        val dialogPalette = rememberAppManagementPalette().miuix
                         LegadoMiuixActionButton(
                             text = "管理模板",
-                            palette = dialogPalette,
+                            palette = palette.miuix,
                             onClick = {
                                 dismissAllowingStateLoss()
                                 onManage?.invoke()
@@ -135,7 +158,7 @@ class ShareNoteTemplateSelectDialog : ComposeDialogFragment() {
                         )
                         LegadoMiuixActionButton(
                             text = getString(R.string.cancel),
-                            palette = dialogPalette,
+                            palette = palette.miuix,
                             onClick = { dismissAllowingStateLoss() }
                         )
                     }

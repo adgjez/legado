@@ -44,6 +44,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.book.info.BookInfoNavigator
@@ -484,7 +485,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         val bgColor = if (selected) {
             ColorUtils.adjustAlpha(accentColor, if (AppConfig.isNightTheme) 0.28f else 0.16f)
         } else {
-            ContextCompat.getColor(this, R.color.background_menu)
+            themeMutedColorOrDefault()
         }
         val strokeColor = if (selected) {
             accentColor

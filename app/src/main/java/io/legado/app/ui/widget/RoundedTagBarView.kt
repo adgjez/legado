@@ -7,15 +7,18 @@ import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeColorOrNull
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 
@@ -81,10 +84,11 @@ class RoundedTagBarView @JvmOverloads constructor(
             ?: if (config.style == TopBarConfig.STYLE_REGULAR) {
                 Color.WHITE
             } else {
-                ContextCompat.getColor(context, R.color.background_menu)
+                context.themeColorOrNull(PreferKey.themeTabBackgroundColor)
+                    ?: context.themeMutedColorOrDefault()
             }
         val selectedColor = config.tagSelectedColor
-            ?: ContextCompat.getColor(context, R.color.background_card)
+            ?: context.themeCardColorOrDefault()
         background = when (displayMode) {
             DisplayMode.TEXT -> null
             else -> UiCorner.opaqueRounded(
@@ -220,7 +224,7 @@ class RoundedTagBarView @JvmOverloads constructor(
 
     private inner class TagAdapter : RecyclerView.Adapter<TagViewHolder>() {
 
-        var selectedBackgroundColor: Int = ContextCompat.getColor(context, R.color.background_card)
+        var selectedBackgroundColor: Int = context.themeCardColorOrDefault()
         var selectedTextColor: Int = context.accentColor
         var normalTextColor: Int = context.primaryTextColor
 

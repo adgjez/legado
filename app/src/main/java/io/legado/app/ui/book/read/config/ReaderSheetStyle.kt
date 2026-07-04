@@ -2,15 +2,14 @@ package io.legado.app.ui.book.read.config
 
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
-import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.getCompatColor
 
 object ReaderSheetStyle {
 
@@ -31,7 +30,7 @@ object ReaderSheetStyle {
         val textColor = context.getPrimaryTextColor(isLight)
         val accentColor = context.accentColor
         val primaryColor = context.primaryColor
-        val cardColor = context.getCompatColor(R.color.background_card)
+        val cardColor = context.themeCardColorOrDefault()
         val surfaceBase = ColorUtils.blendColors(base, cardColor, if (isLight) 0.86f else 0.64f)
         val surface = ColorUtils.blendColors(
             surfaceBase,

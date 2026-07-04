@@ -80,6 +80,7 @@ import io.legado.app.databinding.ItemFilletSelectorSingleBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemFindBookBinding
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
@@ -1499,7 +1500,7 @@ private fun applyClassicDiscoverTagSelectedStyle(tv: TextView, selected: Boolean
     val context = tv.context
     if (!selected) {
         tv.background = ContextCompat.getDrawable(context, R.drawable.selector_fillet_btn_bg)
-        tv.setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+        tv.setTextColor(context.primaryTextColor)
         return
     }
     val accent = context.accentColor

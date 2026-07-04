@@ -91,7 +91,10 @@ internal fun ShareNoteTemplateManageScreen(
                 onApply = { onApply(entry) },
                 onEdit = { onEdit(entry) },
                 leadingContent = {
-                    ShareNoteTemplatePreview(previewFile = previewFiles[entry.dirName])
+                    ShareNoteTemplatePreview(
+                        previewFile = previewFiles[entry.dirName],
+                        palette = palette
+                    )
                 }
             )
         }
@@ -178,13 +181,13 @@ private fun ShareNoteStyleQuickCard(
 @Composable
 internal fun ShareNoteTemplatePreview(
     previewFile: File?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    palette: AppManagementPalette = rememberAppManagementPalette()
 ) {
-    val palette = rememberAppManagementPalette()
     Box(
         modifier = modifier
             .size(width = 78.dp, height = 110.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(palette.miuix.actionRadius ?: 8.dp))
             .background(palette.miuix.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
@@ -196,7 +199,7 @@ internal fun ShareNoteTemplatePreview(
                     }
                 },
                 update = { imageView ->
-                    Glide.with(imageView.context.applicationContext ?: imageView.context)
+                    Glide.with(imageView)
                         .load(previewFile)
                         .signature(
                             ObjectKey("${previewFile.absolutePath}:${previewFile.length()}:${previewFile.lastModified()}")

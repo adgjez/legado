@@ -66,14 +66,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.utils.ColorUtils
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
@@ -85,6 +86,8 @@ data class AppSettingPalette(
     val row: Int,
     val rowPressed: Int,
     val divider: Color,
+    val bottomBar: Int,
+    val bottomBarText: Color,
     val border: Int?,
     val primaryText: Color,
     val secondaryText: Color,
@@ -94,7 +97,8 @@ data class AppSettingPalette(
     val onAccent: Color,
     val panelRadiusPx: Float,
     val bodyFontFamily: FontFamily,
-    val titleFontFamily: FontFamily
+    val titleFontFamily: FontFamily,
+    val themeSignature: String
 )
 
 @Immutable
@@ -116,14 +120,22 @@ data class AppManagementMenuAction(
 fun rememberAppSettingPalette(): AppSettingPalette {
     val context = LocalContext.current
     val dialogStyle = rememberAppDialogStyle()
-    val rowBaseColor = ContextCompat.getColor(context, R.color.background_card)
+    val themeUiPalette = rememberThemeUiPalette()
+    val rowBaseColor = themeUiPalette.cardColor
     // 文字/强调前景色按实际背景明暗推导，避免随 night 标志产生深底深字/浅底白字
     val rowLight = ColorUtils.isColorLight(rowBaseColor)
     val secondaryText = Color(context.getSecondaryTextColor(rowLight))
     val page = Color(context.backgroundColor)
     val row = UiCorner.surfaceColor(rowBaseColor)
     val rowPressed = UiCorner.surfaceColor(rowBaseColor, pressed = true)
-    val divider = Color(ContextCompat.getColor(context, R.color.bg_divider_line))
+    val divider = Color(themeUiPalette.dividerColor)
+    val bottomBarBase = if (themeUiPalette.hasCustomCardColor || themeUiPalette.hasCustomMutedColor) {
+        themeUiPalette.mutedColor
+    } else {
+        context.bottomBackground
+    }
+    val bottomBarLight = ColorUtils.isColorLight(bottomBarBase)
+    val bottomBarText = Color(context.getPrimaryTextColor(bottomBarLight))
     val border = UiCorner.panelBorderColor(context)
     val primaryText = Color(context.getPrimaryTextColor(rowLight))
     val accentArgb = context.accentColor
@@ -135,6 +147,8 @@ fun rememberAppSettingPalette(): AppSettingPalette {
         row,
         rowPressed,
         divider,
+        bottomBarBase,
+        bottomBarText,
         border,
         primaryText,
         secondaryText,
@@ -143,13 +157,16 @@ fun rememberAppSettingPalette(): AppSettingPalette {
         dialogStyle.danger,
         panelRadiusPx,
         dialogStyle.bodyFontFamily,
-        dialogStyle.titleFontFamily
+        dialogStyle.titleFontFamily,
+        themeUiPalette.signature
     ) {
         AppSettingPalette(
             page = page,
             row = row,
             rowPressed = rowPressed,
             divider = divider,
+            bottomBar = bottomBarBase,
+            bottomBarText = bottomBarText,
             border = border,
             primaryText = primaryText,
             secondaryText = secondaryText,
@@ -159,7 +176,8 @@ fun rememberAppSettingPalette(): AppSettingPalette {
             onAccent = onAccent,
             panelRadiusPx = panelRadiusPx,
             bodyFontFamily = dialogStyle.bodyFontFamily,
-            titleFontFamily = dialogStyle.titleFontFamily
+            titleFontFamily = dialogStyle.titleFontFamily,
+            themeSignature = themeUiPalette.signature
         )
     }
 }
@@ -237,7 +255,7 @@ fun AppManagementCard(
     val pressed by interactionSource.collectIsPressedAsState()
     val panelRadiusPx = palette.settings.panelRadiusPx
     val panelImage = if (drawPanelImage) {
-        remember(context, panelRadiusPx) {
+        remember(context, panelRadiusPx, palette.settings.themeSignature) {
             UiCorner.panelImageDrawable(context, panelRadiusPx)
         }
     } else {

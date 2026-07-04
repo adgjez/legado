@@ -23,7 +23,7 @@ fun Menu.applyTint(context: Context, theme: Theme = Theme.Auto): Menu = this.let
     if (menu is MenuBuilder) {
         menu.setOptionalIconsVisible(true)
     }
-    val defaultTextColor = context.getCompatColor(R.color.primaryText)
+    val defaultTextColor = context.primaryTextColor
     val tintColor = MenuExtensions.getMenuColor(context, theme)
     menu.forEach { item ->
         (item as MenuItemImpl).let { impl ->
@@ -40,7 +40,7 @@ fun Menu.applyTint(context: Context, theme: Theme = Theme.Auto): Menu = this.let
 fun Menu.applyOpenTint(context: Context, showIcon: Boolean = true) {
     //展开菜单显示图标
     if (this.javaClass.simpleName.equals("MenuBuilder", ignoreCase = true)) {
-        val defaultTextColor = context.getCompatColor(R.color.primaryText)
+        val defaultTextColor = context.primaryTextColor
         kotlin.runCatching {
             var method: Method =
                 this.javaClass.getDeclaredMethod("setOptionalIconsVisible", java.lang.Boolean.TYPE)
@@ -59,7 +59,7 @@ fun Menu.applyOpenTint(context: Context, showIcon: Boolean = true) {
             }
         }
     } else if (this.javaClass.simpleName.equals("SubMenuBuilder", ignoreCase = true)) {
-        val defaultTextColor = context.getCompatColor(R.color.primaryText)
+        val defaultTextColor = context.primaryTextColor
         (this as? SubMenuBuilder)?.forEach { item: MenuItem ->
             item.icon?.setTintMutate(defaultTextColor)
         }
@@ -101,7 +101,7 @@ object MenuExtensions {
         theme: Theme = Theme.Auto,
         requiresOverflow: Boolean = false
     ): Int {
-        val defaultTextColor = context.getCompatColor(R.color.primaryText)
+        val defaultTextColor = context.primaryTextColor
         if (requiresOverflow)
             return defaultTextColor
         val primaryTextColor = context.primaryTextColor

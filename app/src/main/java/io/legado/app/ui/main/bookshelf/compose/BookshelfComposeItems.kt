@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,16 +26,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import io.legado.app.R
 import io.legado.app.data.dao.BookShelfDisplay
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.toTimeAgo
 
 sealed interface BookshelfItemUi {
@@ -136,9 +139,15 @@ fun BookshelfGridItem(
     onClick: (BookshelfItemUi) -> Unit,
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
+    val context = LocalContext.current
+    val themeSignature = rememberThemeUiPalette().signature
     val showBookName = AppConfig.showBookname
-    val titleFontFamily = FontFamily(LocalContext.current.titleTypeface())
-    val titleColor = Color(ContextCompat.getColor(LocalContext.current, R.color.primaryText))
+    val titleFontFamily = remember(context, themeSignature) {
+        FontFamily(context.titleTypeface())
+    }
+    val titleColor = remember(context, themeSignature) {
+        Color(context.getPrimaryTextColor(ColorUtils.isColorLight(context.backgroundColor)))
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()

@@ -5,7 +5,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.bumptech.glide.Glide
@@ -19,6 +18,7 @@ import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -113,7 +113,7 @@ class CoverCollectionDetailActivity : BaseActivity<ActivityCoverCollectionDetail
             return ItemCoverCollectionImageBinding.inflate(inflater, parent, false).apply {
                 root.background = UiCorner.panelRounded(
                     root.context,
-                    ContextCompat.getColor(root.context, R.color.background_card),
+                    root.context.themeCardColorOrDefault(),
                     UiCorner.panelRadius(root.context)
                 )
             }

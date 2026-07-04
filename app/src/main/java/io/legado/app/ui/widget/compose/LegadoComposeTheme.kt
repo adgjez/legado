@@ -8,7 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 
@@ -23,8 +23,9 @@ import io.legado.app.lib.theme.uiTypeface
 @Composable
 fun LegadoComposeTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val bodyFamily = remember(AppConfig.uiFontPath) { FontFamily(context.uiTypeface()) }
-    val titleFamily = remember(AppConfig.titleFontPath) { FontFamily(context.titleTypeface()) }
+    val themeSignature = rememberThemeUiPalette().signature
+    val bodyFamily = remember(context, themeSignature) { FontFamily(context.uiTypeface()) }
+    val titleFamily = remember(context, themeSignature) { FontFamily(context.titleTypeface()) }
     MaterialTheme(
         colorScheme = MaterialTheme.colorScheme,
         shapes = MaterialTheme.shapes,

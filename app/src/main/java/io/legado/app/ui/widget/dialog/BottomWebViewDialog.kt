@@ -43,6 +43,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.databinding.DialogWebViewBinding
@@ -78,6 +79,7 @@ import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.text
+import io.legado.app.lib.theme.themeColorOrNull
 import io.legado.app.help.webView.WebJsExtensions.Companion.JS_URL
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameUrl
 import io.legado.app.help.webView.WebViewPool.BLANK_HTML
@@ -362,7 +364,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     private fun applySheetCorners(radius: Float) {
         val hasRadius = radius > 0f
-        val surfaceColor = ContextCompat.getColor(requireContext(), R.color.dialog_surface)
+        val surfaceColor = requireContext().themeColorOrNull(PreferKey.themeCardColor)
+            ?: ContextCompat.getColor(requireContext(), R.color.dialog_surface)
         bottomSheet?.let { sheet ->
             sheet.backgroundTintList = null
             sheet.background = if (hasRadius) topRoundDrawable(Color.TRANSPARENT, radius) else null

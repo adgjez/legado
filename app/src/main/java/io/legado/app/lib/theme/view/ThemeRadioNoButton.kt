@@ -11,9 +11,9 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.getCompatColor
 
 class ThemeRadioNoButton(context: Context, attrs: AttributeSet) :
     AppCompatRadioButton(context, attrs) {
@@ -57,7 +57,7 @@ class ThemeRadioNoButton(context: Context, attrs: AttributeSet) :
             }
             else -> {
                 val accentColor = context.accentColor
-                val defaultTextColor = context.getCompatColor(R.color.primaryText)
+                val defaultTextColor = context.primaryTextColor
                 val checkedTextColor = if (ColorUtils.isColorLight(accentColor)) {
                     Color.BLACK
                 } else {

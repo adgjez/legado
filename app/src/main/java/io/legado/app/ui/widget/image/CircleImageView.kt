@@ -18,7 +18,7 @@ import androidx.annotation.ColorRes
 import androidx.annotation.DrawableRes
 import androidx.appcompat.widget.AppCompatImageView
 import io.legado.app.R
-import io.legado.app.utils.getCompatColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.spToPx
 import kotlin.math.min
@@ -118,7 +118,7 @@ class CircleImageView @JvmOverloads constructor(
 
     private var text: String? = null
 
-    private var textColor = context.getCompatColor(R.color.primaryText)
+    private var textColor = context.primaryTextColor
     private var textBold = false
     var isInView = false
 
@@ -143,7 +143,7 @@ class CircleImageView @JvmOverloads constructor(
         if (a.hasValue(R.styleable.CircleImageView_textColor)) {
             textColor = a.getColor(
                 R.styleable.CircleImageView_textColor,
-                context.getCompatColor(R.color.primaryText)
+                context.primaryTextColor
             )
         }
         a.recycle()

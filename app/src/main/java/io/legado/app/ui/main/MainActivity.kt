@@ -75,6 +75,8 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.ReadAloudAppCapsuleHost
@@ -556,6 +558,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun setupMainBackgroundLayer() {
+        binding.contentContainer.setBackgroundColor(MainThemeBackgroundState.signature(this).fallbackColor)
         binding.liquidGlassSampleBackground.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
@@ -590,6 +593,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             return
         }
         mainBackgroundSignature = signature
+        binding.contentContainer.setBackgroundColor(signature.fallbackColor)
         super.upBackgroundImage()
         syncLiquidGlassSampleBackground()
         if (scheduleWarmup) {
@@ -1092,9 +1096,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             applyUiTitleTypeface(this@MainActivity)
             setTextColor(
                 if (selected) {
-                    ContextCompat.getColor(this@MainActivity, R.color.primaryText)
+                    this@MainActivity.primaryTextColor
                 } else {
-                    ContextCompat.getColor(this@MainActivity, R.color.secondaryText)
+                    this@MainActivity.secondaryTextColor
                 }
             )
             maxLines = 1

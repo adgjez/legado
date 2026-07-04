@@ -2,7 +2,6 @@ package io.legado.app.ui.book.cache
 
 import android.content.Context
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
@@ -11,6 +10,8 @@ import io.legado.app.databinding.ItemCacheManageBookBinding
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -67,18 +68,18 @@ class CacheManageAdapter(
         val book = item.book
         root.background = UiCorner.panelRounded(
             context,
-            ContextCompat.getColor(context, R.color.background_card),
+            context.themeCardColorOrDefault(),
             UiCorner.panelRadius(context)
         )
         btnSource.background = UiCorner.actionSelector(
-            ContextCompat.getColor(context, R.color.background_menu),
-            ContextCompat.getColor(context, R.color.background_card),
+            context.themeMutedColorOrDefault(),
+            context.themeCardColorOrDefault(),
             UiCorner.actionRadius(context)
         )
         listOf(btnChapters, btnUpload, btnDelete, btnBookshelf, btnStop).forEach {
             it.background = UiCorner.actionSelector(
                 android.graphics.Color.TRANSPARENT,
-                ContextCompat.getColor(context, R.color.background_menu),
+                context.themeMutedColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             it.setTextColor(context.primaryTextColor)

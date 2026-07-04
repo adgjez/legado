@@ -26,8 +26,9 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.lib.theme.applyUiMenuTypefaceDeep
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyOpenTint
@@ -77,7 +78,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         if (AppConst.menuViewNames.contains(name)) {
             if (parent?.parent is FrameLayout) {
                 (parent.parent as View).background = UiCorner.opaqueRounded(
-                    androidx.core.content.ContextCompat.getColor(context, R.color.background_card),
+                    context.themeCardColorOrDefault(),
                     UiCorner.panelRadius(context)
                 )
             }
@@ -201,12 +202,7 @@ abstract class BaseActivity<VB : ViewBinding>(
     }
 
     private fun applyInitialWindowBackground() {
-        if (imageBg && !AppConfig.isEInkMode && ThemeConfig.hasUsableBgImage(this)) {
-            ViewCompat.setBackgroundTintList(window.decorView, null)
-            window.decorView.background = null
-        } else {
-            applyWindowBackgroundColor()
-        }
+        applyWindowBackgroundColor()
     }
 
     private fun applyRootBackgroundPolicy() {
@@ -228,23 +224,20 @@ abstract class BaseActivity<VB : ViewBinding>(
                 ViewCompat.setBackgroundTintList(window.decorView, null)
                 window.decorView.background = drawable
             } else if (hasBgImage) {
-                ViewCompat.setBackgroundTintList(window.decorView, null)
-                window.decorView.background = null
+                applyWindowBackgroundColor()
             } else {
                 applyWindowBackgroundColor()
             }
         } catch (_: OutOfMemoryError) {
             if (hasBgImage) {
-                ViewCompat.setBackgroundTintList(window.decorView, null)
-                window.decorView.background = null
+                applyWindowBackgroundColor()
             } else {
                 applyWindowBackgroundColor()
             }
             toastOnUi(R.string.background_image_too_large)
         } catch (e: Exception) {
             if (hasBgImage) {
-                ViewCompat.setBackgroundTintList(window.decorView, null)
-                window.decorView.background = null
+                applyWindowBackgroundColor()
             } else {
                 applyWindowBackgroundColor()
             }

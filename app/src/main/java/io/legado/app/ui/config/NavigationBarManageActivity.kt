@@ -49,6 +49,8 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.cache.WebDavTaskManager
 import io.legado.app.ui.book.cache.WebDavTaskStatus
@@ -735,7 +737,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dp, 8.dp, 14.dp, 8.dp)
             background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeCardColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -760,7 +762,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dp, 8.dp, 14.dp, 8.dp)
             background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeCardColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -784,8 +786,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageDrawable(NavigationBarIconConfig.previewSingleDrawable(this@NavigationBarManageActivity, entry, item))
             background = UiCorner.actionSelector(
-                ContextCompat.getColor(context, R.color.background_menu),
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeMutedColorOrDefault(),
+                context.themeCardColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(44.dp, 44.dp).apply { marginStart = 8.dp }
@@ -822,8 +824,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageDrawable(NavigationBarIconConfig.previewDrawable(this@NavigationBarManageActivity, entry, item, selected))
             background = UiCorner.actionSelector(
-                ContextCompat.getColor(context, R.color.background_menu),
-                ContextCompat.getColor(context, R.color.background_card),
+                context.themeMutedColorOrDefault(),
+                context.themeCardColorOrDefault(),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(44.dp, 44.dp).apply { marginStart = 8.dp }

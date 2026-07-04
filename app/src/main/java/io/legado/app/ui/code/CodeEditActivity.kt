@@ -29,6 +29,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.code.config.ChangeThemeDialog
 import io.legado.app.ui.code.config.SettingsDialog
@@ -90,6 +91,7 @@ class CodeEditActivity :
     }
 
     private fun initView() {
+        binding.searchGroup.setBackgroundColor(themeCardColorOrDefault())
         binding.root.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
             softKeyboardTool.initialPadding = windowInsets.imeHeight
             windowInsets

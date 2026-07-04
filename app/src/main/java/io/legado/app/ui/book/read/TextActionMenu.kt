@@ -54,9 +54,6 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ViewModelStoreOwner
-import androidx.savedstate.SavedStateRegistryOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +64,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
+import io.legado.app.ui.widget.compose.installViewTreeOwnersFrom
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefString
@@ -283,7 +281,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
     private fun showInHostView(anchor: View, x: Int, y: Int) {
         dismiss()
-        installViewTreeOwners(anchor)
+        composeView.installViewTreeOwnersFrom(anchor, context)
         val parent = anchor.rootView as? ViewGroup
         if (parent == null) {
             showAtLocation(anchor, Gravity.TOP or Gravity.START, x, y)
@@ -298,32 +296,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             }
         )
         overlayParent = parent
-    }
-
-    private fun installViewTreeOwners(anchor: View) {
-        val lifecycleKey = androidx.lifecycle.runtime.R.id.view_tree_lifecycle_owner
-        val viewModelStoreKey = androidx.lifecycle.viewmodel.R.id.view_tree_view_model_store_owner
-        val savedStateKey = androidx.savedstate.R.id.view_tree_saved_state_registry_owner
-        val lifecycleOwner = findViewTreeTag<LifecycleOwner>(anchor, lifecycleKey)
-            ?: context as? LifecycleOwner
-        val viewModelStoreOwner = findViewTreeTag<ViewModelStoreOwner>(anchor, viewModelStoreKey)
-            ?: context as? ViewModelStoreOwner
-        val savedStateRegistryOwner =
-            findViewTreeTag<SavedStateRegistryOwner>(anchor, savedStateKey)
-            ?: context as? SavedStateRegistryOwner
-        lifecycleOwner?.let { composeView.setTag(lifecycleKey, it) }
-        viewModelStoreOwner?.let { composeView.setTag(viewModelStoreKey, it) }
-        savedStateRegistryOwner?.let { composeView.setTag(savedStateKey, it) }
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun <T> findViewTreeTag(anchor: View, key: Int): T? {
-        var current: View? = anchor
-        while (current != null) {
-            current.getTag(key)?.let { return it as? T }
-            current = current.parent as? View
-        }
-        return null
     }
 
     override fun dismiss() {

@@ -47,12 +47,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.BookIntroUtils
@@ -78,7 +76,6 @@ fun SearchBookPreviewOverlay(
     modifier: Modifier = Modifier
 ) {
     if (state == null) return
-    val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val key = state.book.previewKey()
@@ -155,9 +152,9 @@ fun SearchBookPreviewOverlay(
                             alpha = if (closing) contentAlpha else 1f
                         }
                         .appSettingPanelBackground(
-                            normalColor = ContextCompat.getColor(context, R.color.background_card),
+                            normalColor = renderConfig.palette.rowColor,
                             panelImage = null,
-                            borderColor = UiCorner.panelBorderColor(context),
+                            borderColor = renderConfig.palette.borderColor,
                             radiusPx = radius
                         )
                 )

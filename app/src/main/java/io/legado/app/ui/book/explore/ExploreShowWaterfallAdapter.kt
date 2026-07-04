@@ -3,7 +3,6 @@ package io.legado.app.ui.book.explore
 import android.content.Context
 import android.os.Bundle
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import io.legado.app.R
@@ -14,6 +13,7 @@ import io.legado.app.databinding.ItemSearchWaterfallBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.WaterfallCardMetrics
 import io.legado.app.ui.widget.image.CoverImageView
@@ -41,7 +41,7 @@ class ExploreShowWaterfallAdapter(
             }
             root.background = UiCorner.panelRounded(
                 root.context,
-                ContextCompat.getColor(root.context, R.color.background_card),
+                root.context.themeCardColorOrDefault(),
                 UiCorner.panelRadius(root.context)
             )
         }

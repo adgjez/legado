@@ -28,9 +28,11 @@ import io.legado.app.databinding.DialogBookChangeSourceBinding
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -89,7 +91,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
                     cancelButton()
                     okButton {
                         AppConfig.searchGroup = ""
-                        if (view != null) {
+                        if (isViewAlive()) {
                             upGroupMenuName()
                         }
                         viewModel.startSearch()
@@ -106,6 +108,8 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
+        view.setBackgroundColor(requireContext().backgroundColor)
+        binding.llBottomBar.setBackgroundColor(requireContext().themeMutedColorOrDefault())
         viewModel.initData(arguments, callBack?.oldBook, activity is ReadBookActivity)
         showTitle()
         initMenu()
@@ -157,17 +161,22 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
         binding.recyclerView.adapter = adapter
         adapterDataObserver = object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                if (positionStart == 0 && view != null) {
+                if (positionStart == 0 && isViewAlive()) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
 
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                if (toPosition == 0 && view != null) {
+                if (toPosition == 0 && isViewAlive()) {
                     binding.recyclerView.scrollToPosition(0)
                 }
             }
         }.also(adapter::registerAdapterDataObserver)
+    }
+
+    private fun isViewAlive(): Boolean {
+        val owner = viewLifecycleOwnerLiveData.value ?: return false
+        return view != null && owner.lifecycle.currentState.isAtLeast(STARTED)
     }
 
     private fun initSearchView() {

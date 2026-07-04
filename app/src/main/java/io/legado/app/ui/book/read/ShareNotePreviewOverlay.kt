@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read
 
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -30,14 +29,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.ShareNoteTemplateManager
 import io.legado.app.help.glide.ImageLoader
-import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.ui.widget.compose.AppDialogStyle
+import io.legado.app.ui.widget.compose.installViewTreeOwnersFrom
 import io.legado.app.ui.book.read.config.ReaderOption
 import io.legado.app.ui.book.read.config.ReaderSectionCard
 import io.legado.app.ui.book.read.config.ReaderSegmentedOptions
@@ -51,6 +55,8 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
@@ -67,7 +73,7 @@ class ShareNotePreviewOverlay private constructor(
     private val templateBottomBarHeight = 286.dpToPx()
     private val scrollView = ScrollView(activity)
     private val cardContainer = FrameLayout(activity)
-    private val webView = WebView(activity)
+    private var webView = WebView(activity)
     private val previewImage = ImageView(activity)
     private val statusView = TextView(activity)
     private val bottomBar = ComposeView(activity)
@@ -77,9 +83,11 @@ class ShareNotePreviewOverlay private constructor(
     private var templateEntries by mutableStateOf(listOf(initialEntry))
     private var shareStyle by mutableStateOf(ShareNoteTemplateManager.currentStyle())
     private var busyState by mutableStateOf(false)
+    private var renderFailed by mutableStateOf(false)
     private var bottomPanelMode by mutableStateOf(BottomPanelMode.Actions)
     private var renderedResult: ShareNoteImageRenderer.RenderResult? = null
     private var renderJob: Job? = null
+    private var renderToken = 0
     private var closed = false
 
     init {
@@ -91,7 +99,7 @@ class ShareNotePreviewOverlay private constructor(
         setupStatusView()
         setupBottomBar()
         loadTemplateEntries()
-        post { render(currentEntry) }
+        doOnLayout { render(currentEntry) }
     }
 
     private fun setupScrollLayer() {
@@ -128,10 +136,7 @@ class ShareNotePreviewOverlay private constructor(
             }
         )
 
-        ShareNoteImageRenderer.configureWebView(webView)
-        webView.isClickable = false
-        webView.isLongClickable = false
-        webView.setOnTouchListener { _, _ -> true }
+        configurePreviewWebView(webView)
         cardContainer.addView(
             webView,
             FrameLayout.LayoutParams(
@@ -151,15 +156,47 @@ class ShareNotePreviewOverlay private constructor(
         )
     }
 
+    private fun configurePreviewWebView(view: WebView) {
+        ShareNoteImageRenderer.configureWebView(view)
+        view.isClickable = false
+        view.isLongClickable = false
+        view.setOnTouchListener { _, _ -> true }
+    }
+
+    private fun recreatePreviewWebView() {
+        if (closed) return
+        val old = webView
+        val params = old.layoutParams ?: FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            1
+        )
+        val replacement = WebView(activity)
+        configurePreviewWebView(replacement)
+        cardContainer.removeView(old)
+        webView = replacement
+        cardContainer.addView(replacement, 0, params)
+        runCatching {
+            old.stopLoading()
+            old.loadUrl("about:blank")
+        }.onFailure {
+            AppLog.put("Share note WebView stop failed\n${it.localizedMessage}", it)
+        }
+        runCatching {
+            old.destroy()
+        }.onFailure {
+            AppLog.put("Share note WebView destroy failed\n${it.localizedMessage}", it)
+        }
+    }
+
     private fun setupStatusView() {
         statusView.text = activity.getString(R.string.share_note_loading_preview)
-        statusView.setTextColor(Color.WHITE)
+        statusView.setTextColor(activity.primaryTextColor)
         statusView.textSize = 14f
         statusView.gravity = Gravity.CENTER
         statusView.setPadding(14.dpToPx(), 8.dpToPx(), 14.dpToPx(), 8.dpToPx())
         statusView.background = GradientDrawable().apply {
-            cornerRadius = 18.dpToPx().toFloat()
-            setColor(0x99000000.toInt())
+            cornerRadius = UiCorner.actionRadius(activity)
+            setColor(activity.themeCardColorOrDefault())
         }
         addView(
             statusView,
@@ -169,6 +206,7 @@ class ShareNotePreviewOverlay private constructor(
 
     private fun setupBottomBar() {
         bottomBar.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        bottomBar.installViewTreeOwnersFrom(this, activity)
         bottomBar.setContent {
             ShareNoteQuickPanel()
         }
@@ -180,7 +218,8 @@ class ShareNotePreviewOverlay private constructor(
 
     private fun updateScrollPadding() {
         val bottomPadding = when (bottomPanelMode) {
-            BottomPanelMode.Actions -> mainBottomBarHeight
+            BottomPanelMode.Actions -> mainBottomBarHeight +
+                if (renderFailed) 50.dpToPx() else 0
             BottomPanelMode.Templates -> templateBottomBarHeight
         } + 24.dpToPx()
         scrollView.setPadding(0, topPadding, 0, bottomPadding)
@@ -205,7 +244,7 @@ class ShareNotePreviewOverlay private constructor(
 
     @Composable
     private fun ShareNoteQuickPanel() {
-        val style = rememberReaderMenuDialogStyle(activity.bottomBackground)
+        val style = rememberReaderMenuDialogStyle()
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(topStart = style.panelRadius, topEnd = style.panelRadius),
@@ -224,6 +263,15 @@ class ShareNotePreviewOverlay private constructor(
                 when (bottomPanelMode) {
                     BottomPanelMode.Actions -> ShareNoteActionBar(style)
                     BottomPanelMode.Templates -> ShareNoteTemplatePanel(style)
+                }
+                if (bottomPanelMode == BottomPanelMode.Actions && renderFailed && !busyState) {
+                    ReaderTextAction(
+                        text = activity.getString(R.string.retry),
+                        style = style,
+                        enabled = true,
+                        onClick = ::retryRender,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -372,95 +420,217 @@ class ShareNotePreviewOverlay private constructor(
 
     private fun render(entry: ShareNoteTemplateManager.Entry) {
         if (closed) return
+        val token = nextRenderToken()
         currentEntry = entry
         selectedDirName = entry.dirName
         selectedTemplateName = entry.meta.name
         renderedResult = null
+        renderFailed = false
+        updateScrollPadding()
         renderJob?.cancel()
         renderJob = activity.lifecycleScope.launch {
             setBusy(activity.getString(R.string.share_note_loading_preview), true)
             runCatching {
                 val renderStyle = shareStyle
-                val availableWidth = (width - cardMargin * 2).coerceAtLeast(240.dpToPx())
+                val availableWidth = previewAvailableWidth()
                 previewImage.isVisible = false
                 webView.isVisible = true
-                val result = ShareNoteImageRenderer.renderMountedWebView(
-                    context = activity,
-                    webView = webView,
-                    entry = entry,
-                    payload = payload,
-                    targetWidth = availableWidth,
-                    style = renderStyle
-                )
-                renderedResult = result
-                val displayWidth = result.width.coerceAtMost(availableWidth).coerceAtLeast(1)
-                val displayHeight = ceil(result.height * (displayWidth.toFloat() / result.width.toFloat()))
-                    .toInt()
-                    .coerceAtLeast(1)
-                cardContainer.layoutParams = cardContainer.layoutParams.apply {
-                    width = displayWidth
-                    height = displayHeight
-                }
-                webView.layoutParams = webView.layoutParams.apply {
-                    width = displayWidth
-                    height = displayHeight
-                }
-                previewImage.layoutParams = previewImage.layoutParams.apply {
-                    width = displayWidth
-                    height = displayHeight
-                }
-                ImageLoader.load(activity, result.file)
-                    .fitCenter()
-                    .into(previewImage)
-                webView.isVisible = false
-                previewImage.isVisible = true
-                cardContainer.requestLayout()
-                scrollView.scrollTo(0, 0)
+                val result = renderWithRetry(entry, renderStyle, availableWidth, token)
+                showRenderedResult(result, availableWidth, token)
             }.onFailure {
-                if (!closed && it !is CancellationException) {
+                if (isActiveRender(token) && it !is CancellationException) {
                     previewImage.isVisible = false
                     webView.isVisible = false
+                    renderFailed = true
+                    updateScrollPadding()
                     AppLog.put("Share note preview render failed\n${it.localizedMessage}", it, true)
                     activity.toastOnUi(
                         activity.getString(R.string.share_note_render_failed, it.localizedMessage ?: "unknown")
                     )
                 }
             }
-            if (!closed) setBusy(null, false)
+            if (isActiveRender(token)) setBusy(null, false)
         }
     }
 
+    private fun previewAvailableWidth(): Int {
+        val hostWidth = width.takeIf { it > cardMargin * 2 }
+            ?: resources.displayMetrics.widthPixels
+        return (hostWidth - cardMargin * 2).coerceAtLeast(240.dpToPx())
+    }
+
+    private fun showRenderedResult(
+        result: ShareNoteImageRenderer.RenderResult,
+        availableWidth: Int,
+        token: Int
+    ) {
+        ensureActiveRender(token)
+        if (!ShareNoteImageRenderer.isUsableRenderResult(result)) {
+            result.file.delete()
+            renderedResult = null
+            renderFailed = true
+            throw IllegalStateException("Share note render result is invalid")
+        }
+        renderedResult = result
+        renderFailed = false
+        updateScrollPadding()
+        val displayWidth = result.width.coerceAtMost(availableWidth).coerceAtLeast(1)
+        val displayHeight = ceil(result.height * (displayWidth.toFloat() / result.width.toFloat()))
+            .toInt()
+            .coerceAtLeast(1)
+        cardContainer.layoutParams = cardContainer.layoutParams.apply {
+            width = displayWidth
+            height = displayHeight
+        }
+        webView.layoutParams = webView.layoutParams.apply {
+            width = displayWidth
+            height = displayHeight
+        }
+        previewImage.layoutParams = previewImage.layoutParams.apply {
+            width = displayWidth
+            height = displayHeight
+        }
+        ImageLoader.load(activity, result.file)
+            .fitCenter()
+            .into(previewImage)
+        webView.isVisible = false
+        previewImage.isVisible = true
+        cardContainer.requestLayout()
+        scrollView.scrollTo(0, 0)
+    }
+
+    private suspend fun ensureRenderedResult(token: Int): ShareNoteImageRenderer.RenderResult {
+        ensureActiveRender(token)
+        renderedResult?.let { cached ->
+            if (ShareNoteImageRenderer.isUsableRenderResult(cached)) {
+                return cached
+            }
+            cached.file.delete()
+            renderedResult = null
+        }
+        val renderStyle = shareStyle
+        val availableWidth = previewAvailableWidth()
+        previewImage.isVisible = false
+        webView.isVisible = true
+        val result = renderWithRetry(currentEntry, renderStyle, availableWidth, token)
+        ensureActiveRender(token)
+        showRenderedResult(result, availableWidth, token)
+        return result
+    }
+
+    private suspend fun renderWithRetry(
+        entry: ShareNoteTemplateManager.Entry,
+        style: ShareNoteTemplateManager.ShareStyle,
+        availableWidth: Int,
+        token: Int
+    ): ShareNoteImageRenderer.RenderResult {
+        var lastError: Throwable? = null
+        repeat(RENDER_MAX_ATTEMPTS) { index ->
+            ensureActiveRender(token)
+            if (index > 0) {
+                recreatePreviewWebView()
+                delay(RENDER_RETRY_DELAY_MS * index.toLong())
+                ensureActiveRender(token)
+            }
+            try {
+                val result = ShareNoteImageRenderer.renderMountedWebView(
+                    context = activity,
+                    webView = webView,
+                    entry = entry,
+                    payload = payload,
+                    targetWidth = availableWidth,
+                    style = style
+                )
+                ensureActiveRender(token)
+                return result
+            } catch (e: CancellationException) {
+                if (e is TimeoutCancellationException) {
+                    lastError = e
+                    AppLog.put(
+                        "Share note render attempt ${index + 1}/$RENDER_MAX_ATTEMPTS timed out\n${e.localizedMessage}",
+                        e
+                    )
+                    return@repeat
+                }
+                throw e
+            } catch (e: Exception) {
+                lastError = e
+                AppLog.put(
+                    "Share note render attempt ${index + 1}/$RENDER_MAX_ATTEMPTS failed\n${e.localizedMessage}",
+                    e
+                )
+            }
+        }
+        val error = lastError ?: throw IllegalStateException("Share note render failed")
+        if (error is TimeoutCancellationException) {
+            throw IllegalStateException("Share note render timed out", error)
+        }
+        throw error
+    }
+
+    private fun nextRenderToken(): Int {
+        renderToken += 1
+        return renderToken
+    }
+
+    private fun isActiveRender(token: Int): Boolean {
+        return !closed && token == renderToken
+    }
+
+    private fun ensureActiveRender(token: Int) {
+        if (!isActiveRender(token)) {
+            throw CancellationException("Share note preview closed")
+        }
+    }
+
+    private fun retryRender() {
+        if (busyState || closed) return
+        recreatePreviewWebView()
+        render(currentEntry)
+    }
+
     private fun exportAndSave() {
+        if (busyState) return
+        renderFailed = false
+        updateScrollPadding()
+        val token = nextRenderToken()
         renderJob?.cancel()
         renderJob = activity.lifecycleScope.launch {
             setBusy(activity.getString(R.string.share_note_exporting), true)
             runCatching {
-                val file = renderedResult?.file
-                    ?: throw IllegalStateException(activity.getString(R.string.share_note_render_failed, "empty"))
+                ensureActiveRender(token)
+                val file = ensureRenderedResult(token).file
+                ensureActiveRender(token)
                 ShareNoteImageRenderer.savePngToGallery(activity, file)
             }.onSuccess {
-                if (!closed) activity.toastOnUi(R.string.share_note_saved)
+                if (isActiveRender(token)) activity.toastOnUi(R.string.share_note_saved)
             }.onFailure {
-                if (!closed && it !is CancellationException) {
+                if (isActiveRender(token) && it !is CancellationException) {
+                    renderFailed = renderedResult?.let(ShareNoteImageRenderer::isUsableRenderResult) != true
+                    updateScrollPadding()
                     AppLog.put("Share note save failed\n${it.localizedMessage}", it, true)
                     activity.toastOnUi(
                         activity.getString(R.string.share_note_save_failed, it.localizedMessage ?: "unknown")
                     )
                 }
             }
-            if (!closed) setBusy(null, false)
+            if (isActiveRender(token)) setBusy(null, false)
         }
     }
 
     private fun exportAndShare() {
+        if (busyState) return
+        renderFailed = false
+        updateScrollPadding()
+        val token = nextRenderToken()
         renderJob?.cancel()
         renderJob = activity.lifecycleScope.launch {
             setBusy(activity.getString(R.string.share_note_exporting), true)
             runCatching {
-                renderedResult?.file
-                    ?: throw IllegalStateException(activity.getString(R.string.share_note_render_failed, "empty"))
+                ensureActiveRender(token)
+                ensureRenderedResult(token).file
             }.onSuccess { file ->
-                if (!closed) {
+                if (isActiveRender(token)) {
                     runCatching {
                         activity.share(file, "image/png")
                     }.onFailure {
@@ -468,14 +638,16 @@ class ShareNotePreviewOverlay private constructor(
                     }
                 }
             }.onFailure {
-                if (!closed && it !is CancellationException) {
+                if (isActiveRender(token) && it !is CancellationException) {
+                    renderFailed = renderedResult?.let(ShareNoteImageRenderer::isUsableRenderResult) != true
+                    updateScrollPadding()
                     AppLog.put("Share note image export failed\n${it.localizedMessage}", it, true)
                     activity.toastOnUi(
                         activity.getString(R.string.share_note_render_failed, it.localizedMessage ?: "unknown")
                     )
                 }
             }
-            if (!closed) setBusy(null, false)
+            if (isActiveRender(token)) setBusy(null, false)
         }
     }
 
@@ -483,10 +655,19 @@ class ShareNotePreviewOverlay private constructor(
         if (closed) return
         closed = true
         renderJob?.cancel()
+        renderedResult = null
+        runCatching { Glide.with(activity).clear(previewImage) }
+        previewImage.setImageDrawable(null)
         runCatching {
             webView.stopLoading()
             cardContainer.removeView(webView)
+        }.onFailure {
+            AppLog.put("Share note WebView stop failed\n${it.localizedMessage}", it)
+        }
+        runCatching {
             webView.destroy()
+        }.onFailure {
+            AppLog.put("Share note WebView destroy failed\n${it.localizedMessage}", it)
         }
         (parent as? ViewGroup)?.removeView(this)
     }
@@ -497,6 +678,9 @@ class ShareNotePreviewOverlay private constructor(
     }
 
     companion object {
+        private const val RENDER_MAX_ATTEMPTS = 3
+        private const val RENDER_RETRY_DELAY_MS = 180L
+
         fun show(
             activity: ReadBookActivity,
             parent: ViewGroup,

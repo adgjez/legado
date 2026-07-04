@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
+import io.legado.app.ui.widget.compose.installViewTreeOwnersFrom
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.activity
@@ -135,6 +136,7 @@ object ModernActionPopup {
         var handle: Handle? = null
         val overlay = ComposeView(host.context).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            installViewTreeOwnersFrom(anchor, host.context)
             isFocusable = true
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
@@ -261,6 +263,7 @@ object ModernActionPopup {
         var handle: Handle? = null
         val overlay = ComposeView(context).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            installViewTreeOwnersFrom(host, context)
             isFocusable = true
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
@@ -420,7 +423,7 @@ object ModernActionPopup {
         val panelShape = RoundedCornerShape(style.panelRadius)
         val context = LocalContext.current
         // 仅当主题确实设置了面板边框色才画边框；无边框主题不应再显描边线。
-        val hasPanelBorder = remember { UiCorner.panelBorderColor(context) != null }
+        val hasPanelBorder = UiCorner.panelBorderColor(context) != null
         // 跟踪 persistent 项的 checked 状态
         var checkedStates by remember { mutableStateOf(actions.map { it.checked }) }
         val density = LocalDensity.current

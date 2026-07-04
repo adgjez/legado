@@ -110,6 +110,7 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -1464,8 +1465,14 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (text.isBlank()) return
         val payload = buildShareNotePayload(text)
         lifecycleScope.launch {
-            val entries = withContext(IO) {
-                ShareNoteTemplateManager.loadEntries()
+            val entries = runCatching {
+                withContext(IO) {
+                    ShareNoteTemplateManager.loadEntries()
+                }
+            }.getOrElse {
+                AppLog.put("摘录分享模板加载失败\n${it.localizedMessage}", it, true)
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+                return@launch
             }
             val entry = entries.firstOrNull { it.dirName == ShareNoteTemplateManager.lastDirName() }
                 ?: entries.firstOrNull()
@@ -3775,7 +3782,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         item: LibraryCloudChapterVersion,
         dismissParent: () -> Unit
     ): View {
-        val cardColor = ContextCompat.getColor(this, R.color.background_card)
+        val cardColor = themeCardColorOrDefault()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
@@ -4456,7 +4463,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 matcher.appendReplacement(result, "")
                 removed = true
             } else {
-                matcher.appendReplacement(result, Matcher.quoteReplacement(matcher.group(0)))
+                matcher.appendReplacement(result, Matcher.quoteReplacement(matcher.group(0).orEmpty()))
             }
         }
         if (!removed) return null

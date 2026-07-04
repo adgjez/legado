@@ -15,7 +15,8 @@ import io.legado.app.data.entities.RssArticle
 import io.legado.app.databinding.ItemRssArticle4Binding
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
-import io.legado.app.utils.getCompatColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -39,9 +40,9 @@ class RssArticlesAdapter4(context: Context, callBack: CallBack) :
                 when (payload) {
                     "read" -> {
                         if (item.read) {
-                            binding.tvTitle.setTextColor(context.getCompatColor(R.color.tv_text_summary))
+                            binding.tvTitle.setTextColor(context.secondaryTextColor)
                         } else {
-                            binding.tvTitle.setTextColor(context.getCompatColor(R.color.primaryText))
+                            binding.tvTitle.setTextColor(context.primaryTextColor)
                         }
                     }
                     "title" -> {
@@ -54,9 +55,9 @@ class RssArticlesAdapter4(context: Context, callBack: CallBack) :
         binding.run {
             tvTitle.text = item.title
             if (item.read) {
-                tvTitle.setTextColor(context.getCompatColor(R.color.tv_text_summary))
+                tvTitle.setTextColor(context.secondaryTextColor)
             } else {
-                tvTitle.setTextColor(context.getCompatColor(R.color.primaryText))
+                tvTitle.setTextColor(context.primaryTextColor)
             }
             tvPubDate.text = item.pubDate
             if (item.image.isNullOrBlank() && !callBack.isGridLayout) {

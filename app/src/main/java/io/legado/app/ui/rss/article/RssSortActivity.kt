@@ -30,6 +30,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivityRssArtivlesBinding
 import io.legado.app.help.source.sortUrls
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -130,7 +131,7 @@ class RssSortActivity : VMBaseActivity<ActivityRssArtivlesBinding, RssSortViewMo
             background = createTabBackground(accentColor, context)
             setPadding(12.dpToPx(), 6.dpToPx(), 12.dpToPx(), 6.dpToPx())
             tag = position
-            setTextColor(context.getCompatColor( R.color.primaryText))
+            setTextColor(context.primaryTextColor)
             // 宽度自适应内容
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -139,7 +140,6 @@ class RssSortActivity : VMBaseActivity<ActivityRssArtivlesBinding, RssSortViewMo
                 marginEnd = 6.dpToPx()
             }
             setOnClickListener {
-                setTextColor(context.getCompatColor(R.color.secondaryText)) //点击变色
                 binding.viewPager.currentItem = position
                 updateTabSelection(position)
             }
@@ -174,7 +174,9 @@ class RssSortActivity : VMBaseActivity<ActivityRssArtivlesBinding, RssSortViewMo
                 for (i in 0 until row.childCount) {
                     val tabIndex = rowIndex * maxTagsPerRow + i
                     val tabView = row.getChildAt(i) as? TextView
-                    tabView?.isSelected = tabIndex == position
+                    val selected = tabIndex == position
+                    tabView?.isSelected = selected
+                    tabView?.setTextColor(if (selected) accentColor else primaryTextColor)
                 }
             }
             // 确保选中标签在视图内

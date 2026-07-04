@@ -2,14 +2,14 @@ package io.legado.app.lib.prefs
 
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceViewHolder
-import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeDividerColorOrDefault
 import io.legado.app.utils.getPrefString
 import java.io.File
 import java.lang.ref.WeakReference
@@ -47,14 +47,10 @@ object PreferenceItemStyle {
     ) {
         val hasPrev = hasVisibleSibling(parent, preference, forward = false)
         val hasNext = hasVisibleSibling(parent, preference, forward = true)
-        val itemColor = UiCorner.surfaceColor(
-            ContextCompat.getColor(preference.context, R.color.background_card)
-        )
-        val pressedColor = UiCorner.surfaceColor(
-            ContextCompat.getColor(preference.context, R.color.background_card),
-            pressed = true
-        )
-        val dividerColor = ContextCompat.getColor(preference.context, R.color.bg_divider_line)
+        val itemBaseColor = preference.context.themeCardColorOrDefault()
+        val itemColor = UiCorner.surfaceColor(itemBaseColor)
+        val pressedColor = UiCorner.surfaceColor(itemBaseColor, pressed = true)
+        val dividerColor = preference.context.themeDividerColorOrDefault()
         val radius = UiCorner.panelRadius(preference.context)
         val dividerInset = itemView.dp(16).toFloat()
         val panel = buildPanelImage(itemView, preference, parent, radius)

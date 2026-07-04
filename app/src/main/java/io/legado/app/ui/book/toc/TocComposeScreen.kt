@@ -979,7 +979,7 @@ private fun TocBottomIconButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val panelRadiusPx = palette.settings.panelRadiusPx
-    val panelImage = remember(context, panelRadiusPx) {
+    val panelImage = remember(context, panelRadiusPx, palette.settings.themeSignature) {
         UiCorner.panelImageDrawable(context, panelRadiusPx)
     }
     Box(

@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.help.config.CoverCollectionManager
@@ -29,6 +28,7 @@ import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.applyUiSubtleButtonStyle
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.BookCover
 import io.legado.app.help.glide.ImageLoader
@@ -293,7 +293,7 @@ fun Context.showReadRecordGoalDialog(
 
 fun buildReadRecordPreviewBackground(context: Context, weight: Float = 1f): GradientDrawable {
     return UiCorner.rounded(
-        ColorUtils.adjustAlpha(ContextCompat.getColor(context, R.color.background_menu), 0.92f),
+        ColorUtils.adjustAlpha(context.themeMutedColorOrDefault(), 0.92f),
         UiCorner.panelRadius(context) * weight.coerceAtLeast(0.8f)
     )
 }

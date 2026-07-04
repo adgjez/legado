@@ -9,6 +9,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ItemChapterListBinding
 import io.legado.app.lib.theme.ThemeUtils
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -33,7 +34,7 @@ class ChangeChapterTocAdapter(context: Context, val callback: Callback) :
             if (isDur) {
                 tvChapterName.setTextColor(context.accentColor)
             } else {
-                tvChapterName.setTextColor(context.getCompatColor(R.color.primaryText))
+                tvChapterName.setTextColor(context.primaryTextColor)
             }
             tvChapterName.text = item.title
             if (item.isVolume) {

@@ -30,6 +30,7 @@ import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.getPrimaryDisabledTextColor
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
 import io.legado.app.ui.file.utils.FilePickerIcon
@@ -84,6 +85,9 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
         view.background = requireContext().dialogSurfaceBackground
+        val cardColor = requireContext().themeCardColorOrDefault()
+        binding.rvPath.setBackgroundColor(cardColor)
+        (binding.rvFile.parent as? View)?.setBackgroundColor(cardColor)
         view.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
         initMenu()
         initContentView()

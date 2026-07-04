@@ -7,7 +7,6 @@ import android.view.View
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -25,6 +24,9 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.themeDividerColorOrDefault
+import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.widget.compose.ComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.ComposeTextInputDialog
 import io.legado.app.utils.applyTint
@@ -287,20 +289,20 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
     }
 
     private fun cardBackground(): GradientDrawable {
-        val fill = ContextCompat.getColor(this, R.color.background_card)
+        val fill = themeCardColorOrDefault()
         return GradientDrawable().apply {
             cornerRadius = UiCorner.panelRadius(this@BookshelfTagManageActivity)
             setColor(UiCorner.surfaceColor(fill))
             setStroke(
                 1.dpToPx(),
-                ContextCompat.getColor(this@BookshelfTagManageActivity, R.color.bg_divider_line)
+                themeDividerColorOrDefault()
             )
         }
     }
 
     private fun actionBackground() = UiCorner.actionSelector(
-        ContextCompat.getColor(this, R.color.background_card),
-        ContextCompat.getColor(this, R.color.background_menu),
+        themeCardColorOrDefault(),
+        themeMutedColorOrDefault(),
         UiCorner.actionRadius(this)
     )
 

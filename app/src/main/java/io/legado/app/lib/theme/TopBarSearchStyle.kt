@@ -19,12 +19,30 @@ object TopBarSearchStyle {
         }
     }
 
+    fun surfaceColor(context: Context): Int {
+        val configured = context.themeSearchFieldBackgroundColorOrNull()
+        if (configured != null) {
+            val alpha = if (AppConfig.isNightTheme) 0.42f else 0.18f
+            return ColorUtils.setAlphaComponent(configured, (alpha * 255).toInt())
+        }
+        return surfaceColor()
+    }
+
     fun pressedSurfaceColor(): Int {
         return if (AppConfig.isNightTheme) {
             ColorUtils.setAlphaComponent(Color.rgb(82, 82, 86), (0.50f * 255).toInt())
         } else {
             ColorUtils.setAlphaComponent(Color.rgb(120, 120, 128), (0.28f * 255).toInt())
         }
+    }
+
+    fun pressedSurfaceColor(context: Context): Int {
+        val configured = context.themeSearchFieldBackgroundColorOrNull()
+        if (configured != null) {
+            val alpha = if (AppConfig.isNightTheme) 0.50f else 0.28f
+            return ColorUtils.setAlphaComponent(configured, (alpha * 255).toInt())
+        }
+        return pressedSurfaceColor()
     }
 
     fun strokeColor(context: Context): Int {
@@ -40,13 +58,13 @@ object TopBarSearchStyle {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = radius()
-            setColor(surfaceColor())
+            setColor(surfaceColor(context))
             setStroke(1.dpToPx(), strokeColor(context))
         }
     }
 
     fun actionBackground(context: Context): Drawable {
-        return UiCorner.actionSelector(surfaceColor(), pressedSurfaceColor(), radius())
+        return UiCorner.actionSelector(surfaceColor(context), pressedSurfaceColor(context), radius())
     }
 
     fun apply(searchView: SearchView) {

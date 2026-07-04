@@ -39,7 +39,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
@@ -48,10 +47,14 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.BookIntroUtils
+import io.legado.app.utils.ColorUtils
 
 object BookshelfListItemStyle {
     const val Classic = 0
@@ -70,7 +73,8 @@ data class BookshelfListPalette(
     val panelRadius: Dp,
     val actionRadius: Dp,
     val titleFontFamily: FontFamily,
-    val bodyFontFamily: FontFamily
+    val bodyFontFamily: FontFamily,
+    val themeSignature: String
 )
 
 @Immutable
@@ -90,11 +94,13 @@ data class BookshelfListRenderConfig(
 @Composable
 fun rememberBookshelfListPalette(): BookshelfListPalette {
     val context = LocalContext.current
-    val rowBaseColor = ContextCompat.getColor(context, R.color.background_card)
+    val themeUiPalette = rememberThemeUiPalette()
+    val rowBaseColor = themeUiPalette.cardColor
     val rowColor = UiCorner.surfaceColor(rowBaseColor)
     val rowPressedColor = UiCorner.surfaceColor(rowBaseColor, pressed = true)
-    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
-    val secondaryText = Color(ContextCompat.getColor(context, R.color.tv_text_summary))
+    val rowLight = ColorUtils.isColorLight(rowBaseColor)
+    val primaryText = Color(context.getPrimaryTextColor(rowLight))
+    val secondaryText = Color(context.getSecondaryTextColor(rowLight))
     val accent = Color(context.accentColor)
     val border = UiCorner.panelBorderColor(context)
     val panelRadiusPx = UiCorner.panelRadius(context)
@@ -113,7 +119,8 @@ fun rememberBookshelfListPalette(): BookshelfListPalette {
         panelRadius,
         actionRadius,
         titleFontFamily,
-        bodyFontFamily
+        bodyFontFamily,
+        themeUiPalette.signature
     ) {
         BookshelfListPalette(
             primaryText = primaryText,
@@ -126,7 +133,8 @@ fun rememberBookshelfListPalette(): BookshelfListPalette {
             panelRadius = panelRadius,
             actionRadius = actionRadius,
             titleFontFamily = titleFontFamily,
-            bodyFontFamily = bodyFontFamily
+            bodyFontFamily = bodyFontFamily,
+            themeSignature = themeUiPalette.signature
         )
     }
 }
@@ -135,7 +143,7 @@ fun rememberBookshelfListPalette(): BookshelfListPalette {
 fun rememberBookshelfListRenderConfig(): BookshelfListRenderConfig {
     val context = LocalContext.current
     val palette = rememberBookshelfListPalette()
-    val panelImage = remember(context, palette.panelRadiusPx) {
+    val panelImage = remember(context, palette.panelRadiusPx, palette.themeSignature) {
         UiCorner.panelImageDrawable(context, palette.panelRadiusPx)
     }
     return remember(palette, panelImage) {

@@ -8,7 +8,6 @@ import android.graphics.Outline
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
-import androidx.core.content.ContextCompat
 import com.bumptech.glide.request.RequestOptions
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
@@ -17,8 +16,10 @@ import io.legado.app.databinding.ItemRssArticle3Binding
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.ui.widget.WaterfallCardMetrics
-import io.legado.app.utils.getCompatColor
 
 class RssArticlesAdapter3(context: Context, callBack: CallBack) :
     BaseRssArticlesAdapter<ItemRssArticle3Binding>(context, callBack) {
@@ -45,7 +46,7 @@ class RssArticlesAdapter3(context: Context, callBack: CallBack) :
                 }
                 content.background = UiCorner.panelRounded(
                     root.context,
-                    ContextCompat.getColor(root.context, R.color.background_card),
+                    root.context.themeCardColorOrDefault(),
                     UiCorner.panelRadius(root.context)
                 )
             }
@@ -64,9 +65,9 @@ class RssArticlesAdapter3(context: Context, callBack: CallBack) :
                 when (payload) {
                     "read" -> {
                         if (item.read) {
-                            binding.tvTitle.setTextColor(context.getCompatColor(R.color.tv_text_summary))
+                            binding.tvTitle.setTextColor(context.secondaryTextColor)
                         } else {
-                            binding.tvTitle.setTextColor(context.getCompatColor(R.color.primaryText))
+                            binding.tvTitle.setTextColor(context.primaryTextColor)
                         }
                     }
                     "title" -> {
@@ -79,9 +80,9 @@ class RssArticlesAdapter3(context: Context, callBack: CallBack) :
         binding.run {
             tvTitle.text = item.title
             if (item.read) {
-                tvTitle.setTextColor(context.getCompatColor(R.color.tv_text_summary))
+                tvTitle.setTextColor(context.secondaryTextColor)
             } else {
-                tvTitle.setTextColor(context.getCompatColor(R.color.primaryText))
+                tvTitle.setTextColor(context.primaryTextColor)
             }
             tvPubDate.text = item.pubDate
             val radius = UiCorner.panelRadius(context)

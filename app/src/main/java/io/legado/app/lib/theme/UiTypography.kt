@@ -7,7 +7,6 @@ import android.widget.EditText
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.TitleBar
@@ -139,13 +138,13 @@ fun TextView.applyUiLabelStyle(context: Context) {
     setTag(R.id.ui_title_typeface_role, false)
     typeface = context.uiTypeface()
     textSize = 14f
-    setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+    setTextColor(context.primaryTextColor)
 }
 
 fun TextView.applyUiSectionTitleStyle(context: Context) {
     applyUiTitleTypeface(context)
     textSize = 15f
-    setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+    setTextColor(context.primaryTextColor)
 }
 
 fun TextView.applyUiSubtleButtonStyle(context: Context) {
@@ -153,7 +152,7 @@ fun TextView.applyUiSubtleButtonStyle(context: Context) {
     typeface = context.uiTypeface()
     textSize = 14f
     minHeight = 40.dpToPx()
-    setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+    setTextColor(context.primaryTextColor)
 }
 
 fun EditText.applyUiInputStyle(context: Context, minLines: Int = 1) {

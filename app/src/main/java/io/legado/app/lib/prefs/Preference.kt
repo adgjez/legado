@@ -17,6 +17,7 @@ import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 import splitties.views.onLongClick
@@ -63,9 +64,12 @@ open class Preference(context: Context, attrs: AttributeSet) :
             if (!viewHolder.itemView.isInEditMode) {
                 tvTitle?.applyUiTitleTypeface(context)
                 tvSummary?.typeface = context.uiTypeface()
-            }
-            if (isBottomBackground && !viewHolder.itemView.isInEditMode) {
-                val isLight = ColorUtils.isColorLight(context.bottomBackground)
+                val textBackground = if (isBottomBackground) {
+                    context.bottomBackground
+                } else {
+                    context.themeCardColorOrDefault()
+                }
+                val isLight = ColorUtils.isColorLight(textBackground)
                 val pTextColor = context.getPrimaryTextColor(isLight)
                 tvTitle?.setTextColor(pTextColor)
                 val sTextColor = context.getSecondaryTextColor(isLight)
