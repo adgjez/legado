@@ -60,6 +60,7 @@ object PreferKey {
     const val modernDiscoveryTagUrls = "modernDiscoveryTagUrls"
     const val modernRssSourceUrl = "modernRssSourceUrl"
     const val paragraphBubblePackage = "paragraphBubblePackage"
+    const val forceSoftwareParagraphBubble = "forceSoftwareParagraphBubble"
     const val aiAssistantEnabled = "aiAssistantEnabled"
     const val aiProviderList = "aiProviderList"
     const val aiCurrentProviderId = "aiCurrentProviderId"

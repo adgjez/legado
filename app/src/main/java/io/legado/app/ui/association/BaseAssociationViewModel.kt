@@ -13,11 +13,7 @@ abstract class BaseAssociationViewModel(application: Application) : BaseViewMode
     val errorLive = MutableLiveData<String>()
 
     fun importJson(uri: Uri) {
-        val map = uri.inputStream(context).getOrThrow().use {
-            jsonPath.parse(it).read<Map<String, *>>("$[0]")
-        } ?: uri.inputStream(context).getOrThrow().use {
-            jsonPath.parse(it).read("$")
-        }
+        val map = readFirstJsonObject(uri)
 
         when {
             map.containsKey("bookSourceUrl") ->
@@ -42,6 +38,17 @@ abstract class BaseAssociationViewModel(application: Application) : BaseViewMode
                 successLive.postValue("httpTts" to uri.toString())
 
             else -> errorLive.postValue("格式不对")
+        }
+    }
+
+    private fun readFirstJsonObject(uri: Uri): Map<String, *> {
+        uri.inputStream(context).getOrThrow().use { input ->
+            runCatching {
+                jsonPath.parse(input).read<Map<String, *>>("$[0]")
+            }.getOrNull()?.let { return it }
+        }
+        return uri.inputStream(context).getOrThrow().use {
+            jsonPath.parse(it).read("$")
         }
     }
 

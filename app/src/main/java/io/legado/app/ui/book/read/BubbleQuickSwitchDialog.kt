@@ -45,8 +45,10 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BubblePackageManager
+import io.legado.app.model.ImageProvider
 import io.legado.app.ui.widget.compose.AppDialogFrame
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementListRow
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -74,6 +76,9 @@ class BubbleQuickSwitchDialog : ComposeDialogFragment() {
                 val context = LocalContext.current
                 val palette = rememberAppManagementPalette()
                 var entries by remember { mutableStateOf<List<BubblePackageManager.Entry>>(emptyList()) }
+                var forceSoftwareBubble by remember {
+                    mutableStateOf(AppConfig.forceSoftwareParagraphBubble)
+                }
                 val previews = remember { mutableStateMapOf<String, Bitmap>() }
                 val activeDirName = BubblePackageManager.activeDirName()
                 LaunchedEffect(Unit) {
@@ -97,6 +102,27 @@ class BubbleQuickSwitchDialog : ComposeDialogFragment() {
                                 .heightIn(max = 460.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            item(key = "forceSoftwareBubble") {
+                                AppManagementListRow(
+                                    title = "强制使用软件气泡",
+                                    subtitle = "识别正文图片形式的段评入口",
+                                    palette = palette,
+                                    switchChecked = forceSoftwareBubble,
+                                    onSwitchChange = { checked ->
+                                        forceSoftwareBubble = checked
+                                        AppConfig.forceSoftwareParagraphBubble = checked
+                                        ImageProvider.clear()
+                                        (activity as? ReadBookActivity)?.refreshParagraphRuleLayout()
+                                    },
+                                    onClick = {
+                                        val checked = !forceSoftwareBubble
+                                        forceSoftwareBubble = checked
+                                        AppConfig.forceSoftwareParagraphBubble = checked
+                                        ImageProvider.clear()
+                                        (activity as? ReadBookActivity)?.refreshParagraphRuleLayout()
+                                    }
+                                )
+                            }
                             items(entries, key = { it.dirName }) { entry ->
                                 val active = entry.dirName == activeDirName
                                 AppManagementCard(

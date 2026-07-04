@@ -275,7 +275,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             listItemStyle = 0
             AppConfig.bookshelfListItemStyle = 0
         }
-        if (listIntroLines !in 1..3) {
+        if (listIntroLines !in 0..3) {
             listIntroLines = 2
             AppConfig.bookshelfListIntroLines = 2
         }
@@ -331,7 +331,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         val sort = values.sort.coerceIn(0, 5)
         val showBookname = values.showBookname.coerceIn(0, 2)
         val listItemStyle = values.listItemStyle.coerceIn(0, 2)
-        val listIntroLines = values.listIntroLines.coerceIn(1, 3)
+        val listIntroLines = values.listIntroLines.coerceIn(0, 3)
         val margin = values.margin.coerceIn(0, 60)
         if (AppConfig.bookGroupStyle != groupStyle) {
             AppConfig.bookGroupStyle = groupStyle

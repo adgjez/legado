@@ -2199,6 +2199,7 @@ bookUrl：%7$s
     <string name="bookshelf_list_style_classic">经典列表</string>
     <string name="bookshelf_list_style_rounded_card">圆角卡片</string>
     <string name="bookshelf_list_intro_lines">简介行数</string>
+    <string name="bookshelf_list_intro_lines_0">不显示</string>
     <string name="bookshelf_list_intro_lines_1">1 行</string>
     <string name="bookshelf_list_intro_lines_2">2 行</string>
     <string name="bookshelf_list_intro_lines_3">3 行</string>

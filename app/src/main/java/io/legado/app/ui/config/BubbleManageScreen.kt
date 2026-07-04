@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.BubblePackageManager
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementListRow
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.AppManagementPalette
@@ -65,7 +66,9 @@ internal fun BubbleManageScreen(
     entries: List<BubblePackageManager.Entry>,
     summary: String,
     activeDirName: String,
+    forceSoftwareBubble: Boolean,
     previewBitmapProvider: (BubblePackageManager.Config) -> Bitmap?,
+    onForceSoftwareBubbleChange: (Boolean) -> Unit,
     onApply: (BubblePackageManager.Entry) -> Unit,
     onEdit: (BubblePackageManager.Entry) -> Unit,
     onMoreActions: (BubblePackageManager.Entry) -> List<AppManagementMenuAction>,
@@ -94,6 +97,15 @@ internal fun BubbleManageScreen(
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
             )
         }
+
+        AppManagementListRow(
+            title = "强制使用软件气泡",
+            subtitle = "识别正文图片形式的段评入口，并使用当前气泡样式渲染",
+            palette = palette,
+            switchChecked = forceSoftwareBubble,
+            onSwitchChange = onForceSoftwareBubbleChange,
+            onClick = { onForceSoftwareBubbleChange(!forceSoftwareBubble) }
+        )
 
         // List
         LazyColumn(

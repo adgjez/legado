@@ -238,9 +238,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var bookshelfListIntroLines: Int
-        get() = appCtx.getPrefInt(PreferKey.bookshelfListIntroLines, 2).coerceIn(1, 3)
+        get() = appCtx.getPrefInt(PreferKey.bookshelfListIntroLines, 2).coerceIn(0, 3)
         set(value) {
-            appCtx.putPrefInt(PreferKey.bookshelfListIntroLines, value.coerceIn(1, 3))
+            appCtx.putPrefInt(PreferKey.bookshelfListIntroLines, value.coerceIn(0, 3))
+        }
+
+    var forceSoftwareParagraphBubble: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.forceSoftwareParagraphBubble, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.forceSoftwareParagraphBubble, value)
         }
 
     var showUnread: Boolean

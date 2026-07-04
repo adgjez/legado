@@ -2,12 +2,20 @@ package io.legado.app.ui.association
 
 import android.os.Bundle
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivityTranslucenceBinding
+import io.legado.app.help.config.BubblePackageManager
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getFile
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.FileOutputStream
 
 /**
  * 网络一键导入
@@ -78,6 +86,9 @@ class OnLineImportActivity :
                 "/theme" -> showDialogFragment(
                     ImportThemeDialog(url, true)
                 )
+                "/bubble" -> viewModel.getBytes(url) { bytes ->
+                    importBubbleZip(bytes)
+                }
                 "/readConfig" -> viewModel.getBytes(url) { bytes ->
                     viewModel.importReadConfig(bytes, this::finallyDialog)
                 }
@@ -99,6 +110,26 @@ class OnLineImportActivity :
                     }
                 }
                 else -> viewModel.determineType(url, this::finallyDialog)
+            }
+        }
+    }
+
+    private fun importBubbleZip(bytes: ByteArray) {
+        lifecycleScope.launch {
+            runCatching {
+                withContext(IO) {
+                    val file = externalFiles.getFile(
+                        "bubbleImports",
+                        "import_${System.currentTimeMillis()}.zip"
+                    )
+                    file.parentFile?.mkdirs()
+                    FileOutputStream(file).use { output -> output.write(bytes) }
+                    BubblePackageManager.importZip(file)
+                }
+            }.onSuccess {
+                finallyDialog(getString(R.string.success), getString(R.string.success))
+            }.onFailure {
+                finallyDialog(getString(R.string.error), it.localizedMessage ?: "")
             }
         }
     }

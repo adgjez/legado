@@ -19,6 +19,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.AppCloudStorage
+import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BubblePackageManager
 import io.legado.app.help.http.newCallResponseBody
@@ -42,6 +43,7 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -61,6 +63,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private val entriesState = mutableStateOf<List<BubblePackageManager.Entry>>(emptyList())
     private val summaryState = mutableStateOf("")
     private val activeDirNameState = mutableStateOf(BubblePackageManager.activeDirName())
+    private val forceSoftwareBubbleState = mutableStateOf(AppConfig.forceSoftwareParagraphBubble)
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
     private var editingConfig: BubblePackageManager.Config? = null
@@ -140,7 +143,9 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     entries = entriesState.value,
                     summary = summaryState.value,
                     activeDirName = activeDirNameState.value,
+                    forceSoftwareBubble = forceSoftwareBubbleState.value,
                     previewBitmapProvider = ::previewBitmap,
+                    onForceSoftwareBubbleChange = ::setForceSoftwareBubble,
                     onApply = ::applyEntry,
                     onEdit = { entry -> showEditDialog(entry) },
                     onMoreActions = ::bubbleActions,
@@ -267,6 +272,8 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             if (entry.source != BubblePackageManager.Source.BUILTIN) {
                 if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.EDIT)
                 if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.EXPORT)
+                if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.SHARE_ZIP_FILE)
+                if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.SHARE_DIRECT_LINK)
                 if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.UPLOAD)
                 if (entry.source != BubblePackageManager.Source.LOCAL) add(Action.DOWNLOAD)
                 if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.DELETE_LOCAL)
@@ -285,6 +292,8 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     Action.APPLY -> applyEntry(entry)
                     Action.EDIT -> showEditDialog(entry)
                     Action.EXPORT -> exportZip(entry)
+                    Action.SHARE_ZIP_FILE -> shareZipFile(entry)
+                    Action.SHARE_DIRECT_LINK -> shareZipDirectLink(entry)
                     Action.UPLOAD -> enqueueUpload(entry)
                     Action.DOWNLOAD -> runAction(refreshReading = false) {
                         BubblePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
@@ -444,6 +453,27 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
     }
 
+    private fun shareZipFile(entry: BubblePackageManager.Entry) {
+        lifecycleScope.launch {
+            kotlin.runCatching { BubblePackageManager.exportZip(entry) }
+                .onSuccess { zip -> share(zip, "application/zip") }
+                .onFailure { toastOnUi(it.localizedMessage) }
+        }
+    }
+
+    private fun shareZipDirectLink(entry: BubblePackageManager.Entry) {
+        lifecycleScope.launch {
+            kotlin.runCatching {
+                withContext(Dispatchers.IO) {
+                    val zip = BubblePackageManager.exportZip(entry)
+                    DirectLinkUpload.upLoad(zip.name, zip, "application/zip")
+                }
+            }
+                .onSuccess { url -> share(url, entry.config.name) }
+                .onFailure { toastOnUi(it.localizedMessage) }
+        }
+    }
+
     private fun importNetZipAlert() {
         showDialogFragment(
             ComposeTextInputDialog.create(
@@ -540,6 +570,12 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         postEvent(EventBus.UP_CONFIG, arrayListOf(5))
     }
 
+    private fun setForceSoftwareBubble(enabled: Boolean) {
+        forceSoftwareBubbleState.value = enabled
+        AppConfig.forceSoftwareParagraphBubble = enabled
+        notifyBubbleChanged()
+    }
+
     private fun previewBitmap(config: BubblePackageManager.Config) = runCatching {
         val color = when {
             AppConfig.isNightTheme -> config.nightNormalColor
@@ -612,6 +648,8 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         APPLY("应用"),
         EDIT("编辑"),
         EXPORT("导出 zip"),
+        SHARE_ZIP_FILE("文件分享"),
+        SHARE_DIRECT_LINK("直链分享"),
         UPLOAD("上传"),
         DOWNLOAD("下载"),
         DELETE_LOCAL("删除本地"),

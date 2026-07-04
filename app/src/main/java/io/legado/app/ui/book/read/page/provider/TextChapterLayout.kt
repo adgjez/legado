@@ -54,7 +54,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.util.LinkedList
+import java.util.Locale
 import kotlin.math.roundToInt
+import android.util.Base64
 import android.util.Size
 import androidx.core.text.HtmlCompat
 import io.legado.app.constant.AppPattern.noWordCountRegex
@@ -2375,6 +2377,17 @@ class TextChapterLayout(
         const val ADVANCED_TITLE_WIDTH_FACTOR = 0.86f
         const val DEFAULT_LOTTIE_WIDTH = 720f
         const val DEFAULT_LOTTIE_HEIGHT = 112f
+        val forcedBubbleTextRegex = Regex("""<text\b[^>]*>\s*([0-9]{1,6})\s*</text>""")
+        val forcedBubbleNumParamRegex = Regex("""(?:^|[?&,])num=([0-9]{1,6})""")
+        val forcedBubbleTypes = setOf(
+            "qd",
+            "cmt",
+            "comment",
+            "comments",
+            "review",
+            "paragraph",
+            "paragraphcomment"
+        )
     }
 
     private suspend fun parseImageInfo(src: String): ImageInfo {
@@ -2409,12 +2422,76 @@ class TextChapterLayout(
         val click = urlOption["click"]
             ?.takeIf { it.isNotBlank() }
             ?.takeUnless { ParagraphRuleProcessor.isParagraphClick(it) }
+        tryParseForcedParagraphBubble(src, renderSrc, urlOption, pclick ?: click)?.let {
+            return it.also { imageInfo -> imageInfoCache[src] = imageInfo }
+        }
         return ImageInfo(
             renderSrc = renderSrc,
             style = urlOption["style"],
             width = urlOption["width"],
             click = pclick ?: click
         ).also { imageInfoCache[src] = it }
+    }
+
+    private fun tryParseForcedParagraphBubble(
+        src: String,
+        renderSrc: String,
+        option: Map<String, String>,
+        click: String?
+    ): ImageInfo? {
+        if (!AppConfig.forceSoftwareParagraphBubble) return null
+        if (ParagraphBubbleRenderer.isBubbleSrc(renderSrc)) return null
+        if (!isForcedParagraphBubbleCandidate(src, option)) return null
+        val count = extractForcedParagraphBubbleCount(src) ?: "0"
+        val status = option["status"]?.takeIf { it.isNotBlank() } ?: "normal"
+        return ImageInfo(
+            renderSrc = "bubble://paragraph?num=${Uri.encode(count)}&status=${Uri.encode(status)}",
+            style = "TEXT",
+            width = option["width"],
+            click = click
+        )
+    }
+
+    private fun isForcedParagraphBubbleCandidate(
+        src: String,
+        option: Map<String, String>
+    ): Boolean {
+        val style = option["style"]
+        val styleText = style.equals("TEXT", ignoreCase = true)
+        if (!style.isNullOrBlank() && !styleText) return false
+        val type = option["type"].orEmpty().lowercase(Locale.ROOT)
+        val knownType = type in forcedBubbleTypes
+        val click = listOfNotNull(option["click"], option["pclick"])
+            .joinToString(separator = "\n")
+            .lowercase(Locale.ROOT)
+        val clickLike = click.contains("showcmt(") ||
+            click.contains("showcomment(") ||
+            click.contains("paragraph")
+        val dataSvg = src.substringBefore(",{")
+            .trimStart()
+            .startsWith("data:image/svg+xml", ignoreCase = true)
+        return knownType || clickLike || (styleText && dataSvg)
+    }
+
+    private fun extractForcedParagraphBubbleCount(src: String): String? {
+        val sourcePart = src.substringBefore(",{")
+        decodeDataSvg(sourcePart)?.let { svg ->
+            forcedBubbleTextRegex.find(svg)?.groupValues?.getOrNull(1)?.let { return it }
+        }
+        forcedBubbleNumParamRegex.find(src)?.groupValues?.getOrNull(1)?.let { return it }
+        return null
+    }
+
+    private fun decodeDataSvg(sourcePart: String): String? {
+        if (!sourcePart.startsWith("data:image/svg+xml", ignoreCase = true)) return null
+        return runCatching {
+            if (sourcePart.contains(";base64,", ignoreCase = true)) {
+                val base64 = sourcePart.substringAfter(";base64,")
+                String(Base64.decode(base64, Base64.DEFAULT), Charsets.UTF_8)
+            } else {
+                Uri.decode(sourcePart.substringAfter(",", ""))
+            }
+        }.getOrNull()
     }
 
     private fun parseParagraphBubble(src: String): ImageInfo {

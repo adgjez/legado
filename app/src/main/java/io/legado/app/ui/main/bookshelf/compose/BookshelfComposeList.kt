@@ -168,7 +168,7 @@ fun BookshelfListItem(
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
     val compact = listLayout == 1
-    val normalizedIntroMaxLines = introMaxLines.coerceIn(1, 3)
+    val normalizedIntroMaxLines = introMaxLines.coerceIn(0, 3)
     when (cardStyle) {
         BookshelfListItemStyle.RoundedCard -> BookshelfRoundedCardListItem(
             item = item,
@@ -433,7 +433,7 @@ private fun BookshelfBookMeta(
         text = book.latestChapterTitle,
         palette = palette
     )
-    if (showIntro) {
+    if (showIntro && introMaxLines > 0) {
         BookIntroUtils.listIntro(book.getDisplayIntro())?.let { intro ->
             Text(
                 text = intro,

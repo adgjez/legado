@@ -2331,6 +2331,7 @@ Selected text or question:
     <string name="bookshelf_list_style_classic">Classic list</string>
     <string name="bookshelf_list_style_rounded_card">Rounded card</string>
     <string name="bookshelf_list_intro_lines">Intro lines</string>
+    <string name="bookshelf_list_intro_lines_0">Hidden</string>
     <string name="bookshelf_list_intro_lines_1">1 line</string>
     <string name="bookshelf_list_intro_lines_2">2 lines</string>
     <string name="bookshelf_list_intro_lines_3">3 lines</string>

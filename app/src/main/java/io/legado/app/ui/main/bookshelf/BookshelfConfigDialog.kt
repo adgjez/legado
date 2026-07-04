@@ -260,10 +260,11 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                 getString(R.string.bookshelf_list_style_rounded_card)
             ).mapIndexed { index, label -> BookshelfConfigOption(label, index) },
             listIntroLines = listOf(
-                getString(R.string.bookshelf_list_intro_lines_1),
-                getString(R.string.bookshelf_list_intro_lines_2),
-                getString(R.string.bookshelf_list_intro_lines_3)
-            ).mapIndexed { index, label -> BookshelfConfigOption(label, index + 1) }
+                BookshelfConfigOption(getString(R.string.bookshelf_list_intro_lines_0), 0),
+                BookshelfConfigOption(getString(R.string.bookshelf_list_intro_lines_1), 1),
+                BookshelfConfigOption(getString(R.string.bookshelf_list_intro_lines_2), 2),
+                BookshelfConfigOption(getString(R.string.bookshelf_list_intro_lines_3), 3)
+            )
         )
     }
 
