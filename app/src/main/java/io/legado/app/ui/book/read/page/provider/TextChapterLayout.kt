@@ -2382,11 +2382,11 @@ class TextChapterLayout(
             setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
         )
         val forcedBubbleDisplayParamRegex = Regex(
-            """(?:^|[?&,])(?:displayText|num|\$num|\$\{num\}|\{\{num\}\}|count|text|label)=([^&,\s]{1,48})""",
+            """(?:^|[?&,])(?:displayText|num|\${'$'}num|\${'$'}\{num\}|\{\{num\}\}|count|text|label)=([^&,\s]{1,48})""",
             RegexOption.IGNORE_CASE
         )
         val forcedBubbleColorParamRegex = Regex(
-            """(?:^|[?&,])(?:displayColor|color|\$color|\$\{color\}|\{\{color\}\})=([^&,\s]{1,32})""",
+            """(?:^|[?&,])(?:displayColor|color|\${'$'}color|\${'$'}\{color\}|\{\{color\}\})=([^&,\s]{1,32})""",
             RegexOption.IGNORE_CASE
         )
         val forcedBubbleTypes = setOf(
