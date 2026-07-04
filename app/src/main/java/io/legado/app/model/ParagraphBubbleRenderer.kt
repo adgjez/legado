@@ -33,7 +33,7 @@ object ParagraphBubbleRenderer {
 
     fun cacheKey(src: String, width: Int, height: Int?): String {
         val config = BubblePackageManager.currentEntry().config
-        val color = resolveColor(config, status(src))
+        val color = resolveColor(config, status(src), displayColor(src))
         return buildString {
             append(src)
             append("#")
@@ -55,26 +55,33 @@ object ParagraphBubbleRenderer {
 
     fun render(src: String, width: Int, height: Int?): Bitmap? {
         val config = BubblePackageManager.currentEntry().config
-        val color = resolveColor(config, status(src))
-        val number = number(src)
+        val color = resolveColor(config, status(src), displayColor(src))
+        val text = displayText(src)
         val svg = config.svgTemplate
-            .replace("\${color}", color)
-            .replace("\${num}", number)
+            .replaceBubbleValue(listOf("displayText", "num"), text)
+            .replaceBubbleValue(listOf("displayColor", "color"), color)
         return SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), width.coerceAtLeast(1), height)
     }
 
-    private fun resolveColor(config: BubblePackageManager.Config, status: String): String {
+    private fun resolveColor(
+        config: BubblePackageManager.Config,
+        status: String,
+        overrideColor: String?
+    ): String {
         val emphasis = status.equals("emphasis", true)
         val fallback = if (emphasis) {
             BubblePackageManager.DEFAULT_EMPHASIS_COLOR
         } else {
             BubblePackageManager.DEFAULT_NORMAL_COLOR
         }
-        val value = if (AppConfig.isNightTheme) {
+        val themeColor = if (AppConfig.isNightTheme) {
             if (emphasis) config.nightEmphasisColor else config.nightNormalColor
         } else {
             if (emphasis) config.dayEmphasisColor else config.dayNormalColor
-        }?.takeIf { it.isNotBlank() } ?: fallback
+        }
+        val value = overrideColor?.takeIf { it.isNotBlank() }
+            ?: themeColor?.takeIf { it.isNotBlank() }
+            ?: fallback
         return runCatching {
             val normalized = if (value.startsWith("#")) value else "#$value"
             Color.parseColor(normalized)
@@ -82,21 +89,37 @@ object ParagraphBubbleRenderer {
         }.getOrDefault(fallback)
     }
 
-    private fun number(src: String): String {
-        return queryValue(src, "num").ifBlank { "0" }
+    private fun displayText(src: String): String {
+        return queryValue(src, "displayText")
+            .ifBlank { queryValue(src, "num") }
     }
 
     private fun status(src: String): String {
         return queryValue(src, "status").ifBlank { "normal" }
     }
 
+    private fun displayColor(src: String): String? {
+        return queryValue(src, "displayColor")
+            .ifBlank { queryValue(src, "color") }
+            .takeIf { it.isNotBlank() }
+    }
+
     private fun queryValue(src: String, key: String): String {
         val query = src.substringAfter('?', "")
         if (query.isBlank()) return ""
         return query.split('&')
-            .firstOrNull { it.substringBefore('=') == key }
+            .firstOrNull { it.substringBefore('=').equals(key, ignoreCase = true) }
             ?.substringAfter('=', "")
             ?.let(Uri::decode)
             .orEmpty()
+    }
+
+    private fun String.replaceBubbleValue(names: List<String>, value: String): String {
+        val namePattern = names.joinToString("|") { Regex.escape(it) }
+        val regex = Regex(
+            """\$\{(?:$namePattern)\}|\$(?:$namePattern)\b|\{\{(?:$namePattern)\}\}""",
+            RegexOption.IGNORE_CASE
+        )
+        return replace(regex) { value }
     }
 }

@@ -2381,7 +2381,14 @@ class TextChapterLayout(
             """<text\b[^>]*>(.*?)</text>""",
             setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
         )
-        val forcedBubbleNumParamRegex = Regex("""(?:^|[?&,])num=([^&,\s]{1,24})""")
+        val forcedBubbleDisplayParamRegex = Regex(
+            """(?:^|[?&,])(?:displayText|num|\$num|\$\{num\}|\{\{num\}\}|count|text|label)=([^&,\s]{1,48})""",
+            RegexOption.IGNORE_CASE
+        )
+        val forcedBubbleColorParamRegex = Regex(
+            """(?:^|[?&,])(?:displayColor|color|\$color|\$\{color\}|\{\{color\}\})=([^&,\s]{1,32})""",
+            RegexOption.IGNORE_CASE
+        )
         val forcedBubbleTypes = setOf(
             "qd",
             "cmt",
@@ -2403,7 +2410,7 @@ class TextChapterLayout(
         val urlOption = GSON.fromJsonObject<Map<String, String>>(src.substring(urlMatcher.end()))
             .getOrNull()
             ?: return ImageInfo(src).also { imageInfoCache[src] = it }
-        val js = urlOption["js"]
+        val js = urlOption.valueIgnoreCase("js")
         val renderSrc = if (js.isNullOrBlank()) {
             src
         } else {
@@ -2421,8 +2428,8 @@ class TextChapterLayout(
                 src
             }
         }
-        val pclick = urlOption["pclick"]?.takeIf { it.isNotBlank() }
-        val click = urlOption["click"]
+        val pclick = urlOption.valueIgnoreCase("pclick")?.takeIf { it.isNotBlank() }
+        val click = urlOption.valueIgnoreCase("click")
             ?.takeIf { it.isNotBlank() }
             ?.takeUnless { ParagraphRuleProcessor.isParagraphClick(it) }
         tryParseForcedParagraphBubble(src, renderSrc, urlOption, pclick ?: click)?.let {
@@ -2430,8 +2437,8 @@ class TextChapterLayout(
         }
         return ImageInfo(
             renderSrc = renderSrc,
-            style = urlOption["style"],
-            width = urlOption["width"],
+            style = urlOption.valueIgnoreCase("style"),
+            width = urlOption.valueIgnoreCase("width"),
             click = pclick ?: click
         ).also { imageInfoCache[src] = it }
     }
@@ -2445,12 +2452,15 @@ class TextChapterLayout(
         if (!AppConfig.forceSoftwareParagraphBubble) return null
         if (ParagraphBubbleRenderer.isBubbleSrc(renderSrc)) return null
         if (!isForcedParagraphBubbleCandidate(src, option)) return null
-        val count = extractForcedParagraphBubbleCount(src, renderSrc, option) ?: "0"
-        val status = option["status"]?.takeIf { it.isNotBlank() } ?: "normal"
+        val displayText = extractForcedParagraphBubbleDisplayText(src, renderSrc, option)
+            ?: return null
+        val status = option.valueIgnoreCase("status")?.takeIf { it.isNotBlank() } ?: "normal"
+        val displayColor = extractForcedParagraphBubbleColor(src, renderSrc, option)
+        val colorQuery = displayColor?.let { "&displayColor=${Uri.encode(it)}" }.orEmpty()
         return ImageInfo(
-            renderSrc = "bubble://paragraph?num=${Uri.encode(count)}&status=${Uri.encode(status)}",
+            renderSrc = "bubble://paragraph?displayText=${Uri.encode(displayText)}&num=${Uri.encode(displayText)}&status=${Uri.encode(status)}$colorQuery",
             style = "TEXT",
-            width = option["width"],
+            width = option.valueIgnoreCase("width"),
             click = click
         )
     }
@@ -2459,12 +2469,12 @@ class TextChapterLayout(
         src: String,
         option: Map<String, String>
     ): Boolean {
-        val style = option["style"]
+        val style = option.valueIgnoreCase("style")
         val styleText = style.equals("TEXT", ignoreCase = true)
         if (!style.isNullOrBlank() && !styleText) return false
-        val type = option["type"].orEmpty().lowercase(Locale.ROOT)
+        val type = option.valueIgnoreCase("type").orEmpty().lowercase(Locale.ROOT)
         val knownType = type in forcedBubbleTypes
-        val click = listOfNotNull(option["click"], option["pclick"])
+        val click = listOfNotNull(option.valueIgnoreCase("click"), option.valueIgnoreCase("pclick"))
             .joinToString(separator = "\n")
             .lowercase(Locale.ROOT)
         val clickLike = click.contains("showcmt(") ||
@@ -2476,17 +2486,17 @@ class TextChapterLayout(
         return knownType || clickLike || (styleText && dataSvg)
     }
 
-    private fun extractForcedParagraphBubbleCount(
+    private fun extractForcedParagraphBubbleDisplayText(
         src: String,
         renderSrc: String,
         option: Map<String, String>
     ): String? {
-        listOf("num", "count", "text", "label").forEach { key ->
-            normalizeForcedBubbleCount(option[key].orEmpty())?.let { return it }
+        listOf("displayText", "num", "\$num", "\${num}", "{{num}}", "count", "text", "label").forEach { key ->
+            normalizeForcedBubbleText(option.valueIgnoreCase(key).orEmpty())?.let { return it }
         }
         listOf(src, renderSrc).distinct().forEach { source ->
-            forcedBubbleNumParamRegex.find(source)?.groupValues?.getOrNull(1)?.let {
-                normalizeForcedBubbleCount(Uri.decode(it))?.let { value -> return value }
+            forcedBubbleDisplayParamRegex.find(source)?.groupValues?.getOrNull(1)?.let {
+                normalizeForcedBubbleText(Uri.decode(it))?.let { value -> return value }
             }
             val optionMatcher = paramPattern.matcher(source)
             val sourcePart = if (optionMatcher.find()) {
@@ -2501,21 +2511,41 @@ class TextChapterLayout(
         return null
     }
 
+    private fun extractForcedParagraphBubbleColor(
+        src: String,
+        renderSrc: String,
+        option: Map<String, String>
+    ): String? {
+        listOf("displayColor", "color", "\$color", "\${color}", "{{color}}").forEach { key ->
+            normalizeForcedBubbleText(option.valueIgnoreCase(key).orEmpty())?.let { return it }
+        }
+        listOf(src, renderSrc).distinct().forEach { source ->
+            forcedBubbleColorParamRegex.find(source)?.groupValues?.getOrNull(1)?.let {
+                normalizeForcedBubbleText(Uri.decode(it))?.let { value -> return value }
+            }
+        }
+        return null
+    }
+
     private fun extractForcedBubbleTextFromSvg(svg: String): String? {
         val texts = forcedBubbleTextRegex.findAll(svg)
-            .mapNotNull { normalizeForcedBubbleCount(it.groupValues[1]) }
+            .mapNotNull { normalizeForcedBubbleText(it.groupValues[1]) }
             .toList()
         return texts.firstOrNull { text -> text.any { it.isDigit() } }
             ?: texts.singleOrNull()
             ?: texts.firstOrNull()
     }
 
-    private fun normalizeForcedBubbleCount(raw: String): String? {
+    private fun normalizeForcedBubbleText(raw: String): String? {
         return HtmlCompat.fromHtml(raw, HtmlCompat.FROM_HTML_MODE_LEGACY)
             .toString()
             .trim()
             .takeIf { it.isNotBlank() }
-            ?.take(12)
+            ?.take(24)
+    }
+
+    private fun Map<String, String>.valueIgnoreCase(key: String): String? {
+        return entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value
     }
 
     private fun decodeDataSvg(sourcePart: String): String? {
@@ -2545,15 +2575,19 @@ class TextChapterLayout(
         } else {
             emptyMap()
         }
-        val status = option["status"]?.takeIf { it.isNotBlank() } ?: "normal"
-        val pclick = option["pclick"]?.takeIf { it.isNotBlank() }
-        val click = option["click"]
+        val displayText = extractForcedParagraphBubbleDisplayText(src, src, option)
+            ?: count
+        val status = option.valueIgnoreCase("status")?.takeIf { it.isNotBlank() } ?: "normal"
+        val displayColor = extractForcedParagraphBubbleColor(src, src, option)
+        val colorQuery = displayColor?.let { "&displayColor=${Uri.encode(it)}" }.orEmpty()
+        val pclick = option.valueIgnoreCase("pclick")?.takeIf { it.isNotBlank() }
+        val click = option.valueIgnoreCase("click")
             ?.takeIf { it.isNotBlank() }
             ?.takeUnless { ParagraphRuleProcessor.isParagraphClick(it) }
-        val encodedCount = Uri.encode(count)
+        val encodedCount = Uri.encode(displayText)
         val encodedStatus = Uri.encode(status)
         return ImageInfo(
-            renderSrc = "bubble://paragraph?num=${encodedCount}&status=${encodedStatus}",
+            renderSrc = "bubble://paragraph?displayText=${encodedCount}&num=${encodedCount}&status=${encodedStatus}$colorQuery",
             style = "TEXT",
             click = pclick ?: click
         )
