@@ -5,26 +5,29 @@ import android.content.ContextWrapper
 import android.view.View
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ViewTreeLifecycleOwner
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import androidx.lifecycle.findViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.savedstate.findViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
 fun ComposeView.installViewTreeOwnersFrom(
     anchor: View,
     fallbackContext: Context = context
 ) {
     val ownerContext = fallbackContext.findOwnerContext()
-    val lifecycleOwner = ViewTreeLifecycleOwner.get(anchor)
+    val lifecycleOwner = anchor.findViewTreeLifecycleOwner()
         ?: ownerContext as? LifecycleOwner
-    val viewModelStoreOwner = ViewTreeViewModelStoreOwner.get(anchor)
+    val viewModelStoreOwner = anchor.findViewTreeViewModelStoreOwner()
         ?: ownerContext as? ViewModelStoreOwner
-    val savedStateRegistryOwner = ViewTreeSavedStateRegistryOwner.get(anchor)
+    val savedStateRegistryOwner = anchor.findViewTreeSavedStateRegistryOwner()
         ?: ownerContext as? SavedStateRegistryOwner
-    lifecycleOwner?.let { ViewTreeLifecycleOwner.set(this, it) }
-    viewModelStoreOwner?.let { ViewTreeViewModelStoreOwner.set(this, it) }
-    savedStateRegistryOwner?.let { ViewTreeSavedStateRegistryOwner.set(this, it) }
+    lifecycleOwner?.let { setViewTreeLifecycleOwner(it) }
+    viewModelStoreOwner?.let { setViewTreeViewModelStoreOwner(it) }
+    savedStateRegistryOwner?.let { setViewTreeSavedStateRegistryOwner(it) }
 }
 
 private tailrec fun Context.findOwnerContext(): Context {

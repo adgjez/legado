@@ -19,6 +19,7 @@ import androidx.annotation.DrawableRes
 import androidx.appcompat.widget.AppCompatImageView
 import io.legado.app.R
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.spToPx
 import kotlin.math.min
