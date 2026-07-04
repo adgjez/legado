@@ -28,11 +28,9 @@ import io.legado.app.databinding.DialogBookChangeSourceBinding
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -107,9 +105,14 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
-        view.setBackgroundColor(requireContext().backgroundColor)
-        binding.llBottomBar.setBackgroundColor(requireContext().themeMutedColorOrDefault())
+        val context = requireContext()
+        val surfaceColor = context.changeSourceSurfaceColor()
+        val mutedColor = context.changeSourceMutedColor()
+        binding.toolBar.setBackgroundColor(primaryColor.forceOpaque())
+        view.background = context.changeSourceDialogBackground()
+        view.clipToOutline = true
+        binding.recyclerView.setBackgroundColor(surfaceColor)
+        binding.llBottomBar.setBackgroundColor(mutedColor)
         viewModel.initData(arguments, callBack?.oldBook, activity is ReadBookActivity)
         showTitle()
         initMenu()

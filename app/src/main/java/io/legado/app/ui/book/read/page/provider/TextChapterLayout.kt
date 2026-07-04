@@ -2377,8 +2377,11 @@ class TextChapterLayout(
         const val ADVANCED_TITLE_WIDTH_FACTOR = 0.86f
         const val DEFAULT_LOTTIE_WIDTH = 720f
         const val DEFAULT_LOTTIE_HEIGHT = 112f
-        val forcedBubbleTextRegex = Regex("""<text\b[^>]*>\s*([0-9]{1,6})\s*</text>""")
-        val forcedBubbleNumParamRegex = Regex("""(?:^|[?&,])num=([0-9]{1,6})""")
+        val forcedBubbleTextRegex = Regex(
+            """<text\b[^>]*>(.*?)</text>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        val forcedBubbleNumParamRegex = Regex("""(?:^|[?&,])num=([^&,\s]{1,24})""")
         val forcedBubbleTypes = setOf(
             "qd",
             "cmt",
@@ -2442,7 +2445,7 @@ class TextChapterLayout(
         if (!AppConfig.forceSoftwareParagraphBubble) return null
         if (ParagraphBubbleRenderer.isBubbleSrc(renderSrc)) return null
         if (!isForcedParagraphBubbleCandidate(src, option)) return null
-        val count = extractForcedParagraphBubbleCount(src) ?: "0"
+        val count = extractForcedParagraphBubbleCount(src, renderSrc, option) ?: "0"
         val status = option["status"]?.takeIf { it.isNotBlank() } ?: "normal"
         return ImageInfo(
             renderSrc = "bubble://paragraph?num=${Uri.encode(count)}&status=${Uri.encode(status)}",
@@ -2473,13 +2476,46 @@ class TextChapterLayout(
         return knownType || clickLike || (styleText && dataSvg)
     }
 
-    private fun extractForcedParagraphBubbleCount(src: String): String? {
-        val sourcePart = src.substringBefore(",{")
-        decodeDataSvg(sourcePart)?.let { svg ->
-            forcedBubbleTextRegex.find(svg)?.groupValues?.getOrNull(1)?.let { return it }
+    private fun extractForcedParagraphBubbleCount(
+        src: String,
+        renderSrc: String,
+        option: Map<String, String>
+    ): String? {
+        listOf("num", "count", "text", "label").forEach { key ->
+            normalizeForcedBubbleCount(option[key].orEmpty())?.let { return it }
         }
-        forcedBubbleNumParamRegex.find(src)?.groupValues?.getOrNull(1)?.let { return it }
+        listOf(src, renderSrc).distinct().forEach { source ->
+            forcedBubbleNumParamRegex.find(source)?.groupValues?.getOrNull(1)?.let {
+                normalizeForcedBubbleCount(Uri.decode(it))?.let { value -> return value }
+            }
+            val optionMatcher = paramPattern.matcher(source)
+            val sourcePart = if (optionMatcher.find()) {
+                source.substring(0, optionMatcher.start())
+            } else {
+                source
+            }
+            decodeDataSvg(sourcePart)
+                ?.let { extractForcedBubbleTextFromSvg(it) }
+                ?.let { return it }
+        }
         return null
+    }
+
+    private fun extractForcedBubbleTextFromSvg(svg: String): String? {
+        val texts = forcedBubbleTextRegex.findAll(svg)
+            .mapNotNull { normalizeForcedBubbleCount(it.groupValues[1]) }
+            .toList()
+        return texts.firstOrNull { text -> text.any { it.isDigit() } }
+            ?: texts.singleOrNull()
+            ?: texts.firstOrNull()
+    }
+
+    private fun normalizeForcedBubbleCount(raw: String): String? {
+        return HtmlCompat.fromHtml(raw, HtmlCompat.FROM_HTML_MODE_LEGACY)
+            .toString()
+            .trim()
+            .takeIf { it.isNotBlank() }
+            ?.take(12)
     }
 
     private fun decodeDataSvg(sourcePart: String): String? {

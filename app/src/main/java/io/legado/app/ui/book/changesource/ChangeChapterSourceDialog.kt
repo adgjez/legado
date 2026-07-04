@@ -29,10 +29,8 @@ import io.legado.app.databinding.DialogChapterChangeSourceBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -117,12 +115,16 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
-        val backgroundColor = requireContext().backgroundColor
-        val mutedColor = requireContext().themeMutedColorOrDefault()
-        view.setBackgroundColor(backgroundColor)
+        val context = requireContext()
+        val surfaceColor = context.changeSourceSurfaceColor()
+        val mutedColor = context.changeSourceMutedColor()
+        binding.toolBar.setBackgroundColor(primaryColor.forceOpaque())
+        view.background = context.changeSourceDialogBackground()
+        view.clipToOutline = true
+        binding.recyclerView.setBackgroundColor(surfaceColor)
         binding.llBottomBar.setBackgroundColor(mutedColor)
-        binding.clToc.setBackgroundColor(backgroundColor)
+        binding.clToc.setBackgroundColor(surfaceColor)
+        binding.recyclerViewToc.setBackgroundColor(surfaceColor)
         binding.flHideToc.setBackgroundColor(mutedColor)
         viewModel.initData(arguments, callBack?.oldBook, activity is ReadBookActivity)
         showTitle()
