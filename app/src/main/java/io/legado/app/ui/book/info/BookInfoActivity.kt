@@ -135,6 +135,7 @@ import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
+import io.legado.app.ui.novelvideo.NovelVideoTaskCenterActivity
 import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -485,6 +486,11 @@ class BookInfoActivity :
             putExtra(AiImageGalleryActivity.EXTRA_BOOK_KEY, key)
             putExtra(AiImageGalleryActivity.EXTRA_TITLE, getString(R.string.book_info_component_ai_images))
         })
+    }
+
+    private fun openNovelVideoTaskCenter() {
+        val safeBook = book ?: return
+        startActivity(NovelVideoTaskCenterActivity.newIntent(this, safeBook))
     }
 
     @SuppressLint("PrivateResource")
@@ -1654,6 +1660,7 @@ class BookInfoActivity :
                     }
                 }
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
+            R.id.menu_book_to_video -> openNovelVideoTaskCenter()
             R.id.menu_split_long_chapter -> {
                 upLoading(true)
                 viewModel.getBook()?.let {

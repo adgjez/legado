@@ -95,4 +95,9 @@
         android:title="@string/log"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_book_to_video"
+        android:title="@string/novel_video"
+        app:showAsAction="never" />
+
 </menu>

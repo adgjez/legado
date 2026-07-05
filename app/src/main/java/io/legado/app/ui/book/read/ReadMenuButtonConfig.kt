@@ -25,6 +25,7 @@ object ReadMenuButtonConfig {
         const val PARAGRAPH_RULES = "paragraphRules"
         const val CHARACTERS = "characters"
         const val BUBBLE = "bubble"
+        const val NOVEL_TO_VIDEO = "novelToVideo"
 
         val ids = setOf(
             SEARCH,
@@ -39,7 +40,8 @@ object ReadMenuButtonConfig {
             AI_SUMMARY,
             PARAGRAPH_RULES,
             CHARACTERS,
-            BUBBLE
+            BUBBLE,
+            NOVEL_TO_VIDEO
         )
     }
 
