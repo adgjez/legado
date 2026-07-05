@@ -2105,6 +2105,13 @@ class BookInfoActivity :
         val intro = book.getDisplayIntro()
         if (intro?.startsWith("<useweb>") == true) {
             binding.tvIntroToggle.gone()
+            binding.tvIntroContainer.updateLayoutParams<LinearLayout.LayoutParams> {
+                width = LinearLayout.LayoutParams.MATCH_PARENT
+                height = 0
+                weight = 1f
+                topMargin = 0
+                bottomMargin = 0
+            }
             val lastIndex = intro.lastIndexOf("<")
             if (lastIndex < 8) {
                 introTextView.text = intro
@@ -3201,7 +3208,19 @@ class BookInfoActivity :
 
     private fun resetPlainIntroLayout() {
         updateDetailIntroPageSpacing()
+        binding.tvIntroContainer.updateLayoutParams<LinearLayout.LayoutParams> {
+            width = LinearLayout.LayoutParams.MATCH_PARENT
+            height = LinearLayout.LayoutParams.WRAP_CONTENT
+            weight = 0f
+            topMargin = 0
+            bottomMargin = 0
+        }
+        introScrollView.updateLayoutParams<ViewGroup.LayoutParams> {
+            width = ViewGroup.LayoutParams.MATCH_PARENT
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+        }
         introScrollView.scrollTo(0, 0)
+        introTextView.scrollTo(0, 0)
         introTextView.updateLayoutParams<ViewGroup.LayoutParams> {
             width = ViewGroup.LayoutParams.MATCH_PARENT
             height = ViewGroup.LayoutParams.WRAP_CONTENT

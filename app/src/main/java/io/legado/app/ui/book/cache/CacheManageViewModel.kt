@@ -687,25 +687,50 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             hasCache = true
         }
         val audioDir = File(packageDir, "audio_cache").apply { mkdirs() }
-        val chapters = (appDb.bookChapterDao.getChapterList(book.bookUrl)
+        val sourceChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
             .takeIf { it.isNotEmpty() }
-            ?: CacheManifestHelper.read(book)?.let(CacheManifestHelper::toChapters).orEmpty())
-            .filterNot { it.isVolume }
-            .mapNotNull { chapter ->
+            ?: CacheManifestHelper.read(book)?.let(CacheManifestHelper::toChapters).orEmpty()
+        val chapters = sourceChapters
+            .map { chapter ->
+                if (chapter.isVolume) {
+                    return@map AudioCacheManifest.Chapter(
+                        index = chapter.index,
+                        title = chapter.title,
+                        isVolume = true,
+                        url = chapter.url,
+                        resourceUrl = chapter.resourceUrl,
+                        fileCount = 0
+                    )
+                }
                 val chapterDir = File(audioDir, chapter.index.toString())
                 if (!ExoPlayerHelper.isMediaCached(chapter.resourceUrl)) {
                     chapterDir.deleteRecursively()
-                    return@mapNotNull null
+                    return@map AudioCacheManifest.Chapter(
+                        index = chapter.index,
+                        title = chapter.title,
+                        isVolume = false,
+                        url = chapter.url,
+                        resourceUrl = chapter.resourceUrl,
+                        fileCount = 0
+                    )
                 }
                 val fileCount = ExoPlayerHelper.copyMediaCache(chapter.resourceUrl, chapterDir)
                 if (fileCount <= 0) {
                     chapterDir.deleteRecursively()
-                    return@mapNotNull null
+                    return@map AudioCacheManifest.Chapter(
+                        index = chapter.index,
+                        title = chapter.title,
+                        isVolume = false,
+                        url = chapter.url,
+                        resourceUrl = chapter.resourceUrl,
+                        fileCount = 0
+                    )
                 }
                 hasCache = true
                 AudioCacheManifest.Chapter(
                     index = chapter.index,
                     title = chapter.title,
+                    isVolume = false,
                     url = chapter.url,
                     resourceUrl = chapter.resourceUrl,
                     fileCount = fileCount
@@ -1100,7 +1125,9 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             ZipUtils.unZipToPath(zipFile, unzipDir)
             if (mode == CacheManageMode.AUDIO) {
                 val manifestFile = File(resolveCachePayloadDir(unzipDir, "manifest.json"), "manifest.json")
-                GSON.fromJsonObject<AudioCacheManifest>(manifestFile.readText()).getOrNull()?.chapters?.size
+                GSON.fromJsonObject<AudioCacheManifest>(manifestFile.readText()).getOrNull()
+                    ?.chapters
+                    ?.count { !it.isVolume && it.fileCount > 0 }
             } else {
                 val manifest = CacheManifestHelper.read(File(resolveCachePayloadDir(unzipDir, CacheManifestHelper.MANIFEST_FILE_NAME), CacheManifestHelper.MANIFEST_FILE_NAME))
                 manifest?.cachedChapterCount
@@ -1140,6 +1167,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 BookChapter(
                     url = it.url,
                     title = it.title,
+                    isVolume = it.isVolume,
                     bookUrl = book.bookUrl,
                     index = it.index,
                     resourceUrl = it.resourceUrl
@@ -1153,10 +1181,11 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                     bookName = book.name,
                     author = book.author,
                     bookUrl = book.bookUrl,
-                    chapters = chapters.filterNot { it.isVolume }.map {
+                    chapters = chapters.map {
                         AudioCacheManifest.Chapter(
                             index = it.index,
                             title = it.title,
+                            isVolume = it.isVolume,
                             url = it.url,
                             resourceUrl = it.resourceUrl,
                             fileCount = 0
@@ -1222,7 +1251,6 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         lists.forEach { chapters ->
             chapters
                 .asSequence()
-                .filterNot { it.isVolume }
                 .forEach { chapter ->
                     merged[chapter.index] = chapter
                 }
@@ -1257,12 +1285,13 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             type = book.type.takeIf { it > 0 } ?: fallback?.type ?: 0,
             folderName = book.getFolderName(),
             latestChapterTitle = book.latestChapterTitle ?: fallback?.latestChapterTitle,
-            totalChapterNum = realChapters.size.takeIf { it > 0 } ?: book.totalChapterNum,
+            totalChapterNum = chapters.size.takeIf { it > 0 } ?: book.totalChapterNum,
             updatedAt = System.currentTimeMillis(),
-            chapters = realChapters.map { chapter ->
+            chapters = chapters.map { chapter ->
                 io.legado.app.help.book.CacheChapterManifest(
                     index = chapter.index,
                     title = chapter.title,
+                    isVolume = chapter.isVolume,
                     url = chapter.url,
                     baseUrl = chapter.baseUrl,
                     isVip = chapter.isVip,
@@ -1276,7 +1305,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                     endFragmentId = chapter.endFragmentId,
                     variable = chapter.variable,
                     imgUrl = chapter.imgUrl,
-                    cached = cachedByIndex[chapter.index] == true
+                    cached = !chapter.isVolume && cachedByIndex[chapter.index] == true
                 )
             }
         )
@@ -1333,6 +1362,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             BookChapter(
                 url = chapter.url,
                 title = chapter.title,
+                isVolume = chapter.isVolume,
                 bookUrl = book.bookUrl,
                 index = chapter.index,
                 resourceUrl = chapter.resourceUrl
@@ -1340,6 +1370,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         }
         val audioDir = File(payloadDir, "audio_cache")
         audioManifest.chapters.forEach { chapter ->
+            if (chapter.isVolume || chapter.fileCount <= 0) return@forEach
             val resourceUrl = chapter.resourceUrl ?: return@forEach
             val sourceDir = File(audioDir, chapter.index.toString())
             if (!sourceDir.exists()) return@forEach
@@ -1669,6 +1700,7 @@ private data class AudioCacheManifest(
     data class Chapter(
         val index: Int,
         val title: String,
+        val isVolume: Boolean = false,
         val url: String,
         val resourceUrl: String?,
         val fileCount: Int

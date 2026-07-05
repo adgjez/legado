@@ -80,12 +80,13 @@ object CacheManifestHelper {
             type = book.type,
             folderName = book.getFolderName(),
             latestChapterTitle = book.latestChapterTitle,
-            totalChapterNum = realChapters.size.takeIf { it > 0 } ?: book.totalChapterNum,
+            totalChapterNum = chapters.size.takeIf { it > 0 } ?: book.totalChapterNum,
             updatedAt = now,
-            chapters = realChapters.map { chapter ->
+            chapters = chapters.map { chapter ->
                 CacheChapterManifest(
                     index = chapter.index,
                     title = chapter.title,
+                    isVolume = chapter.isVolume,
                     url = chapter.url,
                     baseUrl = chapter.baseUrl,
                     isVip = chapter.isVip,
@@ -99,7 +100,7 @@ object CacheManifestHelper {
                     endFragmentId = chapter.endFragmentId,
                     variable = chapter.variable,
                     imgUrl = chapter.imgUrl,
-                    cached = cachedByIndex[chapter.index] == true
+                    cached = !chapter.isVolume && cachedByIndex[chapter.index] == true
                 )
             }
         )
@@ -147,7 +148,7 @@ object CacheManifestHelper {
                 BookChapter(
                     url = chapter.url,
                     title = chapter.title,
-                    isVolume = false,
+                    isVolume = chapter.isVolume,
                     baseUrl = chapter.baseUrl,
                     bookUrl = targetBookUrl,
                     index = chapter.index,
@@ -205,12 +206,13 @@ data class CacheBookManifest(
     val chapters: List<CacheChapterManifest> = emptyList()
 ) {
     val cachedChapterCount: Int
-        get() = chapters.count { it.cached }
+        get() = chapters.count { !it.isVolume && it.cached }
 }
 
 data class CacheChapterManifest(
     val index: Int = 0,
     val title: String = "",
+    val isVolume: Boolean = false,
     val url: String = "",
     val baseUrl: String = "",
     val isVip: Boolean = false,
