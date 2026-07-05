@@ -115,7 +115,18 @@ fun View.applyUiBodyTypefaceDeep(typeface: Typeface) {
 
 fun TextView.applyUiTitleTypeface(context: Context) {
     setTag(R.id.ui_title_typeface_role, true)
+    val colorBeforeTypeface = currentTextColor
     typeface = context.titleTypeface()
+    AppConfig.titleFontColor.toThemeTextColorOrNull()?.let { titleColor ->
+        val defaultTitleColors = setOf(
+            context.primaryTextColor,
+            context.getPrimaryTextColor(!AppConfig.isNightTheme),
+            ThemeStore.textColorPrimary(context)
+        )
+        if (colorBeforeTypeface in defaultTitleColors) {
+            setTextColor(titleColor)
+        }
+    }
 }
 
 fun TextView.applyUiMenuItemTypeface(context: Context) {
@@ -144,7 +155,7 @@ fun TextView.applyUiLabelStyle(context: Context) {
 fun TextView.applyUiSectionTitleStyle(context: Context) {
     applyUiTitleTypeface(context)
     textSize = 15f
-    setTextColor(context.primaryTextColor)
+    setTextColor(context.titleTextColor)
 }
 
 fun TextView.applyUiSubtleButtonStyle(context: Context) {

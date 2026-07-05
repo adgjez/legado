@@ -63,7 +63,9 @@ private val themeUiShapeKeys = listOf(
 private val themeUiTypographyKeys = listOf(
     PreferKey.fontScale,
     PreferKey.uiFontPath,
-    PreferKey.titleFontPath
+    PreferKey.titleFontPath,
+    PreferKey.uiFontColor,
+    PreferKey.titleFontColor
 )
 private val themeUiDependencyKeySet = (
     themeUiColorKeys + themeUiShapeKeys + themeUiTypographyKeys + listOf(
@@ -146,6 +148,8 @@ fun Context.themeUiSignature(): String {
         "fontScale=${getPrefInt(PreferKey.fontScale, 0)}",
         "uiFont=${getPrefString(PreferKey.uiFontPath).orEmpty()}",
         "titleFont=${getPrefString(PreferKey.titleFontPath).orEmpty()}",
+        "uiFontColor=${getPrefString(PreferKey.uiFontColor).orEmpty()}",
+        "titleFontColor=${getPrefString(PreferKey.titleFontColor).orEmpty()}",
         "panelImage=${themePanelImageSignature()}"
     ).joinToString("|")
     val computedColors = listOf(

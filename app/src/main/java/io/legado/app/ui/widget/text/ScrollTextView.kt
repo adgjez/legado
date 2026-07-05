@@ -11,6 +11,7 @@ import android.view.animation.Interpolator
 import android.widget.OverScroller
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.ViewCompat
+import io.legado.app.lib.theme.uiTypeface
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -61,6 +62,9 @@ class ScrollTextView(context: Context, attrs: AttributeSet?) :
         mTouchSlop = vc.scaledTouchSlop
         mMinFlingVelocity = vc.scaledMinimumFlingVelocity
         mMaxFlingVelocity = vc.scaledMaximumFlingVelocity
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
+        }
         movementMethod = LinkMovementMethod.getInstance()
     }
 

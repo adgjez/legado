@@ -45,6 +45,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.themeMutedColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.book.info.BookInfoNavigator
@@ -501,6 +502,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             minWidth = 52.dpToPx()
             setTextColor(if (selected) accentColor else primaryTextColor)
             textSize = 12f
+            typeface = uiTypeface()
             includeFontPadding = false
             setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
             background = UiCorner.opaqueRoundedStroke(

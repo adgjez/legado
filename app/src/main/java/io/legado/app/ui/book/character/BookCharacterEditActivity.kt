@@ -48,6 +48,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.themeMutedColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.character.compose.CharacterEditDraft
 import io.legado.app.ui.book.character.compose.CharacterEditScreen
 import io.legado.app.ui.book.character.compose.CharacterSpeechEngineUi
@@ -284,6 +285,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                     gravity = Gravity.CENTER
                     minWidth = 62.dpToPx()
                     setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
+                    typeface = uiTypeface()
                     setTextColor(if (selected) accentColor else secondaryTextColor)
                     background = UiCorner.actionSelector(
                         if (selected) {

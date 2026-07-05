@@ -802,6 +802,8 @@ object Restore {
             PreferKey.systemTypefaces,
             PreferKey.uiFontPath,
             PreferKey.titleFontPath,
+            PreferKey.uiFontColor,
+            PreferKey.titleFontColor,
             PreferKey.bottomBarEffectMode,
             PreferKey.bottomBarLayoutMode,
             PreferKey.bottomBarSidebarGravity,

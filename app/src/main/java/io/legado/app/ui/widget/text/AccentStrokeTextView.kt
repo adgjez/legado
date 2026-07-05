@@ -8,6 +8,7 @@ import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
@@ -25,6 +26,9 @@ class AccentStrokeTextView(context: Context, attrs: AttributeSet) :
         isBottomBackground =
             typedArray.getBoolean(R.styleable.StrokeTextView_isBottomBackground, false)
         typedArray.recycle()
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
+        }
         upStyle()
     }
 

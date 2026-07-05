@@ -33,6 +33,7 @@ import io.legado.app.lib.theme.applyUiInputStyle
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.applyUiSubtleButtonStyle
+import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
@@ -157,11 +158,13 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         val rbGlobal = RadioButton(context).apply {
             text = getString(R.string.advanced_title_scope_global)
             id = 1
+            typeface = context.uiTypeface()
         }
         val rbBook = RadioButton(context).apply {
             text = getString(R.string.advanced_title_scope_book)
             id = 2
             isEnabled = book != null
+            typeface = context.uiTypeface()
         }
         scopeGroup.addView(rbGlobal)
         scopeGroup.addView(rbBook)
@@ -170,6 +173,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         val useRegexCheck = CheckBox(context).apply {
             text = getString(R.string.advanced_title_use_regex)
             isChecked = startRule.mode == AdvancedTitleConfig.SPLIT_REGEX
+            typeface = context.uiTypeface()
         }
         val ruleEdit = edit(
             if (startRule.mode == AdvancedTitleConfig.SPLIT_REGEX) {
@@ -228,6 +232,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         root.addView(TextView(context).apply {
             text = getString(R.string.advanced_title_dialog_title)
             textSize = 18f
+            applyUiTitleTypeface(context)
             setPadding(0, 2.dpToPx(), 0, 8.dpToPx())
         })
         root.addView(label(getString(R.string.advanced_title_scope_label)))
@@ -252,6 +257,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         root.addView(TextView(context).apply {
             text = getString(R.string.advanced_title_json_hint)
             textSize = 12f
+            typeface = context.uiTypeface()
             setPadding(0, 4.dpToPx(), 0, 6.dpToPx())
             setTextColor(ContextCompat.getColor(context, android.R.color.darker_gray))
         })

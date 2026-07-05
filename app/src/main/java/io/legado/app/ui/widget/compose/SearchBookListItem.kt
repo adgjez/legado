@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
@@ -181,11 +182,13 @@ private fun SearchBookListText(
             Spacer(modifier = Modifier.size(if (rounded) 7.dp else 2.dp))
             Text(
                 text = intro,
+                modifier = Modifier.fillMaxWidth(),
                 color = if (rounded) palette.secondaryText else palette.primaryText,
                 fontSize = if (rounded) 13.sp else 12.sp,
                 lineHeight = if (rounded) 18.sp else 16.sp,
                 fontFamily = palette.bodyFontFamily,
                 maxLines = if (rounded) 3 else 2,
+                softWrap = true,
                 overflow = TextOverflow.Ellipsis
             )
         }

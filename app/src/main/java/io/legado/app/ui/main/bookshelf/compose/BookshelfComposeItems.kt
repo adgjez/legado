@@ -37,6 +37,7 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
+import io.legado.app.lib.theme.toThemeTextColorOrNull
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.toTimeAgo
 
@@ -146,7 +147,11 @@ fun BookshelfGridItem(
         FontFamily(context.titleTypeface())
     }
     val titleColor = remember(context, themeSignature) {
-        Color(context.getPrimaryTextColor(ColorUtils.isColorLight(context.backgroundColor)))
+        Color(
+            AppConfig.titleFontColor.toThemeTextColorOrNull()
+                ?: AppConfig.uiFontColor.toThemeTextColorOrNull()
+                ?: context.getPrimaryTextColor(ColorUtils.isColorLight(context.backgroundColor))
+        )
     }
     Column(
         modifier = modifier

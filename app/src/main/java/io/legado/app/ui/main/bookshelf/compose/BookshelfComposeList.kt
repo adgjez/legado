@@ -51,6 +51,7 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
+import io.legado.app.lib.theme.toThemeTextColorOrNull
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.BookIntroUtils
@@ -99,8 +100,14 @@ fun rememberBookshelfListPalette(): BookshelfListPalette {
     val rowColor = UiCorner.surfaceColor(rowBaseColor)
     val rowPressedColor = UiCorner.surfaceColor(rowBaseColor, pressed = true)
     val rowLight = ColorUtils.isColorLight(rowBaseColor)
-    val primaryText = Color(context.getPrimaryTextColor(rowLight))
-    val secondaryText = Color(context.getSecondaryTextColor(rowLight))
+    val customUiText = AppConfig.uiFontColor.toThemeTextColorOrNull()
+    val customTitleText = AppConfig.titleFontColor.toThemeTextColorOrNull()
+    val primaryText = Color(customTitleText ?: customUiText ?: context.getPrimaryTextColor(rowLight))
+    val secondaryText = if (customUiText != null) {
+        Color(customUiText).copy(alpha = 0.72f)
+    } else {
+        Color(context.getSecondaryTextColor(rowLight))
+    }
     val accent = Color(context.accentColor)
     val border = UiCorner.panelBorderColor(context)
     val panelRadiusPx = UiCorner.panelRadius(context)

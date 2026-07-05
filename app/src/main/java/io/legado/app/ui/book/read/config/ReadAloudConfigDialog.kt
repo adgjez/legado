@@ -28,6 +28,7 @@ import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.config.compose.ComposeSettingFragment
@@ -173,6 +174,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 text = group.title
                 gravity = Gravity.CENTER
                 textSize = 14f
+                typeface = requireContext().uiTypeface()
                 isSingleLine = true
                 background = UiCorner.actionSelector(
                     Color.TRANSPARENT,

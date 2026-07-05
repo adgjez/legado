@@ -4,11 +4,15 @@ import android.content.Context
 import android.os.Build
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
+import io.legado.app.lib.theme.uiTypeface
 
 class MultilineTextView(context: Context, attrs: AttributeSet?) :
     AppCompatTextView(context, attrs) {
 
     init {
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             isFallbackLineSpacing = false
         }

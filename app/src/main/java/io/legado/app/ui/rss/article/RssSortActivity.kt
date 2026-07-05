@@ -31,6 +31,7 @@ import io.legado.app.databinding.ActivityRssArtivlesBinding
 import io.legado.app.help.source.sortUrls
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -128,6 +129,7 @@ class RssSortActivity : VMBaseActivity<ActivityRssArtivlesBinding, RssSortViewMo
             text = title
             gravity = Gravity.CENTER
             textSize = 14f
+            typeface = uiTypeface()
             background = createTabBackground(accentColor, context)
             setPadding(12.dpToPx(), 6.dpToPx(), 12.dpToPx(), 6.dpToPx())
             tag = position

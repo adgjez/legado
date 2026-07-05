@@ -31,6 +31,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.themeMutedColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -151,6 +152,7 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
             minWidth = 64.dpToPx()
             gravity = android.view.Gravity.CENTER
             setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
+            typeface = uiTypeface()
             setTextColor(if (selected) accentColor else secondaryTextColor)
             background = UiCorner.actionSelector(
                 if (selected) {

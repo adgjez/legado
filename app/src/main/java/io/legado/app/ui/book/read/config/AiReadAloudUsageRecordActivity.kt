@@ -240,6 +240,7 @@ class AiReadAloudUsageRecordActivity : BaseActivity<ActivityThemeManageBinding>(
             val sub = TextView(parent.context).apply {
                 textSize = 12f
                 setTextColor(secondaryTextColor)
+                typeface = uiTypeface()
                 gravity = Gravity.START
             }
             root.addView(title, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

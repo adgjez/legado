@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 
 /**
  * @author Aidan Follestad (afollestad)
@@ -14,5 +15,8 @@ class SecondaryTextView(context: Context, attrs: AttributeSet) :
 
     init {
         setTextColor(context.secondaryTextColor)
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
+        }
     }
 }

@@ -220,7 +220,15 @@
                     layout="@layout/item_theme_package_option" />
 
                 <include
+                    android:id="@+id/row_ui_font_color"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
                     android:id="@+id/row_title_font"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
+                    android:id="@+id/row_title_font_color"
                     layout="@layout/item_theme_package_option" />
 
             </LinearLayout>

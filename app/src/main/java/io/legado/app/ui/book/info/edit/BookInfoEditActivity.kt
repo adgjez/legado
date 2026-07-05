@@ -25,6 +25,8 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.image.CoverImageView
@@ -163,6 +165,7 @@ class BookInfoEditActivity :
                 minLines = 1
             }
             container.addView(newTagEdit)
+            container.applyUiBodyTypefaceDeep(uiTypeface())
             alert(titleResource = R.string.bookshelf_tag_edit) {
                 customView { container }
                 okButton {

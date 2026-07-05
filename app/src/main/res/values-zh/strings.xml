@@ -1918,6 +1918,8 @@ bookUrl：%7$s
     <string name="theme_group_image">图片</string>
     <string name="theme_group_interface">界面</string>
     <string name="theme_group_font">字体</string>
+    <string name="theme_ui_font_color">界面字体颜色</string>
+    <string name="theme_title_font_color">标题字体颜色</string>
     <string name="cover_collection_manage">封面图集</string>
     <string name="cover_collection_select">选用图集</string>
     <string name="cover_collection_none">无</string>

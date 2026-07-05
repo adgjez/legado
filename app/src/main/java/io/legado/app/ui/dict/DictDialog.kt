@@ -23,6 +23,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setHtml
@@ -177,6 +178,7 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
             isSelected = selected
             setTextColor(if (selected) accentColor else secondaryTextColor)
             textSize = 14f
+            typeface = requireContext().uiTypeface()
             setPadding(14.dpToPx(), 8.dpToPx(), 14.dpToPx(), 8.dpToPx())
             background = UiCorner.actionSelector(
                 android.graphics.Color.TRANSPARENT,

@@ -80,7 +80,9 @@ import io.legado.app.databinding.ItemFilletSelectorSingleBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemFindBookBinding
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
@@ -1424,6 +1426,7 @@ private fun addClassicTextPreview(
     val tv = ItemFilletTextBinding.inflate(inflater, flexbox, false).root
     flexbox.addView(tv)
     tv.text = kind.suiteDiscoverTagText()
+    tv.typeface = flexbox.context.uiTypeface()
     tv.maxLines = 1
     tv.ellipsize = TextUtils.TruncateAt.END
     tv.isEnabled = enabled
@@ -1440,6 +1443,7 @@ private fun addClassicSelectPreview(
     val binding = ItemFilletSelectorSingleBinding.inflate(inflater, flexbox, false)
     flexbox.addView(binding.root)
     binding.spName.text = kind.suiteDiscoverTagText()
+    binding.root.applyUiBodyTypefaceDeep(binding.root.context.uiTypeface())
     val chars = kind.chars?.filterNotNull().orEmpty()
     val adapter = ArrayAdapter(binding.root.context, R.layout.item_text_common, chars)
     adapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
@@ -1464,6 +1468,7 @@ private fun addClassicInputPreview(
     flexbox.addView(input)
     input.hint = kind.suiteDiscoverTagText()
     input.setText(kind.default.orEmpty())
+    input.typeface = input.context.uiTypeface()
     input.isFocusable = false
     input.isFocusableInTouchMode = false
     applyClassicDiscoverFlexStyle(input, kind)

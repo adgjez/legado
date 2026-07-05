@@ -21,12 +21,14 @@ import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.themeDividerColorOrDefault
 import io.legado.app.lib.theme.themeMutedColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.ComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.ComposeTextInputDialog
 import io.legado.app.utils.applyTint
@@ -87,6 +89,7 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
             addView(TextView(this@BookshelfTagManageActivity).apply {
                 text = getString(R.string.bookshelf_tag_none)
                 setTextColor(secondaryTextColor)
+                typeface = uiTypeface()
                 gravity = Gravity.CENTER
                 setPadding(28.dpToPx())
             })
@@ -175,6 +178,7 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
             card.addView(row)
         }
         addView(card)
+        card.applyUiBodyTypefaceDeep(this@BookshelfTagManageActivity.uiTypeface())
     }
 
     private fun showAddTagDialog(groupId: Long) {

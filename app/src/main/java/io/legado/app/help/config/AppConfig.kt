@@ -2094,6 +2094,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefString(PreferKey.titleFontPath, value)
         }
 
+    var uiFontColor: String
+        get() = appCtx.getPrefString(PreferKey.uiFontColor).orEmpty()
+        set(value) {
+            appCtx.putPrefString(PreferKey.uiFontColor, value)
+        }
+
+    var titleFontColor: String
+        get() = appCtx.getPrefString(PreferKey.titleFontColor).orEmpty()
+        set(value) {
+            appCtx.putPrefString(PreferKey.titleFontColor, value)
+        }
+
     var elevation: Int
         get() = if (isEInkMode) 0 else appCtx.getPrefInt(
             PreferKey.barElevation,

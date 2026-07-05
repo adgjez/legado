@@ -123,16 +123,19 @@ class SelectionSearchEngineManageDialog(
         private val rootView = itemView as LinearLayout
         private val titleView = TextView(parent.context).apply {
             textSize = 16f
+            typeface = requireContext().uiTypeface()
             maxLines = 1
         }
         private val urlView = TextView(parent.context).apply {
             textSize = 12f
+            typeface = requireContext().uiTypeface()
             setTextColor(requireContext().secondaryTextColor)
             setPadding(0, 5.dpToPx(), 0, 6.dpToPx())
         }
         private val cssView = TextView(parent.context).apply {
             text = getString(R.string.selection_search_engine_hide_css_enabled)
             textSize = 12f
+            typeface = requireContext().uiTypeface()
             setPadding(0, 0, 0, 6.dpToPx())
         }
         private val editButton = rowButton(getString(R.string.edit))
@@ -172,6 +175,7 @@ class SelectionSearchEngineManageDialog(
         return TextView(requireContext()).apply {
             this.text = text
             textSize = 13f
+            typeface = requireContext().uiTypeface()
             gravity = Gravity.CENTER
             setTextColor(palette.accentColor)
             setPadding(12.dpToPx(), 7.dpToPx(), 12.dpToPx(), 7.dpToPx())

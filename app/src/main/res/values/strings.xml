@@ -2222,6 +2222,8 @@ Selected text or question:
     <string name="theme_group_image">Image</string>
     <string name="theme_group_interface">Layout</string>
     <string name="theme_group_font">Font</string>
+    <string name="theme_ui_font_color">UI font color</string>
+    <string name="theme_title_font_color">Title font color</string>
     <string name="cover_collection_manage">Cover collections</string>
     <string name="cover_collection_select">Use collection</string>
     <string name="cover_collection_none">None</string>

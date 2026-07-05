@@ -90,8 +90,7 @@ import kotlin.math.max
 /**
  * 书架界面
  */
-class BooksFragment() : BaseFragment(R.layout.fragment_books),
-    BaseBooksAdapter.CallBack {
+class BooksFragment() : BaseFragment(R.layout.fragment_books) {
 
     constructor(position: Int, group: BookGroup) : this() {
         val bundle = Bundle()
@@ -106,19 +105,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private val binding by viewBinding(FragmentBooksBinding::bind)
     private val activityViewModel by activityViewModels<MainViewModel>()
     private val bookshelfLayout by lazy { AppConfig.bookshelfLayout }
-    private val booksAdapter: BaseBooksAdapter<*> by lazy {
-        when (bookshelfLayout) {
-            0 -> {
-                BooksAdapterList(requireContext(), this, this, viewLifecycleOwner.lifecycle)
-            }
-            1 -> {
-                BooksAdapterList2(requireContext(), this, this, viewLifecycleOwner.lifecycle)
-            }
-            else -> {
-                BooksAdapterGrid(requireContext(), this)
-            }
-        }
-    }
     private var booksFlowJob: Job? = null
     var position = 0
         private set
@@ -197,8 +183,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
             binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksListRecycledViewPool)
         }
-        booksAdapter.stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
-        binding.rvBookshelf.adapter = booksAdapter
         /**
          * 应该是当初没有使用override val keepScrollPosition = true 加的代码
          * 最近阅读插入顶部时会造成滚动
@@ -650,11 +634,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 }
                 binding.tvEmptyMsg.isGone = itemCount > 0
                 binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
-                if (useComposeBookshelf) {
-                    updateComposeItems(list.map { it.toShelfDisplay() })
-                } else {
-                    booksAdapter.setItems(list)
-                }
+                updateComposeItems(list.map { it.toShelfDisplay() })
                 delay(100)
             }
         }
@@ -668,11 +648,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         upLastUpdateTimeJob = viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (isActive) {
-                    if (useComposeBookshelf) {
-                        updateComposeItems(shelfDisplays)
-                    } else {
-                        booksAdapter.upLastUpdateTime()
-                    }
+                    updateComposeItems(shelfDisplays)
                     delay(30 * 1000)
                 }
             }
@@ -680,10 +656,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooks(): List<Book> {
-        if (useComposeBookshelf) {
-            return shelfDisplays.map { it.toMinimalBook() }
-        }
-        return booksAdapter.getItems()
+        return shelfDisplays.map { it.toMinimalBook() }
     }
 
     private fun BookShelfDisplay.hasCustomTag(tag: String): Boolean {
@@ -715,10 +688,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooksCount(): Int {
-        if (useComposeBookshelf) {
-            return composeItems.size
-        }
-        return booksAdapter.itemCount
+        return composeItems.size
     }
 
     override fun onDestroyView() {
@@ -735,16 +705,16 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.rvBookshelf.adapter = null
     }
 
-    override fun open(book: Book) {
+    private fun open(book: Book) {
         scrollToTopWhenReturnFromRead = true
         startActivityForBook(book)
     }
 
-    override fun openBookInfo(book: Book) {
+    private fun openBookInfo(book: Book) {
         BookInfoNavigator.open(requireContext(), book)
     }
 
-    override fun isUpdate(bookUrl: String): Boolean {
+    private fun isUpdate(bookUrl: String): Boolean {
         return activityViewModel.isUpdate(bookUrl)
     }
 
@@ -839,22 +809,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     override fun observeLiveBus() {
         super.observeLiveBus()
         observeEvent<String>(EventBus.UP_BOOKSHELF) {
-            if (useComposeBookshelf) {
-                updateComposeItemUpdating(it)
-            } else {
-                booksAdapter.notification(it)
-            }
+            updateComposeItemUpdating(it)
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
             bookshelfMargin = AppConfig.bookshelfMargin
-            binding.rvBookshelf.invalidateItemDecorations()
-            if (useComposeBookshelf) {
-                composeListItemStyle = AppConfig.bookshelfListItemStyle
-                composeListIntroLines = AppConfig.bookshelfListIntroLines
-                updateComposeItems(shelfDisplays)
-            } else {
-                booksAdapter.notifyDataSetChanged()
-            }
+            composeListItemStyle = AppConfig.bookshelfListItemStyle
+            composeListIntroLines = AppConfig.bookshelfListIntroLines
+            updateComposeItems(shelfDisplays)
             startLastUpdateTimeJob()
             upFastScrollerBar()
         }

@@ -15,6 +15,7 @@ import android.widget.FrameLayout.LayoutParams
 import androidx.appcompat.widget.AppCompatTextView
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.invisible
@@ -90,6 +91,9 @@ class BadgeView @JvmOverloads constructor(
 
         //setTypeface(Typeface.DEFAULT_BOLD);
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
+        }
         setPadding(dip2Px(5f), dip2Px(1f), dip2Px(5f), dip2Px(1f))
         radius = radios.toFloat()
 

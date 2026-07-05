@@ -148,12 +148,9 @@ fun SearchBookPreviewOverlay(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .graphicsLayer {
-                            alpha = if (closing) contentAlpha else 1f
-                        }
                         .appSettingPanelBackground(
                             normalColor = renderConfig.palette.rowColor,
-                            panelImage = null,
+                            panelImage = renderConfig.panelImage,
                             borderColor = renderConfig.palette.borderColor,
                             radiusPx = radius
                         )
@@ -206,6 +203,7 @@ private fun SearchBookPreviewContent(
         modifier = Modifier
             .fillMaxSize()
             .padding(18.dp)
+            .graphicsLayer { alpha = detailsAlpha }
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -229,8 +227,7 @@ private fun SearchBookPreviewContent(
             }
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .graphicsLayer { alpha = detailsAlpha },
+                    .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
@@ -267,13 +264,13 @@ private fun SearchBookPreviewContent(
             text = intro,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 84.dp)
-                .graphicsLayer { alpha = detailsAlpha },
+                .heightIn(max = 84.dp),
             maxLines = 4,
             overflow = TextOverflow.Ellipsis,
             fontSize = 14.sp,
             lineHeight = 21.sp,
             fontFamily = palette.bodyFontFamily,
+            softWrap = true,
             color = palette.primaryText.copy(alpha = 0.86f)
         )
         Spacer(modifier = Modifier.weight(1f))
@@ -281,7 +278,7 @@ private fun SearchBookPreviewContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(modifier = Modifier.graphicsLayer { alpha = detailsAlpha }.weight(1f)) {
+            Box(modifier = Modifier.weight(1f)) {
                 SearchBookPreviewAction(
                     text = context.getString(R.string.close),
                     renderConfig = renderConfig,
@@ -290,7 +287,7 @@ private fun SearchBookPreviewContent(
                     onClick = onClose
                 )
             }
-            Box(modifier = Modifier.graphicsLayer { alpha = detailsAlpha }.weight(1f)) {
+            Box(modifier = Modifier.weight(1f)) {
                 SearchBookPreviewAction(
                     text = context.getString(R.string.read_record_open_book_info),
                     renderConfig = renderConfig,

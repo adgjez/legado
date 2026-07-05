@@ -356,6 +356,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
         return TextView(requireContext()).apply {
             text = engine.name
             textSize = 13f
+            typeface = requireContext().uiTypeface()
             gravity = Gravity.CENTER
             maxLines = 1
             includeFontPadding = false

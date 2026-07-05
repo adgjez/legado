@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Drawable
 import androidx.annotation.ColorInt
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.toColorInt
 import androidx.fragment.app.Fragment
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
@@ -81,7 +82,11 @@ val Context.bottomBackground: Int
     get() = ThemeStore.bottomBackground(this)
 
 val Context.primaryTextColor: Int
-    get() = getPrimaryTextColor(!AppConfig.isNightTheme)
+    get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
+        ?: getPrimaryTextColor(!AppConfig.isNightTheme)
+
+val Context.titleTextColor: Int
+    get() = AppConfig.titleFontColor.toThemeTextColorOrNull() ?: primaryTextColor
 
 val Context.transparentNavBar: Boolean
     get() = ThemeStore.transparentNavBar(this)
@@ -111,7 +116,8 @@ val Fragment.bottomBackground: Int
     get() = ThemeStore.bottomBackground(requireContext())
 
 val Fragment.primaryTextColor: Int
-    get() = requireContext().getPrimaryTextColor(!AppConfig.isNightTheme)
+    get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
+        ?: requireContext().getPrimaryTextColor(!AppConfig.isNightTheme)
 
 val Fragment.secondaryTextColor: Int
     get() = requireContext().getSecondaryTextColor(!AppConfig.isNightTheme)
@@ -121,6 +127,24 @@ val Fragment.primaryDisabledTextColor: Int
 
 val Fragment.secondaryDisabledTextColor: Int
     get() = requireContext().getSecondaryDisabledTextColor(!AppConfig.isNightTheme)
+
+@ColorInt
+fun String?.toThemeTextColorOrNull(): Int? {
+    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val withoutPrefix = raw
+        .removePrefix("#")
+        .removePrefix("0x")
+        .removePrefix("0X")
+    val candidate = if (
+        withoutPrefix.length in setOf(6, 8) &&
+        withoutPrefix.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+    ) {
+        "#$withoutPrefix"
+    } else {
+        raw
+    }
+    return kotlin.runCatching { candidate.toColorInt() }.getOrNull()
+}
 
 val Context.buttonDisabledColor: Int
     get() = if (AppConfig.isNightTheme) {

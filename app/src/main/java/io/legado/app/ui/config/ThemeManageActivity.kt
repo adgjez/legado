@@ -176,6 +176,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var pendingUiCornerReplyFollow = false
     private var pendingUiFontPath: String? = null
     private var pendingTitleFontPath: String? = null
+    private var pendingUiFontColor: String? = null
+    private var pendingTitleFontColor: String? = null
     private var pendingFontTarget = FontTarget.UI
     private var loadVersion = 0
     private var cloudContainerId: String? = null
@@ -492,6 +494,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingFontScale = current.fontScale ?: getPrefInt(PreferKey.fontScale, 0)
         pendingUiFontPath = current.uiFontPath ?: AppConfig.uiFontPath
         pendingTitleFontPath = current.titleFontPath ?: AppConfig.titleFontPath
+        pendingUiFontColor = normalizeOptionalColor(current.uiFontColor ?: AppConfig.uiFontColor)
+        pendingTitleFontColor = normalizeOptionalColor(current.titleFontColor ?: AppConfig.titleFontColor)
         pendingUiCornerSearchFollow = current.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow
         pendingUiCornerReplyFollow = current.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow
         return DialogThemePackageEditBinding.inflate(layoutInflater).apply {
@@ -623,7 +627,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
         setupFontScaleRow(rowFontScale)
         setupUiFontRow(rowUiFont)
+        setupOptionalColorRow(rowUiFontColor, R.string.theme_ui_font_color, pendingUiFontColor, colorUiFont)
         setupTitleFontRow(rowTitleFont)
+        setupOptionalColorRow(rowTitleFontColor, R.string.theme_title_font_color, pendingTitleFontColor, colorTitleFont)
         setupSwitchRow(rowSearchFollow, R.string.ui_corner_search_follow) {
             pendingUiCornerSearchFollow = !pendingUiCornerSearchFollow
             updateSwitchRow(rowSearchFollow, pendingUiCornerSearchFollow)
@@ -677,7 +683,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             binding.rowCardBackgroundBlur.tvTitle,
             binding.rowFontScale.tvTitle,
             binding.rowUiFont.tvTitle,
+            binding.rowUiFontColor.tvTitle,
             binding.rowTitleFont.tvTitle,
+            binding.rowTitleFontColor.tvTitle,
             binding.rowSearchFollow.tvTitle,
             binding.rowReplyFollow.tvTitle,
             binding.btnColorGroup,
@@ -689,6 +697,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         ).forEach {
             it.applyUiTitleTypeface(this)
             it.typeface = titleTf
+            pendingTitleFontColor?.toColorInt()?.let { color ->
+                it.setTextColor(color)
+            }
         }
         val actionRadius = UiCorner.actionRadius(this)
         binding.btnCancel.background = UiCorner.actionSelector(
@@ -875,7 +886,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 } else {
                     val currentColor = optionalColorForTarget(target)
                     ColorPickerDialog.newBuilder()
-                        .setColor(colorIntOrDefault(currentColor, accentColor))
+                        .setColor(colorIntOrDefault(currentColor, optionalColorFallback(target)))
                         .setShowAlphaSlider(false)
                         .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
                         .setDialogId(target)
@@ -896,7 +907,16 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             colorSearchFieldBackground -> pendingSearchFieldBackgroundColor
             colorTabBackground -> pendingTabBackgroundColor
             colorShelf -> pendingShelfColor
+            colorUiFont -> pendingUiFontColor
+            colorTitleFont -> pendingTitleFontColor
             else -> null
+        }
+    }
+
+    private fun optionalColorFallback(target: Int): Int {
+        return when (target) {
+            colorUiFont, colorTitleFont -> primaryTextColor
+            else -> accentColor
         }
     }
 
@@ -1201,7 +1221,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 uiCornerReplyFollow = pendingUiCornerReplyFollow,
                 fontScale = pendingFontScale,
                 uiFontPath = pendingUiFontPath,
-                titleFontPath = pendingTitleFontPath
+                titleFontPath = pendingTitleFontPath,
+                uiFontColor = pendingUiFontColor,
+                titleFontColor = pendingTitleFontColor
             )
         }.onFailure {
             toastOnUi(R.string.color_format_error)
@@ -1362,7 +1384,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             uiCornerReplyFollow = AppConfig.uiCornerReplyFollow,
             fontScale = getPrefInt(PreferKey.fontScale, 0),
             uiFontPath = AppConfig.uiFontPath,
-            titleFontPath = AppConfig.titleFontPath
+            titleFontPath = AppConfig.titleFontPath,
+            uiFontColor = AppConfig.uiFontColor,
+            titleFontColor = AppConfig.titleFontColor
         )
     }
 
@@ -1956,6 +1980,14 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 pendingShelfColor = hex
                 binding.rowShelfColor
             }
+            colorUiFont -> {
+                pendingUiFontColor = hex
+                binding.rowUiFontColor
+            }
+            colorTitleFont -> {
+                pendingTitleFontColor = hex
+                binding.rowTitleFontColor
+            }
             else -> return false
         }
         if (hex == null) {
@@ -1965,6 +1997,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             row.viewSwatch.visibility = View.VISIBLE
             row.tvValue.text = hex
             updateSwatch(row, hex.toColorInt())
+        }
+        if (dialogId == colorUiFont || dialogId == colorTitleFont) {
+            editDialogBinding?.let { applyThemeEditFonts(it) }
         }
         return true
     }
@@ -1993,6 +2028,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         private const val colorSearchFieldBackground = 408
         private const val colorTabBackground = 409
         private const val colorShelf = 410
+        private const val colorUiFont = 411
+        private const val colorTitleFont = 412
         private const val CLOUD_SCOPE = "theme"
         private const val MENU_CONTAINER = 0x5401
         private const val MENU_SYNC_TASKS = 0x5402

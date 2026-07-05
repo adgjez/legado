@@ -22,6 +22,9 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
         isBottomBackground =
             typedArray.getBoolean(R.styleable.StrokeTextView_isBottomBackground, false)
         typedArray.recycle()
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
+        }
         upBackground()
     }
 

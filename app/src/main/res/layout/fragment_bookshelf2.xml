@@ -32,8 +32,7 @@
                 android:paddingTop="0dp"
                 android:paddingBottom="0dp"
                 android:paddingLeft="8dp"
-                android:paddingRight="8dp"
-                tools:listitem="@layout/item_bookshelf_list" />
+                android:paddingRight="8dp" />
 
             <androidx.compose.ui.platform.ComposeView
                 android:id="@+id/compose_bookshelf"

@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -29,6 +30,9 @@ class AutoCompleteTextView @JvmOverloads constructor(
 
     init {
         applyTint(context.accentColor)
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             isLocalePreferredLineHeightForMinimumUsed = false
         }
@@ -64,6 +68,9 @@ class AutoCompleteTextView @JvmOverloads constructor(
                 .inflate(R.layout.item_1line_text_and_del, parent, false)
             val textView = view.findViewById<TextView>(R.id.text_view)
             textView.text = getItem(position)
+            if (!textView.isInEditMode) {
+                textView.typeface = context.uiTypeface()
+            }
             val ivDelete = view.findViewById<ImageView>(R.id.iv_delete)
             if (delCallBack != null) ivDelete.visible() else ivDelete.gone()
             ivDelete.setOnClickListener {

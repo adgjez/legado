@@ -3858,6 +3858,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val input = EditText(this).apply {
             hint = "请输入 删除"
             setSingleLine(true)
+            typeface = uiTypeface()
             setPadding(20.dpToPx(), 8.dpToPx(), 20.dpToPx(), 8.dpToPx())
         }
         val confirmDialog = AndroidAlertBuilder(this).apply {

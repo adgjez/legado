@@ -189,6 +189,8 @@ object PreferKey {
     const val systemTypefaces = "system_typefaces"
     const val uiFontPath = "ui_font_path"
     const val titleFontPath = "title_font_path"
+    const val uiFontColor = "ui_font_color"
+    const val titleFontColor = "title_font_color"
     const val readBodyToLh = "readBodyToLh"
     const val textFullJustify = "textFullJustify"
     const val textBottomJustify = "textBottomJustify"

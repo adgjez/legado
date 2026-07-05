@@ -14,6 +14,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.DefaultData
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.theme.ThemeStorePrefKeys
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.model.BookCover
 import io.legado.app.utils.BitmapUtils
@@ -324,6 +325,7 @@ object ThemeConfig {
             }
             context.putPrefString(PreferKey.uiFontPath, config.uiFontPath.orEmpty())
             context.putPrefString(PreferKey.titleFontPath, config.titleFontPath.orEmpty())
+            applyFontColorPrefs(context, config.uiFontColor, config.titleFontColor)
             if (backgroundPath != null && backgroundPath.startsWith("http")) {
                 val fileRoot = context.externalFiles
                 val preferenceKey = if (isNightTheme) {
@@ -492,7 +494,9 @@ object ThemeConfig {
                 uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
                 uiFontPath = stored?.uiFontPath ?: AppConfig.uiFontPath,
-                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath
+                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath,
+                uiFontColor = stored?.uiFontColor ?: AppConfig.uiFontColor,
+                titleFontColor = stored?.titleFontColor ?: AppConfig.titleFontColor
             )
         )
     }
@@ -560,7 +564,9 @@ object ThemeConfig {
                 uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
                 uiFontPath = stored?.uiFontPath ?: AppConfig.uiFontPath,
-                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath
+                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath,
+                uiFontColor = stored?.uiFontColor ?: AppConfig.uiFontColor,
+                titleFontColor = stored?.titleFontColor ?: AppConfig.titleFontColor
             )
         )
     }
@@ -607,7 +613,9 @@ object ThemeConfig {
             uiCornerReplyFollow = config.uiCornerReplyFollow ?: stored.uiCornerReplyFollow,
             fontScale = config.fontScale ?: stored.fontScale,
             uiFontPath = config.uiFontPath ?: stored.uiFontPath,
-            titleFontPath = config.titleFontPath ?: stored.titleFontPath
+            titleFontPath = config.titleFontPath ?: stored.titleFontPath,
+            uiFontColor = config.uiFontColor ?: stored.uiFontColor,
+            titleFontColor = config.titleFontColor ?: stored.titleFontColor
         )
     }
 
@@ -689,6 +697,44 @@ object ThemeConfig {
         }
     }
 
+    private fun applyFontColorPrefs(context: Context, uiFontColor: String?, titleFontColor: String?) {
+        normalizeThemeColor(uiFontColor)?.let {
+            context.putPrefString(PreferKey.uiFontColor, it)
+        } ?: context.removePref(PreferKey.uiFontColor)
+        normalizeThemeColor(titleFontColor)?.let {
+            context.putPrefString(PreferKey.titleFontColor, it)
+        } ?: context.removePref(PreferKey.titleFontColor)
+    }
+
+    private fun normalizeThemeColor(value: String?): String? {
+        val raw = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val withoutPrefix = raw
+            .removePrefix("#")
+            .removePrefix("0x")
+            .removePrefix("0X")
+        val candidate = if (
+            withoutPrefix.length in setOf(6, 8) &&
+            withoutPrefix.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+        ) {
+            "#$withoutPrefix"
+        } else {
+            raw
+        }
+        return kotlin.runCatching {
+            "#${candidate.toColorInt().hexString}"
+        }.getOrNull()
+    }
+
+    private fun ThemeStore.applyUiFontColor(context: Context): ThemeStore {
+        normalizeThemeColor(context.getPrefString(PreferKey.uiFontColor))?.toColorInt()?.let {
+            textColorPrimary(it)
+        } ?: ThemeStore.prefs(context)
+            .edit()
+            .remove(ThemeStorePrefKeys.KEY_TEXT_COLOR_PRIMARY)
+            .apply()
+        return this
+    }
+
     fun saveNightTheme(context: Context, name: String) {
         val config = getNightTheme(context, name)
         addConfig(config)
@@ -706,6 +752,7 @@ object ThemeConfig {
                     .backgroundColor(Color.WHITE)
                     .bottomBackground(Color.WHITE)
                     .transparentNavBar(true)
+                    .applyUiFontColor(this)
                     .apply()
             }
 
@@ -724,6 +771,7 @@ object ThemeConfig {
                     .backgroundColor(ColorUtils.withAlpha(background, 1f))
                     .bottomBackground(ColorUtils.withAlpha(bBackground, 1f))
                     .transparentNavBar(true)
+                    .applyUiFontColor(this)
                     .apply()
             }
 
@@ -742,6 +790,7 @@ object ThemeConfig {
                     .backgroundColor(ColorUtils.withAlpha(background, 1f))
                     .bottomBackground(ColorUtils.withAlpha(bBackground, 1f))
                     .transparentNavBar(true)
+                    .applyUiFontColor(this)
                     .apply()
             }
         }
@@ -814,7 +863,9 @@ object ThemeConfig {
         var uiCornerReplyFollow: Boolean? = null,
         var fontScale: Int? = null,
         var uiFontPath: String? = null,
-        var titleFontPath: String? = null
+        var titleFontPath: String? = null,
+        var uiFontColor: String? = null,
+        var titleFontColor: String? = null
     ) {
 
         override fun hashCode(): Int {
@@ -854,6 +905,8 @@ object ThemeConfig {
                         && other.fontScale == fontScale
                         && other.uiFontPath == uiFontPath
                         && other.titleFontPath == titleFontPath
+                        && other.uiFontColor == uiFontColor
+                        && other.titleFontColor == titleFontColor
             }
             return false
         }
@@ -888,7 +941,9 @@ object ThemeConfig {
             "uiCornerReplyFollow" to uiCornerReplyFollow,
             "fontScale" to fontScale,
             "uiFontPath" to uiFontPath,
-            "titleFontPath" to titleFontPath
+            "titleFontPath" to titleFontPath,
+            "uiFontColor" to uiFontColor,
+            "titleFontColor" to titleFontColor
         )
 
     }

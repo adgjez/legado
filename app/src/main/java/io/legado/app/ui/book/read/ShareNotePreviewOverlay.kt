@@ -40,6 +40,7 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.installViewTreeOwnersFrom
 import io.legado.app.ui.book.read.config.ReaderOption
@@ -192,6 +193,7 @@ class ShareNotePreviewOverlay private constructor(
         statusView.text = activity.getString(R.string.share_note_loading_preview)
         statusView.setTextColor(activity.primaryTextColor)
         statusView.textSize = 14f
+        statusView.typeface = activity.uiTypeface()
         statusView.gravity = Gravity.CENTER
         statusView.setPadding(14.dpToPx(), 8.dpToPx(), 14.dpToPx(), 8.dpToPx())
         statusView.background = GradientDrawable().apply {

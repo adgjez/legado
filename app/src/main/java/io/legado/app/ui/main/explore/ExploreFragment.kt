@@ -2436,7 +2436,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun createDiscoverDialogTextView(flexbox: FlexboxLayout): TextView {
-        return ItemFilletTextBinding.inflate(layoutInflater, flexbox, false).root
+        return ItemFilletTextBinding.inflate(layoutInflater, flexbox, false).root.apply {
+            typeface = requireContext().uiTypeface()
+        }
     }
 
     private fun applyDiscoverKindTextStyle(tv: TextView, kind: ExploreKind) {

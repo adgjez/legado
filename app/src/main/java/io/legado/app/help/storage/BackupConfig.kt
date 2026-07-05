@@ -97,6 +97,8 @@ object BackupConfig {
         PreferKey.uiLayoutAlpha,
         PreferKey.uiCornerSearchFollow,
         PreferKey.uiCornerReplyFollow,
+        PreferKey.uiFontColor,
+        PreferKey.titleFontColor,
         PreferKey.tNavBar,
         PreferKey.cNPrimary,
         PreferKey.cNAccent,

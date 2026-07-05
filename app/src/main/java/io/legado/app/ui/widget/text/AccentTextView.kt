@@ -5,6 +5,7 @@ import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.getCompatColor
 
 class AccentTextView(context: Context, attrs: AttributeSet?) :
@@ -15,6 +16,9 @@ class AccentTextView(context: Context, attrs: AttributeSet?) :
             setTextColor(context.accentColor)
         } else {
             setTextColor(context.getCompatColor(R.color.accent))
+        }
+        if (!isInEditMode) {
+            typeface = context.uiTypeface()
         }
     }
 

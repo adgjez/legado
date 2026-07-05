@@ -32,6 +32,8 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.titleTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.ComposeThemeImageLayer
 import io.legado.app.ui.widget.compose.ComposeThemeImageCrop
 import io.legado.app.ui.widget.compose.ComposeThemeImageState
@@ -135,6 +137,7 @@ class MainTopBarView @JvmOverloads constructor(
             )
         )
         contentLayout.addView(titleRow)
+        searchEntryText.typeface = context.uiTypeface()
         contentLayout.addView(primaryFilterRow.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -378,7 +381,7 @@ class MainTopBarView @JvmOverloads constructor(
             it.setPadding(padding, padding, padding, padding)
         }
         titleText.gravity = Gravity.CENTER_VERTICAL
-        titleText.setTextColor(context.primaryTextColor)
+        titleText.setTextColor(context.titleTextColor)
         searchEntryText.setTextColor(context.primaryTextColor)
         primaryBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         selectsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
@@ -429,7 +432,7 @@ class MainTopBarView @JvmOverloads constructor(
             it.setPadding(padding, padding, padding, padding)
         }
         titleText.gravity = Gravity.CENTER_VERTICAL
-        titleText.setTextColor(context.primaryTextColor)
+        titleText.setTextColor(context.titleTextColor)
         searchEntryText.setTextColor(context.primaryTextColor)
         primaryBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
         selectsBar.setDisplayMode(RoundedTagBarView.DisplayMode.CHIP)
@@ -483,7 +486,7 @@ class MainTopBarView @JvmOverloads constructor(
                     includeFontPadding = false
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
-                    setTextColor(context.primaryTextColor)
+                    setTextColor(context.titleTextColor)
                     applyUiTitleTypeface(context)
                 })
                 addView(titleArrow.apply {
