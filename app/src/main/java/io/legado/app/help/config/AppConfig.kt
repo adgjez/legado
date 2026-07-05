@@ -7,6 +7,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.help.ai.NovelVideoParams
 import io.legado.app.utils.GSON
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.fromJsonArray
@@ -32,6 +33,7 @@ import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import io.legado.app.ui.main.ai.AiPersonaConfig
+import io.legado.app.ui.main.ai.AiVideoProviderConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
@@ -1049,6 +1051,83 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
     }
 
+    var aiVideoProviderList: List<AiVideoProviderConfig>
+        get() = normalizeAiVideoProviders(
+            GSON.fromJsonArray<AiVideoProviderConfig>(appCtx.getPrefString(PreferKey.aiVideoProviderList))
+                .getOrDefault(emptyList())
+        )
+        set(value) {
+            val providers = normalizeAiVideoProviders(value)
+            if (providers.isEmpty()) appCtx.removePref(PreferKey.aiVideoProviderList)
+            else appCtx.putPrefString(PreferKey.aiVideoProviderList, GSON.toJson(providers))
+            syncAiVideoState(providers)
+        }
+
+    val aiEnabledVideoProviders: List<AiVideoProviderConfig>
+        get() = aiVideoProviderList.filter { it.enabled }
+
+    var aiCurrentVideoProviderId: String?
+        get() = appCtx.getPrefString(PreferKey.aiCurrentVideoProviderId)
+        set(value) {
+            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentVideoProviderId)
+            else appCtx.putPrefString(PreferKey.aiCurrentVideoProviderId, value)
+        }
+
+    val aiCurrentVideoProvider: AiVideoProviderConfig?
+        get() {
+            val providers = aiEnabledVideoProviders
+            val currentId = aiCurrentVideoProviderId
+            if (currentId.isNullOrBlank()) {
+                return providers.firstOrNull()?.also { aiCurrentVideoProviderId = it.id }
+            }
+            return providers.firstOrNull { it.id == currentId }
+                ?: providers.firstOrNull()?.also { aiCurrentVideoProviderId = it.id }
+        }
+
+    fun findEnabledVideoProvider(id: String?): AiVideoProviderConfig? {
+        val cleanId = id?.trim().orEmpty()
+        if (cleanId.isBlank()) return null
+        return aiEnabledVideoProviders.firstOrNull { it.id == cleanId }
+    }
+
+    fun ensureCurrentVideoProvider(preferredId: String? = null) {
+        syncAiVideoState(aiVideoProviderList, preferredId)
+    }
+
+    private fun syncAiVideoState(
+        providers: List<AiVideoProviderConfig>,
+        preferredId: String? = null
+    ) {
+        val enabled = providers.filter { it.enabled }
+        val currentId = appCtx.getPrefString(PreferKey.aiCurrentVideoProviderId)
+        val nextId = enabled.firstOrNull { it.id == preferredId }?.id
+            ?: enabled.firstOrNull { it.id == currentId }?.id
+            ?: enabled.firstOrNull()?.id
+        if (nextId.isNullOrBlank()) {
+            appCtx.removePref(PreferKey.aiCurrentVideoProviderId)
+        } else if (nextId != currentId) {
+            appCtx.putPrefString(PreferKey.aiCurrentVideoProviderId, nextId)
+        }
+    }
+
+    var novelVideoDefaultParams: NovelVideoParams
+        get() = NovelVideoParams.fromJson(appCtx.getPrefString(PreferKey.novelVideoDefaultParams))
+        set(value) {
+            appCtx.putPrefString(PreferKey.novelVideoDefaultParams, value.toJson())
+        }
+
+    var novelVideoAutoAttachToChapter: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.novelVideoAutoAttachToChapter, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.novelVideoAutoAttachToChapter, value)
+        }
+
+    var novelVideoSaveToGallery: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.novelVideoSaveToGallery, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.novelVideoSaveToGallery, value)
+        }
+
     const val AI_READ_ALOUD_ROLE_MODE_FULL = "full_tool"
     const val AI_READ_ALOUD_ROLE_MODE_CHUNK = "chunk_context"
     val DEFAULT_AI_READ_ALOUD_ROLE_PROMPT = """
@@ -1840,6 +1919,60 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     script = safeString { provider.script },
                     timeoutMillisecond = safeLong(120_000L) { provider.timeoutMillisecond }
                         .takeIf { it > 0L } ?: 120_000L,
+                    order = safeInt(0) { provider.order },
+                    enabled = safeBoolean(true) { provider.enabled }
+                )
+            }
+        }
+            .distinctBy { it.id }
+            .sortedBy { it.order }
+            .mapIndexed { index, provider -> provider.copy(order = index) }
+    }
+
+    private fun normalizeAiVideoProviders(value: List<AiVideoProviderConfig>): List<AiVideoProviderConfig> {
+        return value.mapNotNull { provider ->
+            val id = safeString { provider.id }.trim()
+            val name = safeString { provider.name }.trim()
+            if (id.isEmpty() || name.isEmpty()) {
+                null
+            } else {
+                val type = safeString { provider.type }.trim()
+                    .takeIf { it == AiVideoProviderConfig.TYPE_JS || it == AiVideoProviderConfig.TYPE_OPENAI }
+                    ?: AiVideoProviderConfig.TYPE_OPENAI
+                AiVideoProviderConfig(
+                    id = id,
+                    name = name,
+                    type = type,
+                    baseUrl = safeString { provider.baseUrl }.trim(),
+                    apiKey = safeString { provider.apiKey }.trim(),
+                    headers = safeString { provider.headers }.trim(),
+                    model = safeString { provider.model }.trim(),
+                    submitUrl = safeString { provider.submitUrl }.trim(),
+                    pollUrlTemplate = safeString { provider.pollUrlTemplate }.trim(),
+                    taskIdJsonPath = safeString { provider.taskIdJsonPath }.trim()
+                        .ifEmpty { "$.data.id" },
+                    videoUrlJsonPath = safeString { provider.videoUrlJsonPath }.trim()
+                        .ifEmpty { "$.data.video_url" },
+                    statusJsonPath = safeString { provider.statusJsonPath }.trim()
+                        .ifEmpty { "$.data.status" },
+                    doneStatusValue = safeString { provider.doneStatusValue }.trim()
+                        .ifEmpty { "succeeded" },
+                    failedStatusValue = safeString { provider.failedStatusValue }.trim()
+                        .ifEmpty { "failed" },
+                    defaultParamsJson = safeString { provider.defaultParamsJson }.trim(),
+                    maxReferenceImages = safeInt(3) { provider.maxReferenceImages }
+                        .coerceIn(1, 5),
+                    jsLib = safeString { provider.jsLib },
+                    loginUrl = safeString { provider.loginUrl }.trim(),
+                    loginUi = safeString { provider.loginUi },
+                    enabledCookieJar = safeBoolean(false) { provider.enabledCookieJar },
+                    script = safeString { provider.script },
+                    submitTimeoutMillisecond = safeLong(60_000L) { provider.submitTimeoutMillisecond }
+                        .takeIf { it > 0L } ?: 60_000L,
+                    pollTimeoutMillisecond = safeLong(600_000L) { provider.pollTimeoutMillisecond }
+                        .takeIf { it > 0L } ?: 600_000L,
+                    pollIntervalMillisecond = safeLong(2_000L) { provider.pollIntervalMillisecond }
+                        .takeIf { it > 0L } ?: 2_000L,
                     order = safeInt(0) { provider.order },
                     enabled = safeBoolean(true) { provider.enabled }
                 )

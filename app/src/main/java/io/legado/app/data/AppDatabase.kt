@@ -27,6 +27,7 @@ import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
+import io.legado.app.data.dao.NovelVideoDao
 import io.legado.app.data.dao.ParagraphRuleDao
 import io.legado.app.data.dao.ReadAloudBgmDao
 import io.legado.app.data.dao.ReadAloudSpeakerGroupDao
@@ -70,6 +71,9 @@ import io.legado.app.data.entities.Cookie
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
+import io.legado.app.data.entities.NovelVideoCharacterSheet
+import io.legado.app.data.entities.NovelVideoJob
+import io.legado.app.data.entities.NovelVideoSegment
 import io.legado.app.data.entities.ParagraphRule
 import io.legado.app.data.entities.ParagraphRuleVar
 import io.legado.app.data.entities.ReadAloudBgmAssignmentCache
@@ -106,7 +110,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 109,
+    version = 110,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -123,7 +127,8 @@ val appDb by lazy {
         ReadAloudSpeakerGroup::class, ReadAloudSpeakerGroupItem::class,
         AiReadAloudUsageRecord::class,
         AiAgentSession::class, AiAgentJob::class, AiAgentTrace::class,
-        AiMemoryItem::class, AiMemoryFragment::class, AiMemoryItemFts::class, AiMemoryFragmentFts::class],
+        AiMemoryItem::class, AiMemoryFragment::class, AiMemoryItemFts::class, AiMemoryFragmentFts::class,
+        NovelVideoJob::class, NovelVideoSegment::class, NovelVideoCharacterSheet::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -213,6 +218,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val aiReadAloudUsageRecordDao: AiReadAloudUsageRecordDao
     abstract val aiAgentDao: AiAgentDao
     abstract val aiMemoryDao: AiMemoryDao
+    abstract val novelVideoDao: NovelVideoDao
 
     companion object {
 

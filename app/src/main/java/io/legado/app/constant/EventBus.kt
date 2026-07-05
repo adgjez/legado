@@ -56,4 +56,9 @@ object EventBus {
     const val REFRESH_BOOK_TOC = "refreshBookToc"
     const val LIBRARY_CONTAINER_CHANGED = "libraryContainerChanged"
     const val UP_VIDEO_INFO = "upVideoInfo"
+    const val NOVEL_VIDEO_PROGRESS = "novelVideoProgress"
+    const val NOVEL_VIDEO_REVIEW_READY = "novelVideoReviewReady"
+    const val NOVEL_VIDEO_COMPLETED = "novelVideoCompleted"
+    const val NOVEL_VIDEO_FAILED = "novelVideoFailed"
+    const val NOVEL_VIDEO_SEGMENT_UPDATED = "novelVideoSegmentUpdated"
 }

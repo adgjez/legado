@@ -201,3 +201,71 @@ data class AiImageProviderConfig(
         const val TYPE_JS = "js"
     }
 }
+
+/**
+ * 文生视频 Provider 配置，镜像 [AiImageProviderConfig] 的字段约定，
+ * 但面向 veo3.1 风格的 submit/poll 双端点 API。
+ *
+ * - [submitUrl]：提交生成任务，POST JSON/multipart，返回任务 id
+ * - [pollUrlTemplate]：轮询任务状态，可用 `{taskId}` 占位符
+ * - [taskIdJsonPath]：从 submit 响应里取任务 id 的 JSONPath（默认 `$.data.id`）
+ * - [videoUrlJsonPath]：从 poll 响应里取最终视频 URL 的 JSONPath（默认 `$.data.video_url`）
+ * - [statusJsonPath]：从 poll 响应里取状态字段的 JSONPath（默认 `$.data.status`）
+ * - [doneStatusValue]：表示完成的 status 字段值（默认 `succeeded`）
+ * - [maxReferenceImages]：单次请求允许附带的参考图数量上限（veo3.1 默认 3）
+ */
+@Keep
+data class AiVideoProviderConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val type: String = TYPE_OPENAI,
+    val baseUrl: String = "",
+    val apiKey: String = "",
+    val headers: String = "",
+    val model: String = "",
+    val submitUrl: String = "",
+    val pollUrlTemplate: String = "",
+    val taskIdJsonPath: String = "$.data.id",
+    val videoUrlJsonPath: String = "$.data.video_url",
+    val statusJsonPath: String = "$.data.status",
+    val doneStatusValue: String = "succeeded",
+    val failedStatusValue: String = "failed",
+    val defaultParamsJson: String = "",
+    val maxReferenceImages: Int = 3,
+    val jsLib: String = "",
+    val loginUrl: String = "",
+    val loginUi: String = "",
+    val enabledCookieJar: Boolean = false,
+    val script: String = "",
+    val submitTimeoutMillisecond: Long = 60_000L,
+    val pollTimeoutMillisecond: Long = 600_000L,
+    val pollIntervalMillisecond: Long = 2_000L,
+    val order: Int = 0,
+    val enabled: Boolean = true
+) {
+    fun displayName(): String = name.ifBlank { type }
+
+    fun validSubmitTimeout(): Long {
+        val normalized = submitTimeoutMillisecond.takeIf { it > 0L } ?: 60_000L
+        return normalized.coerceIn(10_000L, 300_000L)
+    }
+
+    fun validPollTimeout(): Long {
+        val normalized = pollTimeoutMillisecond.takeIf { it > 0L } ?: 600_000L
+        return normalized.coerceIn(60_000L, 1_800_000L)
+    }
+
+    fun validPollInterval(): Long {
+        val normalized = pollIntervalMillisecond.takeIf { it > 0L } ?: 2_000L
+        return normalized.coerceIn(1_000L, 30_000L)
+    }
+
+    fun resolvePollUrl(taskId: String): String {
+        return pollUrlTemplate.replace("{taskId}", taskId)
+    }
+
+    companion object {
+        const val TYPE_OPENAI = "openai"
+        const val TYPE_JS = "js"
+    }
+}
