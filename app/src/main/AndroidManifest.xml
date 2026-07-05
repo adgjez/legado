@@ -630,6 +630,9 @@
             android:name=".service.AiTaskKeepAliveService"
             android:foregroundServiceType="dataSync" />
         <service
+            android:name=".service.NovelVideoService"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.WebService"
             android:foregroundServiceType="dataSync" />
         <service
