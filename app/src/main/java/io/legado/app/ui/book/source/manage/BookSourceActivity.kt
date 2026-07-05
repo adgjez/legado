@@ -38,8 +38,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.snackbar.Snackbar
@@ -85,7 +83,6 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
-import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
 import io.legado.app.utils.observeEvent
@@ -165,20 +162,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             )
         }
     }
-    private val groupMenuLifecycleOwner = object : LifecycleOwner {
-        private val registry = LifecycleRegistry(this)
-        override val lifecycle: Lifecycle get() = registry
-
-        fun onMenuOpened() {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        }
-
-        fun onMenuClosed() {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-        }
-
-    }
-
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initComposeContent()
         upBookSource()
@@ -678,10 +661,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                     lifecycle,
                     table = AppDatabase.BOOK_SOURCE_TABLE_NAME
                 )
-                .flowWithLifecycleAndDatabaseChangeFirst(
-                    groupMenuLifecycleOwner.lifecycle,
-                    table = AppDatabase.BOOK_SOURCE_TABLE_NAME
-                )
                 .conflate()
                 .distinctUntilChanged()
                 .collect {
@@ -724,20 +703,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 upCountView()
             }
         )
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        if (menu === groupMenu) {
-            groupMenuLifecycleOwner.onMenuOpened()
-        }
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onPanelClosed(featureId: Int, menu: Menu) {
-        super.onPanelClosed(featureId, menu)
-        if (menu === groupMenu) {
-            groupMenuLifecycleOwner.onMenuClosed()
-        }
     }
 
     private fun initSelectActionBar() {
@@ -1316,6 +1281,7 @@ private class SourceGroupFilterDialog : ComposeDialogFragment() {
                             Text(
                                 text = "${filteredGroups.size}/${allGroups.size}",
                                 color = style.secondaryText,
+                                fontFamily = style.bodyFontFamily,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -1331,7 +1297,8 @@ private class SourceGroupFilterDialog : ComposeDialogFragment() {
                                     item("empty") {
                                         Text(
                                             text = stringResource(R.string.empty),
-                                            color = style.secondaryText
+                                            color = style.secondaryText,
+                                            fontFamily = style.bodyFontFamily
                                         )
                                     }
                                 } else {

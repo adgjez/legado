@@ -39,9 +39,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.utils.ColorUtils
+import io.legado.app.lib.theme.titleTextColor
 
 data class AppManagementAction(
     val text: String,
@@ -115,7 +114,7 @@ private fun AppManagementTopBar(
     } else {
         context.primaryColor
     }
-    val topBarContentColor = Color(context.getPrimaryTextColor(ColorUtils.isColorLight(topBarColor)))
+    val topBarContentColor = Color(context.titleTextColor)
     Column(
         modifier = Modifier
             .fillMaxWidth()

@@ -58,8 +58,12 @@ abstract class BaseService : LifecycleService() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         LogUtils.d(simpleName, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
-        stopSelf()
+        if (shouldStopOnTaskRemoved()) {
+            stopSelf()
+        }
     }
+
+    protected open fun shouldStopOnTaskRemoved(): Boolean = true
 
     override fun onBind(intent: Intent): IBinder? {
         super.onBind(intent)

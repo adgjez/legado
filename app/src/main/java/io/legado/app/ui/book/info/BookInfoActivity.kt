@@ -1126,10 +1126,17 @@ class BookInfoActivity :
         detailIntroOnly = introOnly
         llDetailTabs.visibility = if (introOnly) View.GONE else View.VISIBLE
         tvTabToc.visibility = if (introOnly) View.GONE else View.VISIBLE
+        updateDetailIntroPageSpacing()
         llTocPage.visibility = View.GONE
         llIntroPage.visibility = View.VISIBLE
         if (introOnly) {
             detailPage = DetailPage.INTRO
+        }
+    }
+
+    private fun updateDetailIntroPageSpacing(): Unit = binding.run {
+        llIntroPage.updateLayoutParams<LinearLayout.LayoutParams> {
+            topMargin = if (detailIntroOnly) 0 else 12.dpToPx()
         }
     }
 
@@ -2166,6 +2173,7 @@ class BookInfoActivity :
                 )
             )
         }
+        resetPlainIntroLayout()
         if (intro.isNullOrBlank()) {
             introTextView.text = ""
             introRawText = ""
@@ -3188,6 +3196,15 @@ class BookInfoActivity :
             viewModel.prepareBookForEntry(book) { targetBook ->
                 tocActivityResult.launch(targetBook.bookUrl)
             }
+        }
+    }
+
+    private fun resetPlainIntroLayout() {
+        updateDetailIntroPageSpacing()
+        introScrollView.scrollTo(0, 0)
+        introTextView.updateLayoutParams<ViewGroup.LayoutParams> {
+            width = ViewGroup.LayoutParams.MATCH_PARENT
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
     }
 

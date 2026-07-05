@@ -384,6 +384,14 @@ abstract class BaseReadAloudService : BaseService(),
         }
     }
 
+    override fun shouldStopOnTaskRemoved(): Boolean {
+        if (isRun) {
+            LogUtils.d("BaseReadAloudService", "keep read aloud service after task removed")
+            return false
+        }
+        return true
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             IntentAction.play -> newReadAloud(
