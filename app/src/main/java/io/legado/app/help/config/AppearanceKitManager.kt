@@ -434,12 +434,13 @@ object AppearanceKitManager {
     }
 
     private suspend fun applyBinding(context: Context, binding: KitBinding) {
+        val currentNight = AppConfig.isNightTheme
         val resolvedPreset = binding.preset?.takeIf { it.isNotBlank() } ?: MainLayoutPresetConfig.PRESET_REGULAR
         MainLayoutPresetConfig.apply(context, resolvedPreset, notify = false)
         // uiLayoutAlpha/dialogAlpha/uiCornerScale/字体等是全局(不分日夜)偏好，写在 applyConfig 内。
         // 必须让“当前模式”的主题最后应用，否则另一模式的值会覆盖全局偏好，
         // 表现为应用主题后界面不透明度不随当前模式变化(需进编辑弹窗才生效)。
-        if (AppConfig.isNightTheme) {
+        if (currentNight) {
             applyThemeRef(context, false, binding.dayTheme)
             applyThemeRef(context, true, binding.nightTheme)
         } else {
@@ -452,7 +453,10 @@ object AppearanceKitManager {
         applyNavigationRef(true, binding.nightNavigationBar)
         CoverCollectionManager.setSelected(false, binding.dayCoverCollection?.dirName)
         CoverCollectionManager.setSelected(true, binding.nightCoverCollection?.dirName)
-        NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
+        if (AppConfig.isNightTheme != currentNight) {
+            AppConfig.isNightTheme = currentNight
+        }
+        NavigationBarIconConfig.applyCurrentBottomConfig(currentNight)
         // 主题包显式携带的"底栏隐藏悬浮搜索"覆盖在底栏配置之后生效(隐藏时顶栏会自动显示搜索)。
         binding.floatingBottomBarHideSearch?.let { AppConfig.floatingBottomBarHideSearch = it }
         ThemeConfig.applyTheme(context)

@@ -2105,13 +2105,7 @@ class BookInfoActivity :
         val intro = book.getDisplayIntro()
         if (intro?.startsWith("<useweb>") == true) {
             binding.tvIntroToggle.gone()
-            binding.tvIntroContainer.updateLayoutParams<LinearLayout.LayoutParams> {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                height = 0
-                weight = 1f
-                topMargin = 0
-                bottomMargin = 0
-            }
+            applyUseWebIntroLayout()
             val lastIndex = intro.lastIndexOf("<")
             if (lastIndex < 8) {
                 introTextView.text = intro
@@ -2167,6 +2161,7 @@ class BookInfoActivity :
                 </html>
             """.trimIndent()
             webView.loadDataWithBaseURL(bookUrl, transparentHtml, "text/html", "utf-8", bookUrl)
+            scheduleUseWebIntroRelayout(webView)
             return
         }
         if (!initIntroView || pooledWebView != null) {
@@ -2247,6 +2242,7 @@ class BookInfoActivity :
                     }
                 )
                 setIntroContent(tvIntro.text)
+                scheduleIntroContentRelayout()
             }
         } else {
             tvIntro.text = intro
@@ -2270,6 +2266,7 @@ class BookInfoActivity :
         }
         tvIntro.text = rawText
         introScrollView.scrollTo(0, 0)
+        scheduleIntroContentRelayout()
     }
 
     private fun upKinds(book: Book) = binding.run {
@@ -2516,8 +2513,94 @@ class BookInfoActivity :
     private fun relayoutUseWebIntro(webView: WebView? = binding.tvIntroContainer.getChildAt(0) as? WebView) {
         val target = webView ?: return
         if (target.parent !== binding.tvIntroContainer) return
-        if (binding.llDetailContentPanel.height <= 0 || binding.tvIntroContainer.height <= 0) {
+        if (binding.llDetailContentPanel.height <= 0 || binding.llIntroPage.height <= 0) {
             binding.root.post { applyBookInfoComponents() }
+            return
+        }
+        val density = resources.displayMetrics.density
+        val fallbackHeight = (target.contentHeight * density).toInt()
+        if (fallbackHeight > 0) {
+            applyUseWebIntroLayout(fallbackHeight)
+        }
+        target.evaluateJavascript(
+            """
+                (function() {
+                  var body = document.body;
+                  var doc = document.documentElement;
+                  var bottom = 0;
+                  if (body) {
+                    Array.prototype.forEach.call(body.children || [], function(el) {
+                      var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+                      if (style && (style.display === 'none' || style.visibility === 'hidden')) return;
+                      var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+                      if (rect) bottom = Math.max(bottom, rect.bottom + window.pageYOffset);
+                    });
+                  }
+                  var documentHeight = Math.max(
+                    body ? body.scrollHeight || 0 : 0,
+                    body ? body.offsetHeight || 0 : 0,
+                    doc ? doc.scrollHeight || 0 : 0,
+                    doc ? doc.offsetHeight || 0 : 0
+                  );
+                  return bottom > 1 ? bottom : documentHeight;
+                })();
+            """.trimIndent()
+        ) { result ->
+            if (target.parent !== binding.tvIntroContainer) return@evaluateJavascript
+            val cssHeight = result
+                ?.trim()
+                ?.trim('"')
+                ?.toFloatOrNull()
+                ?: return@evaluateJavascript
+            val heightPx = (cssHeight * density).toInt()
+            if (heightPx > 0) {
+                applyUseWebIntroLayout(heightPx)
+            }
+        }
+    }
+
+    private fun applyUseWebIntroLayout(contentHeightPx: Int? = null) = binding.run {
+        updateDetailIntroPageSpacing()
+        val pagerHeight = if (::bookInfoPager.isInitialized) bookInfoPager.height else 0
+        val maxHeight = listOf(
+            llIntroPage.height,
+            llDetailContentPanel.height,
+            pagerHeight
+        ).firstOrNull { it > 0 } ?: 0
+        val minUsefulHeight = 120.dpToPx()
+        val shouldWrap = contentHeightPx != null &&
+            contentHeightPx > 0 &&
+            maxHeight > minUsefulHeight &&
+            contentHeightPx < maxHeight - 8.dpToPx()
+        val targetHeight = contentHeightPx?.coerceAtLeast(1) ?: 0
+        tvIntroContainer.updateLayoutParams<LinearLayout.LayoutParams> {
+            width = LinearLayout.LayoutParams.MATCH_PARENT
+            height = if (shouldWrap) targetHeight else 0
+            weight = if (shouldWrap) 0f else 1f
+            topMargin = 0
+            bottomMargin = 0
+        }
+    }
+
+    private fun scheduleUseWebIntroRelayout(webView: WebView) {
+        longArrayOf(80L, 240L, 600L, 1200L).forEach { delay ->
+            webView.postDelayed({
+                if (webView.parent === binding.tvIntroContainer) {
+                    relayoutUseWebIntro(webView)
+                }
+            }, delay)
+        }
+    }
+
+    private fun scheduleIntroContentRelayout() {
+        longArrayOf(0L, 80L, 240L, 600L).forEach { delay ->
+            binding.tvIntroContainer.postDelayed({
+                if (introScrollView.parent === binding.tvIntroContainer) {
+                    binding.tvIntroContainer.requestLayout()
+                    binding.llIntroPage.requestLayout()
+                    updateDetailContentPanelHeight()
+                }
+            }, delay)
         }
     }
 
