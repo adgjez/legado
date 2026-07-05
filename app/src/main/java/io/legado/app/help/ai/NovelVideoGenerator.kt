@@ -286,7 +286,9 @@ object NovelVideoGenerator {
         index: Int,
         params: NovelVideoParams
     ): NovelVideoCharacterSheet {
-        val prompt = NovelVideoPromptBuilder.buildCombinedViewPrompt(candidate.description)
+        val prompt = NovelVideoPromptBuilder.sanitizeImagePrompt(
+            NovelVideoPromptBuilder.buildCombinedViewPrompt(candidate.description)
+        )
         val metadata = ImageMetadata(
             bookName = job.bookName,
             sourceType = "novel_video_character",
@@ -476,7 +478,6 @@ object NovelVideoGenerator {
                 segment.id, NovelVideoSegmentStatus.IMAGE_GENERATING, null, System.currentTimeMillis()
             )
             val imagePrompt = NovelVideoPromptBuilder.buildSceneImagePrompt(segment, params.stylePrompt)
-            val sanitizedImagePrompt = NovelVideoPromptBuilder.sanitizeImagePrompt(imagePrompt)
             val metadata = ImageMetadata(
                 bookName = job.bookName,
                 chapterIndex = segment.chapterIndex,
@@ -484,20 +485,37 @@ object NovelVideoGenerator {
                 sourceType = "novel_video_scene",
                 sourceText = segment.narration
             )
-            val imageResult = runCatching {
-                AiImageService.generateAndStore(sanitizedImagePrompt, characterRefs, imageProvider, metadata)
+            // Stage 5 重试 3 次：前 2 次用 sanitizeImagePrompt，第 3 次调 LLM 改写
+            val maxRetry = 3
+            var savedImage: ImageMetadata? = null
+            var lastErr: Throwable? = null
+            for (attempt in 1..maxRetry) {
+                checkCancelled(isCancelled, job.id)
+                val sanitizedPrompt = if (attempt < maxRetry) {
+                    NovelVideoPromptBuilder.sanitizeImagePrompt(imagePrompt)
+                } else {
+                    NovelVideoPromptBuilder.rewriteImagePromptForSafety(imagePrompt)
+                }
+                val result = runCatching {
+                    AiImageService.generateAndStore(sanitizedPrompt, characterRefs, imageProvider, metadata)
+                }
+                if (result.isSuccess) {
+                    savedImage = result.getOrThrow()
+                    break
+                }
+                lastErr = result.exceptionOrNull()
+                AppLog.put("场景生图失败 attempt=$attempt ${segment.id}", lastErr)
+                if (attempt < maxRetry) delay(1_000L * attempt)
             }
-            if (imageResult.isFailure) {
-                val err = imageResult.exceptionOrNull()?.message
-                AppLog.put("场景生图失败 ${segment.id}", imageResult.exceptionOrNull())
+            if (savedImage == null) {
+                val err = lastErr?.message
                 appDb.novelVideoDao.updateSegmentStatus(
                     segment.id, NovelVideoSegmentStatus.FAILED, err, System.currentTimeMillis()
                 )
                 postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
                 return
             }
-            val savedImage = imageResult.getOrThrow()
-            imageUrl = savedImage.localPath
+            imageUrl = savedImage!!.localPath
             currentStatus = NovelVideoSegmentStatus.IMAGE_COMPLETED
             appDb.novelVideoDao.updateSegmentImage(
                 segment.id, imageUrl, NovelVideoSegmentStatus.IMAGE_COMPLETED, System.currentTimeMillis()
@@ -514,38 +532,55 @@ object NovelVideoGenerator {
                 segment.id, NovelVideoSegmentStatus.VIDEO_GENERATING, null, System.currentTimeMillis()
             )
             val videoPrompt = NovelVideoPromptBuilder.buildSceneVideoPrompt(segment)
-            val sanitizedVideoPrompt = NovelVideoPromptBuilder.sanitizeVideoPrompt(videoPrompt)
             // 参考图：场景图优先 + 角色三视图（最多 3 张）
             val videoRefs = buildList {
                 resolveImageRef(imageUrl)?.let { add(it) }
                 addAll(characterRefs)
             }.take(3)
 
-            val videoResult = AiVideoTaskPoller.generate(
-                prompt = sanitizedVideoPrompt,
-                seconds = params.sceneDurationSeconds,
-                size = params.resolution,
-                referenceImages = videoRefs,
-                jobId = job.id,
-                segId = segment.id,
-                provider = videoProvider,
-                isCancelled = isCancelled
-            )
-            when (videoResult) {
-                is AiVideoTaskPoller.Result.Success -> {
+            // Stage 6 重试 3 次：前 2 次用 sanitizeVideoPrompt，第 3 次调 LLM 改写
+            val maxRetry = 3
+            var success: AiVideoTaskPoller.Result.Success? = null
+            var failedMsg: String? = null
+            for (attempt in 1..maxRetry) {
+                checkCancelled(isCancelled, job.id)
+                val sanitizedPrompt = if (attempt < maxRetry) {
+                    NovelVideoPromptBuilder.sanitizeVideoPrompt(videoPrompt)
+                } else {
+                    NovelVideoPromptBuilder.rewriteVideoPromptForSafety(videoPrompt)
+                }
+                val result = AiVideoTaskPoller.generate(
+                    prompt = sanitizedPrompt,
+                    seconds = params.sceneDurationSeconds,
+                    size = params.resolution,
+                    referenceImages = videoRefs,
+                    jobId = job.id,
+                    segId = segment.id,
+                    provider = videoProvider,
+                    isCancelled = isCancelled
+                )
+                if (result is AiVideoTaskPoller.Result.Success) {
+                    success = result
+                    break
+                }
+                failedMsg = (result as AiVideoTaskPoller.Result.Failed).message
+                AppLog.put("场景生视频失败 attempt=$attempt ${segment.id}: $failedMsg", null)
+                if (attempt < maxRetry) delay(1_000L * attempt)
+            }
+            when (success) {
+                null -> {
+                    appDb.novelVideoDao.updateSegmentStatus(
+                        segment.id, NovelVideoSegmentStatus.FAILED, failedMsg, System.currentTimeMillis()
+                    )
+                }
+                else -> {
                     appDb.novelVideoDao.updateSegmentVideo(
                         segment.id,
-                        videoResult.remoteUrl,
-                        videoResult.localPath,
+                        success!!.remoteUrl,
+                        success!!.localPath,
                         params.sceneDurationSeconds * 1000L,
                         NovelVideoSegmentStatus.VIDEO_COMPLETED,
                         System.currentTimeMillis()
-                    )
-                }
-                is AiVideoTaskPoller.Result.Failed -> {
-                    AppLog.put("场景生视频失败 ${segment.id}: ${videoResult.message}", null)
-                    appDb.novelVideoDao.updateSegmentStatus(
-                        segment.id, NovelVideoSegmentStatus.FAILED, videoResult.message, System.currentTimeMillis()
                     )
                 }
             }
