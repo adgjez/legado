@@ -706,7 +706,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books) {
     }
 
     private fun open(book: Book) {
-        scrollToTopWhenReturnFromRead = true
+        scrollToTopWhenReturnFromRead = AppConfig.bookshelfReturnToTopAfterRead
         startActivityForBook(book)
     }
 

@@ -57,6 +57,16 @@ class CoverConfigFragment : ComposeSettingFragment() {
                                 updateBooleanSetting("loadCoverHighQuality", it)
                             }
                         ),
+                        SettingSwitchSpec(
+                            key = PreferKey.bookCoverShadow,
+                            title = getString(R.string.book_cover_shadow),
+                            summary = getString(R.string.book_cover_shadow_summary),
+                            checked = booleanSetting(PreferKey.bookCoverShadow, true),
+                            searchKeys = listOf("coverShadow", "cover_shadow", "shadow"),
+                            onCheckedChange = {
+                                updateBooleanSetting(PreferKey.bookCoverShadow, it)
+                            }
+                        ),
                         SettingActionSpec(
                             key = KEY_COVER_RULE,
                             title = getString(R.string.cover_rule),
@@ -103,7 +113,8 @@ class CoverConfigFragment : ComposeSettingFragment() {
             PreferKey.coverShowAuthor,
             PreferKey.coverShowAuthorN,
             PreferKey.coverCollectionModeDay,
-            PreferKey.coverCollectionModeNight -> refreshCoverCollection()
+            PreferKey.coverCollectionModeNight,
+            PreferKey.bookCoverShadow -> refreshCoverCollection()
         }
     }
 

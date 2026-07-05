@@ -75,6 +75,7 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
+import io.legado.app.lib.theme.toThemeTextColorOrNull
 import io.legado.app.utils.ColorUtils
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
@@ -124,7 +125,13 @@ fun rememberAppSettingPalette(): AppSettingPalette {
     val rowBaseColor = themeUiPalette.cardColor
     // 文字/强调前景色按实际背景明暗推导，避免随 night 标志产生深底深字/浅底白字
     val rowLight = ColorUtils.isColorLight(rowBaseColor)
-    val secondaryText = Color(context.getSecondaryTextColor(rowLight))
+    val customUiText = AppConfig.uiFontColor.toThemeTextColorOrNull()
+    val customTitleText = AppConfig.titleFontColor.toThemeTextColorOrNull()
+    val secondaryText = if (customUiText != null) {
+        Color(customUiText).copy(alpha = 0.72f)
+    } else {
+        Color(context.getSecondaryTextColor(rowLight))
+    }
     val page = Color(context.backgroundColor)
     val row = UiCorner.surfaceColor(rowBaseColor)
     val rowPressed = UiCorner.surfaceColor(rowBaseColor, pressed = true)
@@ -135,9 +142,9 @@ fun rememberAppSettingPalette(): AppSettingPalette {
         context.bottomBackground
     }
     val bottomBarLight = ColorUtils.isColorLight(bottomBarBase)
-    val bottomBarText = Color(context.getPrimaryTextColor(bottomBarLight))
+    val bottomBarText = Color(customUiText ?: context.getPrimaryTextColor(bottomBarLight))
     val border = UiCorner.panelBorderColor(context)
-    val primaryText = Color(context.getPrimaryTextColor(rowLight))
+    val primaryText = Color(customTitleText ?: customUiText ?: context.getPrimaryTextColor(rowLight))
     val accentArgb = context.accentColor
     val accent = Color(accentArgb)
     val onAccent = if (ColorUtils.isColorLight(accentArgb)) Color.Black else Color.White

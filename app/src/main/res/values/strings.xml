@@ -1299,6 +1299,8 @@
     <string name="book_info_background_image_summary">Replace the detail cover-blur background. Uses theme background color when unset.</string>
     <string name="load_cover_high_quality">Load high quality covers</string>
     <string name="load_cover_high_quality_summary">Use original cover images instead of cached thumbnails</string>
+    <string name="book_cover_shadow">Show cover shadow</string>
+    <string name="book_cover_shadow_summary">Draw an outer shadow for book covers</string>
     <string name="cover_show_name">show name</string>
     <string name="cover_show_name_summary">Book title shown on cover</string>
     <string name="cover_show_author">show author</string>
@@ -1654,6 +1656,8 @@ function login() {
     <string name="open_book_info_by_click_title">Click on the book title to open details</string>
     <string name="export_wait">Waiting for export</string>
     <string name="show_bookshelf_fast_scroller">Show quick scroll bar</string>
+    <string name="bookshelf_return_to_top_after_read">Return to top after reading</string>
+    <string name="bookshelf_return_to_top_after_read_short">Top</string>
     <string name="fast_scroller_touch_target">Quick scroll bar touch area</string>
     <string name="fast_scroller_touch_target_compact">Compact 32dp</string>
     <string name="fast_scroller_touch_target_original">Original 36dp</string>

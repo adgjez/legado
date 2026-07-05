@@ -36,9 +36,9 @@ import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.model.BookCover
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
@@ -113,12 +113,13 @@ class CoverImageView @JvmOverloads constructor(
     }
 
     fun setCoverStyle(style: CoverStyle) {
-        if (coverStyle == style && elevation == style.elevationDp.dpToPx()) return
+        val shadowElevation = if (AppConfig.bookCoverShadow) style.elevationDp.dpToPx() else 0f
+        if (coverStyle == style && elevation == shadowElevation) return
         coverStyle = style
         coverRadiusPx = style.radiusDp.dpToPx()
         coverStrokeWidthPx = style.strokeWidthDp.dpToPx()
         coverStrokeAlpha = style.strokeAlpha
-        elevation = style.elevationDp.dpToPx()
+        elevation = shadowElevation
         translationZ = 0f
         updateOutline()
         invalidateOutline()
@@ -171,7 +172,8 @@ class CoverImageView @JvmOverloads constructor(
             } else {
                 currentName
             }
-            val cacheBitmap =  nameBitmapCache[pathName + width]
+            val cacheKey = nameBitmapCacheKey(pathName)
+            val cacheBitmap = nameBitmapCache[cacheKey]
             if (cacheBitmap != null) {
                 canvas.drawBitmap(cacheBitmap, 0f, 0f, null)
             } else {
@@ -214,7 +216,7 @@ class CoverImageView @JvmOverloads constructor(
                 val bitmap = generateCoverBitmap(name, author)
                 ensureActive()
                 needNameBitmap.put(bitmapPath.toString(), true)
-                nameBitmapCache.put(pathName + width, bitmap)
+                nameBitmapCache.put(nameBitmapCacheKey(pathName), bitmap)
                 invalidate()
             } catch (_: CancellationException) {
             } catch (e: Exception) {
@@ -231,7 +233,8 @@ class CoverImageView @JvmOverloads constructor(
         var startX = width * 0.2f
         var startY = viewHeight * 0.2f
         val backgroundColor = appCtx.backgroundColor
-        val accentColor = appCtx.accentColor
+        val nameColor = appCtx.titleTextColor
+        val authorColor = appCtx.secondaryTextColor
         val namePaint = TextPaint().apply {
             typeface = Typeface.DEFAULT_BOLD
             isAntiAlias = true
@@ -245,7 +248,7 @@ class CoverImageView @JvmOverloads constructor(
                 namePaint.color = backgroundColor
                 namePaint.style = Paint.Style.STROKE
                 bitmapCanvas.drawText(char, startX, startY, namePaint)
-                namePaint.color = accentColor
+                namePaint.color = nameColor
                 namePaint.style = Paint.Style.FILL
                 bitmapCanvas.drawText(char, startX, startY, namePaint)
                 startY += namePaint.textHeight
@@ -284,7 +287,7 @@ class CoverImageView @JvmOverloads constructor(
                 authorPaint.color = backgroundColor
                 authorPaint.style = Paint.Style.STROKE
                 bitmapCanvas.drawText(it, startX, startY, authorPaint)
-                authorPaint.color = accentColor
+                authorPaint.color = authorColor
                 authorPaint.style = Paint.Style.FILL
                 bitmapCanvas.drawText(it, startX, startY, authorPaint)
                 startY += authorPaint.textHeight
@@ -294,6 +297,16 @@ class CoverImageView @JvmOverloads constructor(
             }
         }
         return bitmap
+    }
+
+    private fun nameBitmapCacheKey(pathName: String): String {
+        return listOf(
+            pathName,
+            width.toString(),
+            appCtx.backgroundColor.toString(),
+            appCtx.titleTextColor.toString(),
+            appCtx.secondaryTextColor.toString()
+        ).joinToString("|")
     }
 
     fun setHeight(height: Int) {

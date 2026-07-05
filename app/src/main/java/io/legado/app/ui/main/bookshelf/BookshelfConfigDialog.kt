@@ -80,6 +80,7 @@ data class BookshelfConfigValues(
     val showLastUpdateTime: Boolean,
     val showWaitUpCount: Boolean,
     val showFastScroller: Boolean,
+    val returnToTopAfterRead: Boolean,
     val layout: Int,
     val sort: Int,
     val showBookname: Int,
@@ -161,6 +162,7 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
         showLastUpdateTime = false,
         showWaitUpCount = false,
         showFastScroller = false,
+        returnToTopAfterRead = true,
         layout = 0,
         sort = 0,
         showBookname = 0,
@@ -397,6 +399,13 @@ private fun BookshelfConfigContent(
             summaryLabel = "快滑",
             checked = values.showFastScroller,
             onCheckedChange = { onValuesChange(values.copy(showFastScroller = it)) }
+        ),
+        BookshelfSwitchItem(
+            key = "returnToTopAfterRead",
+            label = stringResource(R.string.bookshelf_return_to_top_after_read),
+            summaryLabel = stringResource(R.string.bookshelf_return_to_top_after_read_short),
+            checked = values.returnToTopAfterRead,
+            onCheckedChange = { onValuesChange(values.copy(returnToTopAfterRead = it)) }
         )
     )
     ConfigSection(

@@ -57,9 +57,10 @@ import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.model.BookCover
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.textHeight
@@ -310,6 +311,8 @@ fun BookCoverImage(
     }
 
     val currentOnBoundsChanged by rememberUpdatedState(onBoundsChanged)
+    val themeSignature = rememberThemeUiPalette().signature
+    val coverShadowEnabled = remember(themeSignature) { AppConfig.bookCoverShadow }
     val shape = RoundedCornerShape(style.radiusDp.dp)
     val frameModifier = modifier
         .then(if (fillBounds) Modifier else Modifier.aspectRatio(BOOK_COVER_ASPECT_RATIO))
@@ -322,7 +325,7 @@ fun BookCoverImage(
                 Modifier
             }
         )
-        .coverOuterShadow(style)
+        .coverOuterShadow(style, coverShadowEnabled)
         .clip(shape)
 
     Box(modifier = frameModifier) {
@@ -342,8 +345,11 @@ fun BookCoverImage(
     }
 }
 
-private fun Modifier.coverOuterShadow(style: CoverImageView.CoverStyle): Modifier {
-    if (style.elevationDp <= 0f) return this
+private fun Modifier.coverOuterShadow(
+    style: CoverImageView.CoverStyle,
+    enabled: Boolean
+): Modifier {
+    if (!enabled || style.elevationDp <= 0f) return this
     return drawWithCache {
         val radius = style.radiusDp.dp.toPx()
         val blurRadius = maxOf(1f, style.elevationDp.dp.toPx() * 1.35f)
@@ -378,7 +384,8 @@ private fun BookCoverNameOverlay(
     val context = LocalContext.current
     val themeSignature = rememberThemeUiPalette().signature
     val backgroundColor = remember(context, themeSignature) { context.backgroundColor }
-    val accentColor = remember(context, themeSignature) { context.accentColor }
+    val nameColor = remember(context, themeSignature) { context.titleTextColor }
+    val authorColor = remember(context, themeSignature) { context.secondaryTextColor }
     Canvas(modifier = modifier) {
         val viewWidth = size.width
         val viewHeight = size.height
@@ -398,7 +405,7 @@ private fun BookCoverNameOverlay(
                 namePaint.color = backgroundColor
                 namePaint.style = Paint.Style.STROKE
                 drawContext.canvas.nativeCanvas.drawText(char, startX, startY, namePaint)
-                namePaint.color = accentColor
+                namePaint.color = nameColor
                 namePaint.style = Paint.Style.FILL
                 drawContext.canvas.nativeCanvas.drawText(char, startX, startY, namePaint)
                 startY += namePaint.textHeight
@@ -434,7 +441,7 @@ private fun BookCoverNameOverlay(
                 authorPaint.color = backgroundColor
                 authorPaint.style = Paint.Style.STROKE
                 drawContext.canvas.nativeCanvas.drawText(char, startX, startY, authorPaint)
-                authorPaint.color = accentColor
+                authorPaint.color = authorColor
                 authorPaint.style = Paint.Style.FILL
                 drawContext.canvas.nativeCanvas.drawText(char, startX, startY, authorPaint)
                 startY += authorPaint.textHeight

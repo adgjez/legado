@@ -287,6 +287,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                     showLastUpdateTime = AppConfig.showLastUpdateTime,
                     showWaitUpCount = AppConfig.showWaitUpCount,
                     showFastScroller = AppConfig.showBookshelfFastScroller,
+                    returnToTopAfterRead = AppConfig.bookshelfReturnToTopAfterRead,
                     layout = bookshelfLayout,
                     sort = bookshelfSort,
                     showBookname = showBookname,
@@ -368,6 +369,9 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         if (AppConfig.showBookshelfFastScroller != values.showFastScroller) {
             AppConfig.showBookshelfFastScroller = values.showFastScroller
             refreshBookshelf = true
+        }
+        if (AppConfig.bookshelfReturnToTopAfterRead != values.returnToTopAfterRead) {
+            AppConfig.bookshelfReturnToTopAfterRead = values.returnToTopAfterRead
         }
         if (previousSort != sort) {
             AppConfig.bookshelfSort = sort

@@ -1089,6 +1089,8 @@
     <string name="book_info_background_image_summary">替代详情页封面模糊背景，未设置时使用主题背景色</string>
     <string name="load_cover_high_quality">加载高清封面</string>
     <string name="load_cover_high_quality_summary">开启后使用封面原图，关闭时优先加载缩略图</string>
+    <string name="book_cover_shadow">显示封面阴影</string>
+    <string name="book_cover_shadow_summary">开启后为书籍封面绘制外部阴影</string>
     <string name="cover_show_name">显示书名</string>
     <string name="cover_show_name_summary">封面上显示书名</string>
     <string name="cover_show_author">显示作者</string>
@@ -1365,6 +1367,8 @@
     <string name="sync_book_progress_success">进度同步成功</string>
     <string name="default_home_page">默认主页</string>
     <string name="show_bookshelf_fast_scroller">显示快速滚动条</string>
+    <string name="bookshelf_return_to_top_after_read">阅读返回后回到顶部</string>
+    <string name="bookshelf_return_to_top_after_read_short">顶部</string>
     <string name="fast_scroller_touch_target">快速滚动条触摸区域</string>
     <string name="fast_scroller_touch_target_compact">紧凑 32dp</string>
     <string name="fast_scroller_touch_target_original">原始 36dp</string>

@@ -15,6 +15,7 @@ import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 
 /**
@@ -92,7 +93,9 @@ val Context.transparentNavBar: Boolean
     get() = ThemeStore.transparentNavBar(this)
 
 val Context.secondaryTextColor: Int
-    get() = getSecondaryTextColor(!AppConfig.isNightTheme)
+    get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
+        ?.let { ColorUtils.withAlpha(it, 0.72f) }
+        ?: getSecondaryTextColor(!AppConfig.isNightTheme)
 
 val Context.primaryDisabledTextColor: Int
     get() = getPrimaryDisabledTextColor(!AppConfig.isNightTheme)
@@ -120,7 +123,9 @@ val Fragment.primaryTextColor: Int
         ?: requireContext().getPrimaryTextColor(!AppConfig.isNightTheme)
 
 val Fragment.secondaryTextColor: Int
-    get() = requireContext().getSecondaryTextColor(!AppConfig.isNightTheme)
+    get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
+        ?.let { ColorUtils.withAlpha(it, 0.72f) }
+        ?: requireContext().getSecondaryTextColor(!AppConfig.isNightTheme)
 
 val Fragment.primaryDisabledTextColor: Int
     get() = requireContext().getPrimaryDisabledTextColor(!AppConfig.isNightTheme)

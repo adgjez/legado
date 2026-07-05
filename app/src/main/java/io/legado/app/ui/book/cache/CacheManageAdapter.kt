@@ -9,9 +9,13 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.databinding.ItemCacheManageBookBinding
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.themeMutedColorOrDefault
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -76,6 +80,7 @@ class CacheManageAdapter(
             context.themeCardColorOrDefault(),
             UiCorner.actionRadius(context)
         )
+        root.applyUiBodyTypefaceDeep(context.uiTypeface())
         listOf(btnChapters, btnUpload, btnDelete, btnBookshelf, btnStop).forEach {
             it.background = UiCorner.actionSelector(
                 android.graphics.Color.TRANSPARENT,
@@ -87,6 +92,11 @@ class CacheManageAdapter(
         btnChapters.setTextColor(context.accentColor)
         ivCover.setCoverStyle(CoverImageView.CoverStyle.LIST)
         ivCover.load(book, false)
+        tvName.applyUiTitleTypeface(context)
+        tvCache.setTextColor(context.primaryTextColor)
+        tvTask.setTextColor(context.secondaryTextColor)
+        tvCacheState.setTextColor(context.secondaryTextColor)
+        btnSource.setTextColor(context.secondaryTextColor)
         tvName.text = book.name
         btnSource.text = if (item.sourceAvailable) {
             item.sourceName

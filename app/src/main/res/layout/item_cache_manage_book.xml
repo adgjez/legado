@@ -14,23 +14,13 @@
     android:paddingEnd="10dp"
     android:paddingBottom="10dp">
 
-    <androidx.cardview.widget.CardView
+    <io.legado.app.ui.widget.image.CoverImageView
+        android:id="@+id/iv_cover"
         android:layout_width="74dp"
         android:layout_height="102dp"
-        app:cardCornerRadius="@dimen/ui_panel_radius"
-        app:cardElevation="0dp"
-        app:cardPreventCornerOverlap="false"
-        app:cardUseCompatPadding="false">
-
-        <io.legado.app.ui.widget.image.CoverImageView
-            android:id="@+id/iv_cover"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:contentDescription="@string/img_cover"
-            android:scaleType="centerCrop"
-            android:src="@drawable/image_cover_default" />
-
-    </androidx.cardview.widget.CardView>
+        android:contentDescription="@string/img_cover"
+        android:scaleType="centerCrop"
+        android:src="@drawable/image_cover_default" />
 
     <LinearLayout
         android:id="@+id/lay_info"

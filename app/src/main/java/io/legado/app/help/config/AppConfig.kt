@@ -243,6 +243,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.bookshelfListIntroLines, value.coerceIn(0, 3))
         }
 
+    var bookshelfReturnToTopAfterRead: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookshelfReturnToTopAfterRead, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookshelfReturnToTopAfterRead, value)
+        }
+
     var forceSoftwareParagraphBubble: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.forceSoftwareParagraphBubble, false)
         set(value) {
@@ -2104,6 +2110,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefString(PreferKey.titleFontColor).orEmpty()
         set(value) {
             appCtx.putPrefString(PreferKey.titleFontColor, value)
+        }
+
+    var bookCoverShadow: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookCoverShadow, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookCoverShadow, value)
         }
 
     var elevation: Int

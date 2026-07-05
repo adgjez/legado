@@ -36,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -47,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.ColorUtils as AndroidColorUtils
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
@@ -127,6 +127,7 @@ fun SearchBookPreviewOverlay(
         val height = lerpFloat(origin.height, targetHeightPx, p)
         val radius = lerpFloat(7f, with(density) { renderConfig.palette.panelRadius.toPx() }, p)
         val contentAlpha = ((p - 0.16f) / 0.84f).coerceIn(0f, 1f)
+        val previewPanelColor = previewPanelSurfaceColor(renderConfig.palette.rowColor)
 
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -140,7 +141,6 @@ fun SearchBookPreviewOverlay(
                     .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
                     .width(with(density) { width.toDp() })
                     .height(with(density) { height.toDp() })
-                    .shadow((14 * p).dp, RoundedCornerShape(with(density) { radius.toDp() }), clip = false)
                     .clip(RoundedCornerShape(with(density) { radius.toDp() }))
                     .clickable { },
                 contentAlignment = Alignment.Center
@@ -149,7 +149,7 @@ fun SearchBookPreviewOverlay(
                     modifier = Modifier
                         .matchParentSize()
                         .appSettingPanelBackground(
-                            normalColor = renderConfig.palette.rowColor,
+                            normalColor = previewPanelColor,
                             panelImage = renderConfig.panelImage,
                             borderColor = renderConfig.palette.borderColor,
                             radiusPx = radius
@@ -358,4 +358,10 @@ private fun SearchBook.previewKey(): String {
 
 private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {
     return start + (stop - start) * fraction
+}
+
+private fun previewPanelSurfaceColor(color: Int): Int {
+    val alpha = android.graphics.Color.alpha(color)
+    val maxAlpha = (255 * 0.72f).roundToInt()
+    return AndroidColorUtils.setAlphaComponent(color, alpha.coerceAtMost(maxAlpha))
 }
