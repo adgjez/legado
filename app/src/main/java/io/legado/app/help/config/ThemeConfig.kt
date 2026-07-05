@@ -14,8 +14,9 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.DefaultData
 import io.legado.app.lib.theme.ThemeStore
-import io.legado.app.lib.theme.ThemeStorePrefKeys
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.defaultThemeTextColor
+import io.legado.app.lib.theme.defaultThemeTextColorHex
 import io.legado.app.model.BookCover
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.ColorUtils
@@ -325,7 +326,7 @@ object ThemeConfig {
             }
             context.putPrefString(PreferKey.uiFontPath, config.uiFontPath.orEmpty())
             context.putPrefString(PreferKey.titleFontPath, config.titleFontPath.orEmpty())
-            applyFontColorPrefs(context, config.uiFontColor, config.titleFontColor)
+            applyFontColorPrefs(context, config.isNightTheme, config.uiFontColor, config.titleFontColor)
             if (backgroundPath != null && backgroundPath.startsWith("http")) {
                 val fileRoot = context.externalFiles
                 val preferenceKey = if (isNightTheme) {
@@ -495,8 +496,10 @@ object ThemeConfig {
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
                 uiFontPath = stored?.uiFontPath ?: AppConfig.uiFontPath,
                 titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath,
-                uiFontColor = stored?.uiFontColor ?: AppConfig.uiFontColor,
+                uiFontColor = stored?.uiFontColor ?: AppConfig.uiFontColor
+                    .takeIf { it.isNotBlank() } ?: defaultThemeTextColorHex(false),
                 titleFontColor = stored?.titleFontColor ?: AppConfig.titleFontColor
+                    .takeIf { it.isNotBlank() } ?: defaultThemeTextColorHex(false)
             )
         )
     }
@@ -565,8 +568,10 @@ object ThemeConfig {
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
                 uiFontPath = stored?.uiFontPath ?: AppConfig.uiFontPath,
                 titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath,
-                uiFontColor = stored?.uiFontColor ?: AppConfig.uiFontColor,
+                uiFontColor = stored?.uiFontColor ?: AppConfig.uiFontColor
+                    .takeIf { it.isNotBlank() } ?: defaultThemeTextColorHex(true),
                 titleFontColor = stored?.titleFontColor ?: AppConfig.titleFontColor
+                    .takeIf { it.isNotBlank() } ?: defaultThemeTextColorHex(true)
             )
         )
     }
@@ -697,13 +702,17 @@ object ThemeConfig {
         }
     }
 
-    private fun applyFontColorPrefs(context: Context, uiFontColor: String?, titleFontColor: String?) {
-        normalizeThemeColor(uiFontColor)?.let {
-            context.putPrefString(PreferKey.uiFontColor, it)
-        } ?: context.removePref(PreferKey.uiFontColor)
-        normalizeThemeColor(titleFontColor)?.let {
-            context.putPrefString(PreferKey.titleFontColor, it)
-        } ?: context.removePref(PreferKey.titleFontColor)
+    private fun applyFontColorPrefs(
+        context: Context,
+        isNightTheme: Boolean,
+        uiFontColor: String?,
+        titleFontColor: String?
+    ) {
+        val defaultColor = defaultThemeTextColorHex(isNightTheme)
+        val uiColor = normalizeThemeColor(uiFontColor) ?: defaultColor
+        val titleColor = normalizeThemeColor(titleFontColor) ?: defaultColor
+        context.putPrefString(PreferKey.uiFontColor, uiColor)
+        context.putPrefString(PreferKey.titleFontColor, titleColor)
     }
 
     private fun normalizeThemeColor(value: String?): String? {
@@ -726,12 +735,10 @@ object ThemeConfig {
     }
 
     private fun ThemeStore.applyUiFontColor(context: Context): ThemeStore {
-        normalizeThemeColor(context.getPrefString(PreferKey.uiFontColor))?.toColorInt()?.let {
-            textColorPrimary(it)
-        } ?: ThemeStore.prefs(context)
-            .edit()
-            .remove(ThemeStorePrefKeys.KEY_TEXT_COLOR_PRIMARY)
-            .apply()
+        val color = normalizeThemeColor(context.getPrefString(PreferKey.uiFontColor))
+            ?.toColorInt()
+            ?: defaultThemeTextColor(AppConfig.isNightTheme)
+        textColorPrimary(color)
         return this
     }
 

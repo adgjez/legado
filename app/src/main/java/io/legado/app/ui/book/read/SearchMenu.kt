@@ -18,7 +18,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.themeMutedColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
@@ -47,7 +47,7 @@ class SearchMenu @JvmOverloads constructor(
     private val menuBottomOut: Animation = loadAnimation(context, R.anim.anim_readbook_bottom_out)
     private val accentColor: Int = context.accentColor
     private val bgColor: Int = context.bottomBackground
-    private val textColor: Int = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
+    private val textColor: Int = context.primaryTextColor
     private var bottomBackgroundList: ColorStateList = Selector.colorBuild()
         .setDefaultColor(context.themeCardColorOrDefault())
         .setPressedColor(ColorUtils.darkenColor(context.themeCardColorOrDefault()))

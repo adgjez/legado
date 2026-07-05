@@ -84,10 +84,11 @@ val Context.bottomBackground: Int
 
 val Context.primaryTextColor: Int
     get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
-        ?: getPrimaryTextColor(!AppConfig.isNightTheme)
+        ?: defaultThemeTextColor(AppConfig.isNightTheme)
 
 val Context.titleTextColor: Int
-    get() = AppConfig.titleFontColor.toThemeTextColorOrNull() ?: primaryTextColor
+    get() = AppConfig.titleFontColor.toThemeTextColorOrNull()
+        ?: defaultThemeTextColor(AppConfig.isNightTheme)
 
 val Context.transparentNavBar: Boolean
     get() = ThemeStore.transparentNavBar(this)
@@ -95,7 +96,7 @@ val Context.transparentNavBar: Boolean
 val Context.secondaryTextColor: Int
     get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
         ?.let { ColorUtils.withAlpha(it, 0.72f) }
-        ?: getSecondaryTextColor(!AppConfig.isNightTheme)
+        ?: ColorUtils.withAlpha(defaultThemeTextColor(AppConfig.isNightTheme), 0.72f)
 
 val Context.primaryDisabledTextColor: Int
     get() = getPrimaryDisabledTextColor(!AppConfig.isNightTheme)
@@ -120,12 +121,12 @@ val Fragment.bottomBackground: Int
 
 val Fragment.primaryTextColor: Int
     get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
-        ?: requireContext().getPrimaryTextColor(!AppConfig.isNightTheme)
+        ?: defaultThemeTextColor(AppConfig.isNightTheme)
 
 val Fragment.secondaryTextColor: Int
     get() = AppConfig.uiFontColor.toThemeTextColorOrNull()
         ?.let { ColorUtils.withAlpha(it, 0.72f) }
-        ?: requireContext().getSecondaryTextColor(!AppConfig.isNightTheme)
+        ?: ColorUtils.withAlpha(defaultThemeTextColor(AppConfig.isNightTheme), 0.72f)
 
 val Fragment.primaryDisabledTextColor: Int
     get() = requireContext().getPrimaryDisabledTextColor(!AppConfig.isNightTheme)
@@ -149,6 +150,15 @@ fun String?.toThemeTextColorOrNull(): Int? {
         raw
     }
     return kotlin.runCatching { candidate.toColorInt() }.getOrNull()
+}
+
+@ColorInt
+fun defaultThemeTextColor(isNightTheme: Boolean): Int {
+    return if (isNightTheme) Color.WHITE else Color.BLACK
+}
+
+fun defaultThemeTextColorHex(isNightTheme: Boolean): String {
+    return if (isNightTheme) "#FFFFFF" else "#000000"
 }
 
 val Context.buttonDisabledColor: Int

@@ -17,13 +17,13 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.activity
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.gone
@@ -98,8 +98,8 @@ class MangaMenu @JvmOverloads constructor(
 
     private fun initView() = binding.run {
         initAnimation()
-        val textColor = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
-        val secondaryTextColor = ColorUtils.withAlpha(textColor, 0.78f)
+        val textColor = context.primaryTextColor
+        val secondaryTextColor = context.secondaryTextColor
         tvChapterName.setTextColor(secondaryTextColor)
         tvChapterUrl.setTextColor(secondaryTextColor)
         tvPre.setTextColor(textColor)

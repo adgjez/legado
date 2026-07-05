@@ -23,6 +23,7 @@ import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.transparentNavBar
 import io.legado.app.utils.activity
@@ -45,7 +46,7 @@ class TitleBar @JvmOverloads constructor(
         set(title) {
             if (toolbar.title != title) {
                 toolbar.title = title
-                post { applyTitleTypeface() }
+                post { applyTitleStyle() }
             }
         }
 
@@ -54,7 +55,7 @@ class TitleBar @JvmOverloads constructor(
         set(subtitle) {
             if (toolbar.subtitle != subtitle) {
                 toolbar.subtitle = subtitle
-                post { applyTitleTypeface() }
+                post { applyTitleStyle() }
             }
         }
 
@@ -65,6 +66,7 @@ class TitleBar @JvmOverloads constructor(
     private val fitNavigationBar: Boolean
     private val attachToActivity: Boolean
     private val opaque: Boolean
+    private val forceDarkText: Boolean
 
     init {
         val a = context.obtainStyledAttributes(
@@ -78,6 +80,8 @@ class TitleBar @JvmOverloads constructor(
         fitStatusBar = a.getBoolean(R.styleable.TitleBar_fitStatusBar, true)
         fitNavigationBar = a.getBoolean(R.styleable.TitleBar_fitNavigationBar, false)
         opaque = a.getBoolean(R.styleable.TitleBar_opaque, false)
+        val themeMode = a.getInt(R.styleable.TitleBar_themeMode, 0)
+        forceDarkText = themeMode == 1
 
         val navigationIcon = a.getDrawable(R.styleable.TitleBar_navigationIcon)
         val navigationContentDescription =
@@ -85,7 +89,7 @@ class TitleBar @JvmOverloads constructor(
         val titleText = a.getString(R.styleable.TitleBar_title)
         val subtitleText = a.getString(R.styleable.TitleBar_subtitle)
 
-        when (a.getInt(R.styleable.TitleBar_themeMode, 0)) {
+        when (themeMode) {
             1 -> inflate(context, R.layout.view_title_bar_dark, this)
             else -> inflate(context, R.layout.view_title_bar, this)
         }
@@ -162,7 +166,7 @@ class TitleBar @JvmOverloads constructor(
                 inflate(context, a.getResourceId(R.styleable.TitleBar_contentLayout, 0), this)
             }
         }
-        applyTitleTypeface()
+        applyTitleStyle()
 
         if (!isInEditMode) {
 //            if (fitStatusBar) {
@@ -203,7 +207,7 @@ class TitleBar @JvmOverloads constructor(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         attachToActivity()
-        post { applyTitleTypeface() }
+        post { applyTitleStyle() }
     }
 
     fun setNavigationOnClickListener(clickListener: ((View) -> Unit)) {
@@ -212,19 +216,24 @@ class TitleBar @JvmOverloads constructor(
 
     fun setTitle(titleId: Int) {
         toolbar.setTitle(titleId)
-        post { applyTitleTypeface() }
+        post { applyTitleStyle() }
     }
 
     fun setSubTitle(subtitleId: Int) {
         toolbar.setSubtitle(subtitleId)
-        post { applyTitleTypeface() }
+        post { applyTitleStyle() }
     }
 
-    private fun applyTitleTypeface() {
+    private fun applyTitleStyle() {
         if (isInEditMode) return
         val typeface = context.titleTypeface()
+        val textColor = if (forceDarkText) Color.WHITE else context.titleTextColor
+        toolbar.setTitleTextColor(textColor)
+        toolbar.setSubtitleTextColor(textColor)
+        setColorFilter(textColor)
         toolbar.children.filterIsInstance<TextView>().forEach {
             it.typeface = typeface
+            it.setTextColor(textColor)
         }
     }
 

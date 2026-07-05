@@ -21,12 +21,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +64,9 @@ import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -448,12 +454,15 @@ private fun SpeakerGroupManageScreen(
     val engineGroups = remember(httpTtsList) {
         SpeechVoiceCatalogRepository.allGroups(context, httpTtsList, includeSystem = true)
     }
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = colors.page,
-        shape = RoundedCornerShape(0.dp)
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = FontFamily(context.uiTypeface()))
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colors.page,
+            shape = RoundedCornerShape(0.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("发言人管理", color = colors.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
@@ -517,6 +526,7 @@ private fun SpeakerGroupManageScreen(
                 onDismiss = actions::closeDeleteGroup,
                 onConfirm = { actions.deleteGroup(group) }
             )
+            }
         }
     }
 }
@@ -1027,8 +1037,8 @@ private fun rememberSpeakerManageColors(): SpeakerManageColors {
     return SpeakerManageColors(
         page = Color(if (night) 0xff15171b.toInt() else 0xffffffff.toInt()),
         card = Color(if (night) 0xff20242a.toInt() else 0xfff6f7fa.toInt()),
-        text = Color(if (night) 0xfff2f3f5.toInt() else 0xff202124.toInt()),
-        subText = Color(if (night) 0xffaeb4bc.toInt() else 0xff6b7178.toInt()),
+        text = Color(context.primaryTextColor),
+        subText = Color(context.secondaryTextColor),
         stroke = Color.Transparent,
         accent = Color(accent),
         danger = Color(ColorUtils.blendColors(0xffff4444.toInt(), accent, 0.08f))

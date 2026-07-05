@@ -15,6 +15,7 @@ import androidx.core.view.forEach
 import io.legado.app.R
 import io.legado.app.constant.Theme
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.titleTextColor
 import java.lang.reflect.Method
 
 @SuppressLint("RestrictedApi")
@@ -104,11 +105,10 @@ object MenuExtensions {
         val defaultTextColor = context.primaryTextColor
         if (requiresOverflow)
             return defaultTextColor
-        val primaryTextColor = context.primaryTextColor
         return when (theme) {
             Theme.Dark -> context.getCompatColor(R.color.md_white_1000)
             Theme.Light -> context.getCompatColor(R.color.md_black_1000)
-            else -> primaryTextColor
+            else -> context.titleTextColor
         }
     }
 

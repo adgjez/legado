@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.source.manage
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
@@ -8,10 +9,33 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -44,6 +68,11 @@ import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.compose.AppManagementAction
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
+import io.legado.app.ui.widget.compose.AppDialogFrame
+import io.legado.app.ui.widget.compose.ComposeDialogFragment
+import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.LegadoMiuixActionRow
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
 import io.legado.app.ui.widget.compose.replaceMatching
@@ -51,6 +80,7 @@ import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeSuggestionTextInputDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
+import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.cnCompare
@@ -442,6 +472,25 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             getString(R.string.enabled_explore),
             getString(R.string.disabled_explore)
         )
+        if (groups.size > GROUP_ACTION_LIST_LIMIT) {
+            val labels = fixedLabels + getString(R.string.group_select)
+            showComposeActionListDialog(
+                title = getString(R.string.menu_action_group),
+                labels = labels
+            ) { index ->
+                when (index) {
+                    0 -> showDialogFragment<GroupManageDialog>()
+                    1 -> updateSearchQuery(getString(R.string.enabled))
+                    2 -> updateSearchQuery(getString(R.string.disabled))
+                    3 -> updateSearchQuery(getString(R.string.need_login))
+                    4 -> updateSearchQuery(getString(R.string.no_group))
+                    5 -> updateSearchQuery(getString(R.string.enabled_explore))
+                    6 -> updateSearchQuery(getString(R.string.disabled_explore))
+                    7 -> showSourceGroupFilterDialog()
+                }
+            }
+            return
+        }
         val labels = fixedLabels + groups
         showComposeActionListDialog(
             title = getString(R.string.menu_action_group),
@@ -458,6 +507,14 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 else -> updateSearchQuery("group:${labels[index]}")
             }
         }
+    }
+
+    private fun showSourceGroupFilterDialog() {
+        showDialogFragment(
+            SourceGroupFilterDialog.create(groups.toList()) { group ->
+                updateSearchQuery("group:$group")
+            }
+        )
     }
 
     private fun pageMenuActions(): List<AppManagementMenuAction> {
@@ -1191,4 +1248,130 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
+}
+
+private const val GROUP_ACTION_LIST_LIMIT = 48
+
+private class SourceGroupFilterDialog : ComposeDialogFragment() {
+
+    override val widthFraction: Float? = 0.94f
+    override val maxWidthDp: Int? = 620
+
+    private var groups: List<String> = emptyList()
+    private var onGroupSelected: ((String) -> Unit)? = null
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                val allGroups = remember { groups }
+                var query by rememberSaveable { mutableStateOf("") }
+                val style = rememberAppDialogStyle()
+                val filteredGroups by remember(allGroups, query) {
+                    derivedStateOf {
+                        val key = query.trim()
+                        if (key.isBlank()) {
+                            allGroups
+                        } else {
+                            allGroups.filter { it.contains(key, ignoreCase = true) }
+                        }
+                    }
+                }
+                AppDialogFrame(
+                    title = stringResource(R.string.group_select),
+                    scrollContent = false,
+                    content = {
+                        CompositionLocalProvider(
+                            LocalTextStyle provides LocalTextStyle.current.copy(
+                                fontFamily = style.bodyFontFamily
+                            )
+                        ) {
+                            OutlinedTextField(
+                                value = query,
+                                onValueChange = { query = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.search)) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = style.primaryText,
+                                    unfocusedTextColor = style.primaryText,
+                                    focusedContainerColor = style.fieldSurface,
+                                    unfocusedContainerColor = style.fieldSurface,
+                                    cursorColor = style.accent,
+                                    focusedBorderColor = style.accent.copy(alpha = 0.55f),
+                                    unfocusedBorderColor = style.stroke,
+                                    focusedLabelColor = style.accent,
+                                    unfocusedLabelColor = style.secondaryText
+                                ),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                    color = style.primaryText,
+                                    fontFamily = style.bodyFontFamily
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "${filteredGroups.size}/${allGroups.size}",
+                                color = style.secondaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val palette = style.toMiuixPalette()
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 420.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (filteredGroups.isEmpty()) {
+                                    item("empty") {
+                                        Text(
+                                            text = stringResource(R.string.empty),
+                                            color = style.secondaryText
+                                        )
+                                    }
+                                } else {
+                                    items(filteredGroups, key = { it }) { group ->
+                                        LegadoMiuixActionRow(
+                                            text = group,
+                                            palette = palette,
+                                            onClick = {
+                                                dismissAllowingStateLoss()
+                                                onGroupSelected?.invoke(group)
+                                            },
+                                            cornerRadius = style.actionRadius
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    actions = {
+                        LegadoMiuixActionButton(
+                            text = stringResource(R.string.cancel),
+                            palette = style.toMiuixPalette(),
+                            onClick = { dismissAllowingStateLoss() },
+                            cornerRadius = style.actionRadius
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    companion object {
+        fun create(
+            groups: List<String>,
+            onGroupSelected: (String) -> Unit
+        ): SourceGroupFilterDialog {
+            return SourceGroupFilterDialog().apply {
+                this.groups = groups
+                this.onGroupSelected = onGroupSelected
+            }
+        }
+    }
 }

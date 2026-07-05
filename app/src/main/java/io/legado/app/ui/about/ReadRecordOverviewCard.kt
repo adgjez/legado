@@ -41,9 +41,9 @@ import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
@@ -51,7 +51,6 @@ import io.legado.app.ui.widget.compose.BookCoverImage
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CircleImageView
 import io.legado.app.ui.widget.image.CoverImageView
-import io.legado.app.utils.ColorUtils
 
 @Immutable
 data class ReadRecordOverviewUi(
@@ -119,12 +118,13 @@ private data class ReadRecordThemeColors(
 private fun rememberReadRecordThemeColors(): ReadRecordThemeColors {
     val context = LocalContext.current
     val themeUiPalette = rememberThemeUiPalette()
-    val rowLight = ColorUtils.isColorLight(themeUiPalette.cardColor)
-    return remember(context, themeUiPalette.signature) {
+    val primaryTextColor = context.primaryTextColor
+    val secondaryTextColor = context.secondaryTextColor
+    return remember(context, themeUiPalette.signature, primaryTextColor, secondaryTextColor) {
         ReadRecordThemeColors(
             cardColor = themeUiPalette.cardColor,
-            primaryText = Color(context.getPrimaryTextColor(rowLight)),
-            secondaryText = Color(context.getSecondaryTextColor(rowLight)),
+            primaryText = Color(primaryTextColor),
+            secondaryText = Color(secondaryTextColor),
             divider = Color(themeUiPalette.dividerColor),
             signature = themeUiPalette.signature
         )
@@ -346,11 +346,10 @@ fun ReadRecordGoalCardContent(
 ) {
     val context = LocalContext.current
     val themeUiPalette = rememberThemeUiPalette()
-    val rowLight = ColorUtils.isColorLight(themeUiPalette.cardColor)
     val titleFont = FontFamily(context.titleTypeface())
     val bodyFont = FontFamily(context.uiTypeface())
-    val primaryText = Color(context.getPrimaryTextColor(rowLight))
-    val secondaryText = Color(context.getSecondaryTextColor(rowLight))
+    val primaryText = Color(context.primaryTextColor)
+    val secondaryText = Color(context.secondaryTextColor)
     val accent = Color(context.accentColor)
     Column(modifier = modifier.fillMaxWidth()) {
         Row(

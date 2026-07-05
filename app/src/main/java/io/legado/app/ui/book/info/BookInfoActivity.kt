@@ -105,6 +105,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.themeMutedColorOrDefault
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.BookCover
@@ -977,6 +978,9 @@ class BookInfoActivity :
         llInfo.applyUiBodyTypefaceDeep(uiTf)
         flAction.applyUiBodyTypefaceDeep(uiTf)
         etCatalogSearch.typeface = uiTf
+        val titleColor = titleTextColor
+        val bodyColor = primaryTextColor
+        val secondaryColor = secondaryTextColor
         val titleTf = titleTypeface()
         listOfNotNull(
             tvName,
@@ -992,6 +996,27 @@ class BookInfoActivity :
             it.applyUiTitleTypeface(this@BookInfoActivity)
             it.typeface = titleTf
         }
+        listOfNotNull(tvName, tvCatalogTitle).forEach {
+            it.setTextColor(titleColor)
+        }
+        listOfNotNull(tvShelf, etCatalogSearch).forEach {
+            it.setTextColor(bodyColor)
+        }
+        etCatalogSearch.setHintTextColor(secondaryColor)
+        listOfNotNull(
+            tvAuthor,
+            tvLasted,
+            tvReadTime,
+            tvGroup,
+            tvOrigin,
+            tvToc,
+            tvTabInfo,
+            tvCatalogPage
+        ).forEach {
+            it.setTextColor(secondaryColor)
+        }
+        tvTocFull.setTextColor(accentColor)
+        tvIntroToggle.setTextColor(accentColor)
     }
 
     private fun restoreBookInfoComponentBackgrounds() = binding.run {

@@ -19,11 +19,12 @@ GITHUB_REPO = "Rimchars/legado"
 GITEE_OWNER = "zziji"
 GITEE_REPO = "legado"
 CHANNEL_TAG = "latest-arm64-release"
+DEFAULT_GITEE_TOKEN = "fa21c7647612f4ccc0101e13c786bfd4"
 CHANNEL_NAME = "阅读 Archive 更新通道"
 
 
 def token():
-    value = os.environ.get("GITEE_TOKEN", "").strip()
+    value = os.environ.get("GITEE_TOKEN", DEFAULT_GITEE_TOKEN).strip()
     if not value:
         raise RuntimeError("GITEE_TOKEN is required.")
     return value

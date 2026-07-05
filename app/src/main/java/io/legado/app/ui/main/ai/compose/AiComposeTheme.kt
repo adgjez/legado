@@ -12,6 +12,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.utils.ColorUtils
 
 @Immutable
@@ -59,8 +61,8 @@ fun aiComposeStyle(context: Context): AiComposeStyle {
     val background = pageBackground
     val accent = context.accentColor
     val baseIsLight = !night
-    val primaryText = if (night) 0xfff2f3f5.toInt() else 0xff202124.toInt()
-    val secondaryText = if (night) 0xffaeb4bc.toInt() else 0xff6b7178.toInt()
+    val primaryText = context.primaryTextColor
+    val secondaryText = context.secondaryTextColor
     val cardSurface = if (baseIsLight) {
         0xfffbfcfe.toInt()
     } else {

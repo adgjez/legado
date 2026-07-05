@@ -23,13 +23,12 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogFileChooserBinding
 import io.legado.app.databinding.ItemFilePickerBinding
 import io.legado.app.databinding.ItemPathPickerBinding
-import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.dialogSurfaceBackground
-import io.legado.app.lib.theme.getPrimaryDisabledTextColor
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryDisabledTextColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
@@ -174,12 +173,17 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
         RecyclerAdapter<File, ItemPathPickerBinding>(requireContext()) {
 
         private val arrowIcon = ConvertUtils.toDrawable(FilePickerIcon.getArrow())
+        private val textColor = context.primaryTextColor
+        private val uiTypeface = context.uiTypeface()
 
         init {
             addHeaderView {
                 ItemPathPickerBinding.inflate(inflater, it, false).apply {
                     textView.text = "root"
+                    textView.setTextColor(textColor)
+                    textView.typeface = uiTypeface
                     imageView.setImageDrawable(arrowIcon)
+                    arrowIcon?.let { icon -> DrawableCompat.setTint(icon, textColor) }
                     root.setOnClickListener {
                         viewModel.subDocs.clear()
                         setItems(viewModel.subDocs)
@@ -210,13 +214,16 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
             payloads: MutableList<Any>
         ) {
             binding.textView.text = item.name
+            binding.textView.setTextColor(textColor)
+            binding.textView.typeface = uiTypeface
         }
 
     }
 
     inner class FileAdapter : RecyclerAdapter<File, ItemFilePickerBinding>(requireContext()) {
-        private val primaryTextColor = context.getPrimaryTextColor(!AppConfig.isNightTheme)
-        private val disabledTextColor = context.getPrimaryDisabledTextColor(!AppConfig.isNightTheme)
+        private val primaryTextColor = context.primaryTextColor
+        private val disabledTextColor = context.primaryDisabledTextColor
+        private val uiTypeface = context.uiTypeface()
         private val upIcon = ConvertUtils.toDrawable(FilePickerIcon.getUpDir())!!
         private val folderIcon = ConvertUtils.toDrawable(FilePickerIcon.getFolder())!!
         private val fileIcon = ConvertUtils.toDrawable(FilePickerIcon.getFile())!!
@@ -261,6 +268,7 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
             payloads: MutableList<Any>
         ) {
             if (payloads.isEmpty()) {
+                binding.textView.typeface = uiTypeface
                 if (item == viewModel.lastDir) {
                     binding.imageView.setImageDrawable(upIcon)
                     binding.textView.text = dirParent

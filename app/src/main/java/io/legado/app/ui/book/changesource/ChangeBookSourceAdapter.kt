@@ -14,6 +14,9 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemChangeSourceBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.gone
@@ -30,6 +33,9 @@ class ChangeBookSourceAdapter(
 ) : DiffRecyclerAdapter<SearchBook, ItemChangeSourceBinding>(context) {
 
     private var modernMenuPopup: ModernActionPopup.Handle? = null
+    private val primaryTextColor = context.primaryTextColor
+    private val secondaryTextColor = context.secondaryTextColor
+    private val uiTypeface = context.uiTypeface()
 
     override val diffItemCallback = object : DiffUtil.ItemCallback<SearchBook>() {
         override fun areItemsTheSame(oldItem: SearchBook, newItem: SearchBook): Boolean {
@@ -56,6 +62,17 @@ class ChangeBookSourceAdapter(
         payloads: MutableList<Any>
     ) {
         binding.apply {
+            tvOrigin.typeface = uiTypeface
+            tvAuthor.typeface = uiTypeface
+            tvLast.typeface = uiTypeface
+            tvCurrentChapterWordCount.typeface = uiTypeface
+            tvRespondTime.typeface = uiTypeface
+            tvOrigin.setTextColor(primaryTextColor)
+            tvAuthor.setTextColor(secondaryTextColor)
+            tvLast.setTextColor(secondaryTextColor)
+            tvCurrentChapterWordCount.setTextColor(secondaryTextColor)
+            tvRespondTime.setTextColor(secondaryTextColor)
+            ivChecked.drawable?.let { DrawableCompat.setTint(it, primaryTextColor) }
             if (payloads.isEmpty()) {
                 tvOrigin.text = item.originName
                 tvAuthor.text = item.author

@@ -72,9 +72,10 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.lib.theme.toThemeTextColorOrNull
 import io.legado.app.utils.ColorUtils
 import io.legado.app.lib.theme.composeActionRadius
@@ -124,13 +125,12 @@ fun rememberAppSettingPalette(): AppSettingPalette {
     val themeUiPalette = rememberThemeUiPalette()
     val rowBaseColor = themeUiPalette.cardColor
     // 文字/强调前景色按实际背景明暗推导，避免随 night 标志产生深底深字/浅底白字
-    val rowLight = ColorUtils.isColorLight(rowBaseColor)
     val customUiText = AppConfig.uiFontColor.toThemeTextColorOrNull()
     val customTitleText = AppConfig.titleFontColor.toThemeTextColorOrNull()
     val secondaryText = if (customUiText != null) {
         Color(customUiText).copy(alpha = 0.72f)
     } else {
-        Color(context.getSecondaryTextColor(rowLight))
+        Color(context.secondaryTextColor)
     }
     val page = Color(context.backgroundColor)
     val row = UiCorner.surfaceColor(rowBaseColor)
@@ -141,10 +141,9 @@ fun rememberAppSettingPalette(): AppSettingPalette {
     } else {
         context.bottomBackground
     }
-    val bottomBarLight = ColorUtils.isColorLight(bottomBarBase)
-    val bottomBarText = Color(customUiText ?: context.getPrimaryTextColor(bottomBarLight))
+    val bottomBarText = Color(customUiText ?: context.primaryTextColor)
     val border = UiCorner.panelBorderColor(context)
-    val primaryText = Color(customTitleText ?: customUiText ?: context.getPrimaryTextColor(rowLight))
+    val primaryText = Color(customTitleText ?: customUiText ?: context.titleTextColor)
     val accentArgb = context.accentColor
     val accent = Color(accentArgb)
     val onAccent = if (ColorUtils.isColorLight(accentArgb)) Color.Black else Color.White

@@ -5,7 +5,6 @@ import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
 import io.legado.app.R
 import io.legado.app.lib.theme.*
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
 
@@ -53,18 +52,17 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
                 )
             }
             isBottomBackground -> {
-                val isLight = ColorUtils.isColorLight(context.bottomBackground)
                 background = Selector.shapeBuild()
                     .setCornerRadius(radius)
                     .setStrokeWidth(1.dpToPx())
                     .setDisabledStrokeColor(context.getCompatColor(R.color.md_grey_500))
-                    .setDefaultStrokeColor(context.getPrimaryTextColor(isLight))
+                    .setDefaultStrokeColor(context.primaryTextColor)
                     .setSelectedStrokeColor(context.accentColor)
                     .setPressedBgColor(context.getCompatColor(R.color.transparent30))
                     .create()
                 setTextColor(
                     Selector.colorBuild()
-                        .setDefaultColor(context.getPrimaryTextColor(isLight))
+                        .setDefaultColor(context.primaryTextColor)
                         .setSelectedColor(context.accentColor)
                         .setDisabledColor(context.getCompatColor(R.color.md_grey_500))
                         .create()
@@ -75,14 +73,14 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
                     .setCornerRadius(radius)
                     .setStrokeWidth(1.dpToPx())
                     .setDisabledStrokeColor(context.getCompatColor(R.color.md_grey_500))
-                    .setDefaultStrokeColor(ThemeStore.textColorSecondary(context))
-                    .setSelectedStrokeColor(ThemeStore.accentColor(context))
+                    .setDefaultStrokeColor(context.secondaryTextColor)
+                    .setSelectedStrokeColor(context.accentColor)
                     .setPressedBgColor(context.getCompatColor(R.color.transparent30))
                     .create()
                 setTextColor(
                     Selector.colorBuild()
-                        .setDefaultColor(ThemeStore.textColorSecondary(context))
-                        .setSelectedColor(ThemeStore.accentColor(context))
+                        .setDefaultColor(context.secondaryTextColor)
+                        .setSelectedColor(context.accentColor)
                         .setDisabledColor(context.getCompatColor(R.color.md_grey_500))
                         .create()
                 )

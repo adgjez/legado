@@ -362,6 +362,6 @@ private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {
 
 private fun previewPanelSurfaceColor(color: Int): Int {
     val alpha = android.graphics.Color.alpha(color)
-    val maxAlpha = (255 * 0.72f).roundToInt()
-    return AndroidColorUtils.setAlphaComponent(color, alpha.coerceAtMost(maxAlpha))
+    val minAlpha = (255 * 0.45f).roundToInt()
+    return AndroidColorUtils.setAlphaComponent(color, alpha.coerceAtLeast(minAlpha))
 }

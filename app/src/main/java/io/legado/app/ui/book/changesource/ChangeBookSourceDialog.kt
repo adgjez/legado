@@ -31,6 +31,8 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -226,7 +228,12 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
     }
 
     private fun initBottomBar() {
+        val textColor = requireContext().primaryTextColor
         binding.tvDur.text = callBack?.oldBook?.originName
+        binding.tvDur.typeface = requireContext().uiTypeface()
+        binding.tvDur.setTextColor(textColor)
+        binding.ivTop.setColorFilter(textColor)
+        binding.ivBottom.setColorFilter(textColor)
         binding.tvDur.setOnClickListener {
             scrollToDurSource()
         }

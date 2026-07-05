@@ -33,12 +33,9 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
-import io.legado.app.lib.theme.toThemeTextColorOrNull
-import io.legado.app.utils.ColorUtils
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.utils.toTimeAgo
 
 sealed interface BookshelfItemUi {
@@ -146,12 +143,9 @@ fun BookshelfGridItem(
     val titleFontFamily = remember(context, themeSignature) {
         FontFamily(context.titleTypeface())
     }
-    val titleColor = remember(context, themeSignature) {
-        Color(
-            AppConfig.titleFontColor.toThemeTextColorOrNull()
-                ?: AppConfig.uiFontColor.toThemeTextColorOrNull()
-                ?: context.getPrimaryTextColor(ColorUtils.isColorLight(context.backgroundColor))
-        )
+    val titleColorArgb = context.titleTextColor
+    val titleColor = remember(context, themeSignature, titleColorArgb) {
+        Color(titleColorArgb)
     }
     Column(
         modifier = modifier

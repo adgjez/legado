@@ -14,12 +14,9 @@ import androidx.preference.PreferenceViewHolder
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTitleTypeface
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.lib.theme.getSecondaryTextColor
-import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.utils.ColorUtils
 import splitties.views.onLongClick
 import kotlin.math.roundToInt
 
@@ -64,16 +61,8 @@ open class Preference(context: Context, attrs: AttributeSet) :
             if (!viewHolder.itemView.isInEditMode) {
                 tvTitle?.applyUiTitleTypeface(context)
                 tvSummary?.typeface = context.uiTypeface()
-                val textBackground = if (isBottomBackground) {
-                    context.bottomBackground
-                } else {
-                    context.themeCardColorOrDefault()
-                }
-                val isLight = ColorUtils.isColorLight(textBackground)
-                val pTextColor = context.getPrimaryTextColor(isLight)
-                tvTitle?.setTextColor(pTextColor)
-                val sTextColor = context.getSecondaryTextColor(isLight)
-                tvSummary?.setTextColor(sTextColor)
+                tvTitle?.setTextColor(context.titleTextColor)
+                tvSummary?.setTextColor(context.secondaryTextColor)
             }
             val iconView = viewHolder.findViewById(R.id.preference_icon)
             if (iconView is ImageView) {

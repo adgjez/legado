@@ -114,6 +114,8 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.book.info.BookInfoUseWebHost
 import io.legado.app.ui.widget.image.CoverImageView
@@ -298,6 +300,8 @@ fun bookInfoComposeStyle(context: Context, coverColor: Int? = null): BookInfoCom
     } else {
         coverAccent.coverTone(saturation = 0.44f, value = 0.18f)
     }
+    val primaryText = context.primaryTextColor
+    val secondaryText = context.secondaryTextColor
     return BookInfoComposeStyle(
         colors = BookInfoComposeColors(
             background = Color(pageBackground),
@@ -305,14 +309,14 @@ fun bookInfoComposeStyle(context: Context, coverColor: Int? = null): BookInfoCom
             contentTop = Color(contentTop),
             surface = Color(surface),
             surfaceVariant = Color(variant),
-            primaryText = Color(if (night) 0xfff5f6f8.toInt() else 0xff202124.toInt()),
-            secondaryText = Color(if (night) 0xffaeb4bc.toInt() else 0xff68707a.toInt()),
+            primaryText = Color(primaryText),
+            secondaryText = Color(secondaryText),
             accent = Color(accent),
             accentContainer = Color(accentContainer),
             metricTop = Color(metricTop),
             metricBottom = Color(metricBottom),
-            metricText = Color(if (night) 0xfff5f6f8.toInt() else 0xff202124.toInt()),
-            metricSecondaryText = Color(if (night) 0xffb8bec8.toInt() else 0xff5f6670.toInt()),
+            metricText = Color(primaryText),
+            metricSecondaryText = Color(secondaryText),
             metricHighlight = Color(if (night) 0x3dffffff else 0x80ffffff),
             actionText = Color(actionText),
             scrim = Color(scrim)

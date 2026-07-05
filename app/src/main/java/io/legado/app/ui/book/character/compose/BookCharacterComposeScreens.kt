@@ -92,6 +92,8 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.book.read.config.SpeechVoiceRoutePickerDialog
 import io.legado.app.ui.book.read.config.speechRouteSummary
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
@@ -134,8 +136,8 @@ fun rememberCharacterStyle(): CharacterStyle {
     val page = ContextCompat.getColor(context, if (night) R.color.md_grey_900 else R.color.white)
     val card = if (night) 0xff202329.toInt() else 0xfff7f8fb.toInt()
     val cardAlt = ColorUtils.blendColors(card, accent, if (night) 0.18f else 0.08f)
-    val text = if (night) 0xfff2f3f5.toInt() else 0xff202124.toInt()
-    val subText = if (night) 0xffaeb4bc.toInt() else 0xff6b7178.toInt()
+    val text = context.primaryTextColor
+    val subText = context.secondaryTextColor
     val stroke = if (night) 0x26ffffff else 0x17000000
     return CharacterStyle(
         colors = CharacterColors(

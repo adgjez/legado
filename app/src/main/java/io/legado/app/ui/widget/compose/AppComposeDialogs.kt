@@ -76,8 +76,6 @@ import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
-import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.themeDividerColorOrDefault
 import io.legado.app.lib.theme.titleTypeface
@@ -142,13 +140,12 @@ fun rememberAppDialogStyle(): AppDialogStyle {
             UiCorner.effectStrokeColor(surfaceBase)
         }
     // 文字色按对话框实际背景明暗推导，而非全局 night 标志，避免深底深字/浅底白字
-    val surfaceLight = ColorUtils.isColorLight(surfaceBase)
     return AppDialogStyle(
         accent = Color(accent),
         surface = Color(ColorUtils.withAlpha(surfaceBase, layoutAlpha)),
         fieldSurface = Color(ColorUtils.withAlpha(fieldSurface, fieldAlpha)),
-        primaryText = Color(context.getPrimaryTextColor(surfaceLight)),
-        secondaryText = Color(context.getSecondaryTextColor(surfaceLight)),
+        primaryText = Color(context.primaryTextColor),
+        secondaryText = Color(context.secondaryTextColor),
         stroke = Color(stroke),
         danger = Color(ContextCompat.getColor(context, R.color.md_red_500)),
         panelRadius = context.composePanelRadius(),

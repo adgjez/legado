@@ -47,15 +47,13 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
-import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.rememberThemeUiPalette
 import io.legado.app.lib.theme.titleTypeface
-import io.legado.app.lib.theme.toThemeTextColorOrNull
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.BookIntroUtils
-import io.legado.app.utils.ColorUtils
 
 object BookshelfListItemStyle {
     const val Classic = 0
@@ -99,15 +97,8 @@ fun rememberBookshelfListPalette(): BookshelfListPalette {
     val rowBaseColor = themeUiPalette.cardColor
     val rowColor = UiCorner.surfaceColor(rowBaseColor)
     val rowPressedColor = UiCorner.surfaceColor(rowBaseColor, pressed = true)
-    val rowLight = ColorUtils.isColorLight(rowBaseColor)
-    val customUiText = AppConfig.uiFontColor.toThemeTextColorOrNull()
-    val customTitleText = AppConfig.titleFontColor.toThemeTextColorOrNull()
-    val primaryText = Color(customTitleText ?: customUiText ?: context.getPrimaryTextColor(rowLight))
-    val secondaryText = if (customUiText != null) {
-        Color(customUiText).copy(alpha = 0.72f)
-    } else {
-        Color(context.getSecondaryTextColor(rowLight))
-    }
+    val primaryText = Color(context.titleTextColor)
+    val secondaryText = Color(context.secondaryTextColor)
     val accent = Color(context.accentColor)
     val border = UiCorner.panelBorderColor(context)
     val panelRadiusPx = UiCorner.panelRadius(context)

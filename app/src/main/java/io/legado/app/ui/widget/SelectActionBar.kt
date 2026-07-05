@@ -17,9 +17,10 @@ import io.legado.app.lib.theme.TintHelper
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.elevation
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryDisabledTextColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.transparentNavBar
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.visible
@@ -32,7 +33,7 @@ class SelectActionBar @JvmOverloads constructor(
 ) : FrameLayout(context, attrs) {
 
     private val bgIsLight = ColorUtils.isColorLight(context.bottomBackground)
-    private val primaryTextColor = context.getPrimaryTextColor(bgIsLight)
+    private val primaryTextColor = context.primaryTextColor
     private val disabledColor = context.getSecondaryDisabledTextColor(bgIsLight)
 
     private var callBack: CallBack? = null
@@ -52,6 +53,9 @@ class SelectActionBar @JvmOverloads constructor(
                 elevation = context.elevation
             }
             binding.cbSelectedAll.setTextColor(primaryTextColor)
+            binding.cbSelectedAll.typeface = context.uiTypeface()
+            binding.btnRevertSelection.typeface = context.uiTypeface()
+            binding.btnSelectActionMain.typeface = context.uiTypeface()
             TintHelper.setTint(binding.cbSelectedAll, context.accentColor, !bgIsLight)
             binding.ivMenuMore.setColorFilter(disabledColor, PorterDuff.Mode.SRC_IN)
             binding.cbSelectedAll.setOnUserCheckedChangeListener { isChecked ->

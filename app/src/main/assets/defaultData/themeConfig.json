@@ -5,7 +5,9 @@
     "primaryColor": "#795548",
     "accentColor": "#E53935",
     "backgroundColor": "#F5F5F5",
-    "bottomBackground": "#EEEEEE"
+    "bottomBackground": "#EEEEEE",
+    "uiFontColor": "#000000",
+    "titleFontColor": "#000000"
   },
   {
     "themeName": "典雅蓝",
@@ -13,7 +15,9 @@
     "primaryColor": "#03A9F4",
     "accentColor": "#AD1457",
     "backgroundColor": "#F5F5F5",
-    "bottomBackground": "#EEEEEE"
+    "bottomBackground": "#EEEEEE",
+    "uiFontColor": "#000000",
+    "titleFontColor": "#000000"
   },
   {
     "themeName": "黑白",
@@ -21,7 +25,9 @@
     "primaryColor": "#303030",
     "accentColor": "#E0E0E0",
     "backgroundColor": "#424242",
-    "bottomBackground": "#424242"
+    "bottomBackground": "#424242",
+    "uiFontColor": "#FFFFFF",
+    "titleFontColor": "#FFFFFF"
   },
   {
     "themeName": "A屏黑",
@@ -29,6 +35,8 @@
     "primaryColor": "#000000",
     "accentColor": "#FFFFFF",
     "backgroundColor": "#000000",
-    "bottomBackground": "#000000"
+    "bottomBackground": "#000000",
+    "uiFontColor": "#FFFFFF",
+    "titleFontColor": "#FFFFFF"
   }
 ]

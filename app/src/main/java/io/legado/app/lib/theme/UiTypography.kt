@@ -117,15 +117,14 @@ fun TextView.applyUiTitleTypeface(context: Context) {
     setTag(R.id.ui_title_typeface_role, true)
     val colorBeforeTypeface = currentTextColor
     typeface = context.titleTypeface()
-    AppConfig.titleFontColor.toThemeTextColorOrNull()?.let { titleColor ->
-        val defaultTitleColors = setOf(
-            context.primaryTextColor,
-            context.getPrimaryTextColor(!AppConfig.isNightTheme),
-            ThemeStore.textColorPrimary(context)
-        )
-        if (colorBeforeTypeface in defaultTitleColors) {
-            setTextColor(titleColor)
-        }
+    val titleColor = context.titleTextColor
+    val defaultTitleColors = setOf(
+        context.primaryTextColor,
+        context.getPrimaryTextColor(!AppConfig.isNightTheme),
+        ThemeStore.textColorPrimary(context)
+    )
+    if (colorBeforeTypeface in defaultTitleColors) {
+        setTextColor(titleColor)
     }
 }
 

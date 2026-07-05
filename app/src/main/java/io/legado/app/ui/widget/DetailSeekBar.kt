@@ -9,10 +9,9 @@ import android.widget.SeekBar
 import androidx.appcompat.widget.TooltipCompat
 import io.legado.app.R
 import io.legado.app.databinding.ViewDetailSeekBarBinding
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.progressAdd
 
 
@@ -47,13 +46,14 @@ class DetailSeekBar @JvmOverloads constructor(
         val title = typedArray.getText(R.styleable.DetailSeekBar_title)
         binding.tvSeekTitle.apply {
             text = title
+            typeface = context.uiTypeface()
             TooltipCompat.setTooltipText(this, title)
         }
+        binding.tvSeekValue.typeface = context.uiTypeface()
         binding.seekBar.max = typedArray.getInteger(R.styleable.DetailSeekBar_max, 0)
         typedArray.recycle()
         if (isBottomBackground && !isInEditMode) {
-            val isLight = ColorUtils.isColorLight(context.bottomBackground)
-            val textColor = context.getPrimaryTextColor(isLight)
+            val textColor = context.primaryTextColor
             binding.tvSeekTitle.setTextColor(textColor)
             binding.ivSeekPlus.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
             binding.ivSeekReduce.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)

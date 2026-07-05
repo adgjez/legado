@@ -11,11 +11,10 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
 import io.legado.app.R
 import io.legado.app.lib.theme.applyUiTitleTypeface
-import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.lib.theme.getSecondaryTextColor
-import io.legado.app.lib.theme.themeCardColorOrDefault
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.titleTextColor
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.progressAdd
 
 class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs) {
@@ -58,11 +57,10 @@ class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(cont
         summaryView?.text = summary
         summaryView?.isGone = summary.isNullOrEmpty()
         if (!holder.itemView.isInEditMode) {
-            val rowLight = ColorUtils.isColorLight(context.themeCardColorOrDefault())
-            val primaryText = context.getPrimaryTextColor(rowLight)
-            val secondaryText = context.getSecondaryTextColor(rowLight)
+            val primaryText = context.primaryTextColor
+            val secondaryText = context.secondaryTextColor
             titleView?.applyUiTitleTypeface(context)
-            titleView?.setTextColor(primaryText)
+            titleView?.setTextColor(context.titleTextColor)
             summaryView?.typeface = context.uiTypeface()
             summaryView?.setTextColor(secondaryText)
             mValueText?.typeface = context.uiTypeface()

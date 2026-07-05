@@ -23,10 +23,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +50,9 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.login.SourceLoginActivity
@@ -327,12 +333,15 @@ private fun HttpTtsEditScreen(
 ) {
     val colors = rememberHttpTtsEditColors()
     val context = LocalContext.current
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = colors.page,
-        shape = RoundedCornerShape(context.composePanelRadius())
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = FontFamily(context.uiTypeface()))
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp).imePadding()) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colors.page,
+            shape = RoundedCornerShape(context.composePanelRadius())
+        ) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp).imePadding()) {
             Row {
                 Text(
                     text = "HTTP 朗读规则",
@@ -385,6 +394,7 @@ private fun HttpTtsEditScreen(
                 EditField(HttpTtsField.Header, draft.header, { onDraftChange(draft.copy(header = it)) }, onFocus, minLines = 3)
                 EditField(HttpTtsField.JsLib, draft.jsLib, { onDraftChange(draft.copy(jsLib = it)) }, onFocus, minLines = 4)
                 Spacer(modifier = Modifier.height(18.dp))
+            }
             }
         }
     }
@@ -448,8 +458,8 @@ private fun rememberHttpTtsEditColors(): HttpTtsEditColors {
     return HttpTtsEditColors(
         page = Color(if (night) 0xff15171b.toInt() else 0xffffffff.toInt()),
         card = Color(if (night) 0xff20242a.toInt() else 0xfff6f7fa.toInt()),
-        text = Color(if (night) 0xfff2f3f5.toInt() else 0xff202124.toInt()),
-        subText = Color(if (night) 0xffaeb4bc.toInt() else 0xff6b7178.toInt()),
+        text = Color(context.primaryTextColor),
+        subText = Color(context.secondaryTextColor),
         stroke = Color(if (night) 0x26ffffff else 0x18000000),
         accent = Color(ColorUtils.blendColors(context.accentColor, if (night) 0xffffffff.toInt() else 0xff000000.toInt(), 0.04f))
     )

@@ -4,8 +4,9 @@ import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.ColorUtils
@@ -27,7 +28,7 @@ object ReaderSheetStyle {
     fun resolve(context: Context, baseColor: Int = context.bottomBackground): Palette {
         val base = baseColor
         val isLight = ColorUtils.isColorLight(base)
-        val textColor = context.getPrimaryTextColor(isLight)
+        val textColor = context.primaryTextColor
         val accentColor = context.accentColor
         val primaryColor = context.primaryColor
         val cardColor = context.themeCardColorOrDefault()
@@ -49,14 +50,13 @@ object ReaderSheetStyle {
         )
         val strokeBase = ColorUtils.blendColors(primaryColor, textColor, 0.3f)
         val stroke = ColorUtils.adjustAlpha(strokeBase, if (isLight) 0.2f else 0.28f)
-        val secondaryTextColor = ColorUtils.withAlpha(textColor, if (isLight) 0.72f else 0.78f)
         return Palette(
             surface = surface,
             panel = panel,
             panelStrong = panelStrong,
             stroke = stroke,
             textColor = textColor,
-            secondaryTextColor = secondaryTextColor,
+            secondaryTextColor = context.secondaryTextColor,
             primaryColor = primaryColor,
             accentColor = accentColor
         )

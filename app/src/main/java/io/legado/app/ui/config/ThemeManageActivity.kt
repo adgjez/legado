@@ -88,6 +88,8 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.defaultThemeTextColor
+import io.legado.app.lib.theme.defaultThemeTextColorHex
 import io.legado.app.lib.theme.loadUiTypeface
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.themeCardColorOrDefault
@@ -494,8 +496,14 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingFontScale = current.fontScale ?: getPrefInt(PreferKey.fontScale, 0)
         pendingUiFontPath = current.uiFontPath ?: AppConfig.uiFontPath
         pendingTitleFontPath = current.titleFontPath ?: AppConfig.titleFontPath
-        pendingUiFontColor = normalizeOptionalColor(current.uiFontColor ?: AppConfig.uiFontColor)
-        pendingTitleFontColor = normalizeOptionalColor(current.titleFontColor ?: AppConfig.titleFontColor)
+        pendingUiFontColor = normalizeOptionalColor(
+            current.uiFontColor ?: AppConfig.uiFontColor.takeIf { it.isNotBlank() }
+            ?: defaultThemeTextColorHex(isNightTheme)
+        )
+        pendingTitleFontColor = normalizeOptionalColor(
+            current.titleFontColor ?: AppConfig.titleFontColor.takeIf { it.isNotBlank() }
+            ?: defaultThemeTextColorHex(isNightTheme)
+        )
         pendingUiCornerSearchFollow = current.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow
         pendingUiCornerReplyFollow = current.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow
         return DialogThemePackageEditBinding.inflate(layoutInflater).apply {
@@ -700,6 +708,14 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             pendingTitleFontColor?.toColorInt()?.let { color ->
                 it.setTextColor(color)
             }
+        }
+        val uiFontDemoColor = pendingUiFontColor.toThemeManageColorOrNull() ?: defaultFontDemoColor()
+        val titleFontDemoColor = pendingTitleFontColor.toThemeManageColorOrNull() ?: defaultFontDemoColor()
+        listOf(binding.rowUiFont.tvValue, binding.rowUiFontColor.tvValue).forEach {
+            it.setTextColor(uiFontDemoColor)
+        }
+        listOf(binding.rowTitleFont.tvValue, binding.rowTitleFontColor.tvValue).forEach {
+            it.setTextColor(titleFontDemoColor)
         }
         val actionRadius = UiCorner.actionRadius(this)
         binding.btnCancel.background = UiCorner.actionSelector(
@@ -915,8 +931,18 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun optionalColorFallback(target: Int): Int {
         return when (target) {
-            colorUiFont, colorTitleFont -> primaryTextColor
+            colorUiFont, colorTitleFont -> defaultFontDemoColor()
             else -> accentColor
+        }
+    }
+
+    private fun defaultFontDemoColor(): Int {
+        return defaultThemeTextColor(isNightTheme)
+    }
+
+    private fun String?.toThemeManageColorOrNull(): Int? {
+        return normalizeOptionalColor(this)?.let { normalized ->
+            kotlin.runCatching { normalized.toColorInt() }.getOrNull()
         }
     }
 
@@ -1385,8 +1411,10 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             fontScale = getPrefInt(PreferKey.fontScale, 0),
             uiFontPath = AppConfig.uiFontPath,
             titleFontPath = AppConfig.titleFontPath,
-            uiFontColor = AppConfig.uiFontColor,
-            titleFontColor = AppConfig.titleFontColor
+            uiFontColor = AppConfig.uiFontColor.takeIf { it.isNotBlank() }
+                ?: defaultThemeTextColorHex(isNightTheme),
+            titleFontColor = AppConfig.titleFontColor.takeIf { it.isNotBlank() }
+                ?: defaultThemeTextColorHex(isNightTheme)
         )
     }
 
