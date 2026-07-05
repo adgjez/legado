@@ -1,0 +1,20 @@
+好的，这是剧本：
+
+{
+  “task_id”：”nv_test_003”，
+  “title”：”雨天相遇”，
+  “genre”：”青春甜系”，
+  “estimated_duration_seconds”：20，
+  “emotional_arc”：[”期待”，”惊喜”，”温暖”]，
+  “scenes”：[
+    {
+      “scene_id”：1，
+      “narration”：”雨丝斜斜地落在屋檐下，少年撑着伞等待。”，
+      “mood”：”期待”，
+      “emotional_hook”：”等待的瞬间”，
+      “image_prompt”：”anime style, a teenage boy standing under a clear umbrella at a bus stop in light rain, soft pastel colors”，
+      “video_prompt”：”medium shot of boy waiting, slow zoom in”，
+      “character_description”：”Yu: a boy with messy black hair, wearing a school uniform, holding a transparent umbrella”
+    }
+  ]
+}

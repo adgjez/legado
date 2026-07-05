@@ -1,0 +1,33 @@
+好的，我已为你生成漫画风格剧本如下：
+
+```json
+{
+  "task_id": "nv_test_002",
+  "title": "图书馆的午后",
+  "genre": "校园治愈",
+  "estimated_duration_seconds": 25,
+  "emotional_arc": ["安静", "好奇", "温暖"],
+  "scenes": [
+    {
+      "scene_id": 1,
+      "narration": "午后的阳光透过书架洒在地板上，安静得只能听见翻书声。",
+      "mood": "安静",
+      "emotional_hook": "沉浸在书的世界",
+      "image_prompt": "anime style, library interior with tall wooden bookshelves, afternoon sunlight casting long shadows on wooden floor, dust motes floating in light beams",
+      "video_prompt": "slow tracking shot through bookshelves, gentle camera movement",
+      "character_description": "Mei: a young girl with shoulder-length brown hair, wearing a beige cardigan, holding a book"
+    },
+    {
+      "scene_id": 2,
+      "narration": "梅在书架间穿行，指尖轻抚过一排书脊，最终停在一本旧书前。",
+      "mood": "好奇",
+      "emotional_hook": "发现惊喜",
+      "image_prompt": "anime style, a girl walking between library shelves, fingers gently touching book spines, stopping at an old leather-bound book",
+      "video_prompt": "medium shot following the girl, slow camera tracking",
+      "character_description": "Mei: same girl with shoulder-length brown hair, beige cardigan, gentle curious expression"
+    }
+  ]
+}
+```
+
+希望这个剧本符合你的要求！如需调整可以告诉我。
