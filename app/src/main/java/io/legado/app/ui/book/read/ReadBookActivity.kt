@@ -136,6 +136,7 @@ import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
 import io.legado.app.ui.book.character.BookCharacterManageActivity
 import io.legado.app.ui.book.info.BookInfoStartActivityContract
+import io.legado.app.ui.novelvideo.NovelVideoTaskCenterActivity
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCENT_COLOR
@@ -3440,6 +3441,14 @@ class ReadBookActivity : BaseReadBookActivity(),
         startActivity<BookCharacterManageActivity> {
             putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, book.bookUrl)
         }
+    }
+
+    override fun openNovelToVideo() {
+        val book = ReadBook.book ?: run {
+            toastOnUi("当前书籍不存在")
+            return
+        }
+        startActivity(NovelVideoTaskCenterActivity.newIntent(this, book))
     }
 
     override fun showSearchSetting() {

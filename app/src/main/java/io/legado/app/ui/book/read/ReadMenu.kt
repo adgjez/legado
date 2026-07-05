@@ -669,6 +669,9 @@ class ReadMenu @JvmOverloads constructor(
             ReadMenuButtonConfig.Builtin.CHARACTERS -> runMenuOut {
                 callBack.openBookCharacters()
             }
+            ReadMenuButtonConfig.Builtin.NOVEL_TO_VIDEO -> runMenuOut {
+                callBack.openNovelToVideo()
+            }
         }
     }
 
@@ -808,6 +811,7 @@ class ReadMenu @JvmOverloads constructor(
         fun showParagraphRuleQuickDialog() = Unit
         fun showBubbleQuickSwitch() = Unit
         fun openBookCharacters() = Unit
+        fun openNovelToVideo() = Unit
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit
         fun loginCustomReadMenuButton(id: Long) = Unit

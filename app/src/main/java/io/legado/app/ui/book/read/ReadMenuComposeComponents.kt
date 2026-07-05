@@ -769,6 +769,7 @@ private fun readMenuButtonTitle(
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> "段落"
             ReadMenuButtonConfig.Builtin.BUBBLE -> "气泡"
             ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
+            ReadMenuButtonConfig.Builtin.NOVEL_TO_VIDEO -> "转视频"
             else -> ref.id
         }
     }
@@ -798,6 +799,7 @@ private fun readMenuButtonIconRes(
         ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
         ReadMenuButtonConfig.Builtin.BUBBLE -> R.drawable.ic_bubble_chart
         ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
+        ReadMenuButtonConfig.Builtin.NOVEL_TO_VIDEO -> R.drawable.ic_play_outline_24dp
         else -> R.drawable.ic_custom
     }
 }
