@@ -12,6 +12,7 @@ import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.data.entities.NovelVideoSegment
 import io.legado.app.data.entities.NovelVideoSegmentStatus
+import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.help.ai.AiImageGalleryManager.ImageMetadata
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiChatMessage
@@ -487,7 +488,7 @@ object NovelVideoGenerator {
             )
             // Stage 5 重试 3 次：前 2 次用 sanitizeImagePrompt，第 3 次调 LLM 改写
             val maxRetry = 3
-            var savedImage: ImageMetadata? = null
+            var savedImage: AiGeneratedImage? = null
             var lastErr: Throwable? = null
             for (attempt in 1..maxRetry) {
                 checkCancelled(isCancelled, job.id)
