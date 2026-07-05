@@ -62,7 +62,7 @@ object ThemeConfig {
     val configFilePath = FileUtils.getPath(appCtx.filesDir, configFileName)
 
     val configList: ArrayList<Config> by lazy {
-        val cList = getConfigs() ?: DefaultData.themeConfigs
+        val cList = normalizeConfigList(getConfigs() ?: DefaultData.themeConfigs)
         ArrayList(cList)
     }
 
@@ -194,9 +194,15 @@ object ThemeConfig {
 
     fun upConfig() {
         configList.clear()
-        configList.addAll(getConfigs() ?: DefaultData.themeConfigs)
+        configList.addAll(normalizeConfigList(getConfigs() ?: DefaultData.themeConfigs))
     }
+
     fun save() {
+        val normalized = normalizeConfigList(configList)
+        if (normalized != configList) {
+            configList.clear()
+            configList.addAll(normalized)
+        }
         val json = GSON.toJson(configList)
         FileUtils.delete(configFilePath)
         FileUtils.createFileIfNotExist(configFilePath).writeText(json)
@@ -269,6 +275,16 @@ object ThemeConfig {
         } catch (_: Exception) {
             return false
         }
+    }
+
+    private fun normalizeConfigList(configs: List<Config>): List<Config> {
+        val normalized = linkedMapOf<Pair<String, Boolean>, Config>()
+        configs.forEach { config ->
+            if (validateConfig(config)) {
+                normalized[config.themeName to config.isNightTheme] = config
+            }
+        }
+        return normalized.values.toList()
     }
 
     private fun getConfigs(): List<Config>? {
