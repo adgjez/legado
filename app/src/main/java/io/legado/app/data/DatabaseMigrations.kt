@@ -25,6 +25,7 @@ object DatabaseMigrations {
             migration_99_100, migration_100_101, migration_101_102, migration_102_103,
             migration_103_104, migration_104_105, migration_105_106,
             migration_106_107, migration_107_108, migration_108_109,
+            migration_109_110,
         )
     }
 
@@ -36,6 +37,95 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_name` ON `books` (`name`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_author` ON `books` (`author`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_type` ON `books` (`type`)")
+        }
+    }
+
+    /**
+     * v109 → v110：新增 novel_video_jobs / novel_video_segments /
+     * novel_video_character_sheets 三张表，支撑小说→视频流水线。
+     *
+     * 详见 docs/superpowers/specs/2026-07-05-novel-to-video-in-legado-design.md。
+     */
+    private val migration_109_110 = object : Migration(109, 110) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `novel_video_jobs` (
+                    `id` TEXT NOT NULL,
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `bookName` TEXT NOT NULL DEFAULT '',
+                    `chapterStartIndex` INTEGER NOT NULL DEFAULT -1,
+                    `chapterEndIndex` INTEGER NOT NULL DEFAULT -1,
+                    `chapterTitlesJson` TEXT NOT NULL DEFAULT '[]',
+                    `status` TEXT NOT NULL DEFAULT 'drafting',
+                    `paramsJson` TEXT NOT NULL DEFAULT '{}',
+                    `screenplayJson` TEXT,
+                    `draftJson` TEXT,
+                    `outputPath` TEXT,
+                    `coverPath` TEXT,
+                    `totalDurationMs` INTEGER,
+                    `errorMessage` TEXT,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    `attachToBookChapter` INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_jobs_bookUrl` ON `novel_video_jobs` (`bookUrl`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_jobs_status` ON `novel_video_jobs` (`status`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_jobs_createdAt` ON `novel_video_jobs` (`createdAt`)")
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `novel_video_segments` (
+                    `id` TEXT NOT NULL,
+                    `jobId` TEXT NOT NULL DEFAULT '',
+                    `chapterIndex` INTEGER NOT NULL DEFAULT 0,
+                    `chapterTitle` TEXT NOT NULL DEFAULT '',
+                    `sceneId` INTEGER NOT NULL DEFAULT 1,
+                    `narration` TEXT NOT NULL DEFAULT '',
+                    `imagePrompt` TEXT NOT NULL DEFAULT '',
+                    `videoPrompt` TEXT NOT NULL DEFAULT '',
+                    `characterDescription` TEXT NOT NULL DEFAULT '',
+                    `imageUrl` TEXT,
+                    `videoUrl` TEXT,
+                    `localVideoPath` TEXT,
+                    `durationMs` INTEGER,
+                    `status` TEXT NOT NULL DEFAULT 'pending',
+                    `retryCount` INTEGER NOT NULL DEFAULT 0,
+                    `errorMessage` TEXT,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`jobId`) REFERENCES `novel_video_jobs`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_segments_jobId` ON `novel_video_segments` (`jobId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_segments_jobId_chapterIndex_sceneId` ON `novel_video_segments` (`jobId`, `chapterIndex`, `sceneId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_segments_status` ON `novel_video_segments` (`status`)")
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `novel_video_character_sheets` (
+                    `id` TEXT NOT NULL,
+                    `jobId` TEXT NOT NULL DEFAULT '',
+                    `characterId` TEXT NOT NULL DEFAULT '',
+                    `characterName` TEXT NOT NULL DEFAULT '',
+                    `description` TEXT NOT NULL DEFAULT '',
+                    `role` TEXT NOT NULL DEFAULT '主角',
+                    `combinedViewUrl` TEXT,
+                    `localPath` TEXT,
+                    `status` TEXT NOT NULL DEFAULT 'pending',
+                    `errorMessage` TEXT,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`jobId`) REFERENCES `novel_video_jobs`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_character_sheets_jobId` ON `novel_video_character_sheets` (`jobId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_character_sheets_jobId_characterId` ON `novel_video_character_sheets` (`jobId`, `characterId`)")
         }
     }
 
