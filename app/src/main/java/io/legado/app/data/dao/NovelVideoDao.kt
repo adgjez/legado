@@ -8,6 +8,7 @@ import androidx.room.Update
 import io.legado.app.data.entities.NovelVideoCharacterSheet
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoSegment
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NovelVideoDao {
@@ -23,17 +24,29 @@ interface NovelVideoDao {
     @Query("SELECT * FROM novel_video_jobs WHERE id = :jobId LIMIT 1")
     suspend fun getJob(jobId: String): NovelVideoJob?
 
+    @Query("SELECT * FROM novel_video_jobs WHERE id = :jobId LIMIT 1")
+    fun getJobFlow(jobId: String): Flow<NovelVideoJob?>
+
     @Query("SELECT * FROM novel_video_jobs ORDER BY createdAt DESC")
     suspend fun getAllJobs(): List<NovelVideoJob>
 
     @Query("SELECT * FROM novel_video_jobs WHERE status IN ('drafting','screenplay_pending_review','screenplay_confirmed','generating','merging','paused') ORDER BY updatedAt DESC")
     suspend fun getRunningJobs(): List<NovelVideoJob>
 
+    @Query("SELECT * FROM novel_video_jobs WHERE status IN ('drafting','screenplay_pending_review','screenplay_confirmed','generating','merging','paused') ORDER BY updatedAt DESC")
+    fun getRunningJobsFlow(): Flow<List<NovelVideoJob>>
+
     @Query("SELECT * FROM novel_video_jobs WHERE status IN ('completed','partial_failed') ORDER BY updatedAt DESC")
     suspend fun getCompletedJobs(): List<NovelVideoJob>
 
+    @Query("SELECT * FROM novel_video_jobs WHERE status IN ('completed','partial_failed') ORDER BY updatedAt DESC")
+    fun getCompletedJobsFlow(): Flow<List<NovelVideoJob>>
+
     @Query("SELECT * FROM novel_video_jobs WHERE status IN ('failed','cancelled') ORDER BY updatedAt DESC")
     suspend fun getFailedJobs(): List<NovelVideoJob>
+
+    @Query("SELECT * FROM novel_video_jobs WHERE status IN ('failed','cancelled') ORDER BY updatedAt DESC")
+    fun getFailedJobsFlow(): Flow<List<NovelVideoJob>>
 
     @Query("SELECT * FROM novel_video_jobs WHERE bookUrl = :bookUrl ORDER BY createdAt DESC")
     suspend fun getJobsByBook(bookUrl: String): List<NovelVideoJob>
@@ -73,6 +86,9 @@ interface NovelVideoDao {
     @Query("SELECT * FROM novel_video_segments WHERE jobId = :jobId ORDER BY chapterIndex ASC, sceneId ASC")
     suspend fun getSegmentsByJob(jobId: String): List<NovelVideoSegment>
 
+    @Query("SELECT * FROM novel_video_segments WHERE jobId = :jobId ORDER BY chapterIndex ASC, sceneId ASC")
+    fun getSegmentsByJobFlow(jobId: String): Flow<List<NovelVideoSegment>>
+
     @Query("SELECT * FROM novel_video_segments WHERE jobId = :jobId AND chapterIndex = :chapterIndex ORDER BY sceneId ASC")
     suspend fun getSegmentsByChapter(jobId: String, chapterIndex: Int): List<NovelVideoSegment>
 
@@ -107,6 +123,9 @@ interface NovelVideoDao {
 
     @Query("SELECT * FROM novel_video_character_sheets WHERE jobId = :jobId ORDER BY role ASC")
     suspend fun getCharacterSheetsByJob(jobId: String): List<NovelVideoCharacterSheet>
+
+    @Query("SELECT * FROM novel_video_character_sheets WHERE jobId = :jobId ORDER BY role ASC")
+    fun getCharacterSheetsByJobFlow(jobId: String): Flow<List<NovelVideoCharacterSheet>>
 
     @Query("SELECT * FROM novel_video_character_sheets WHERE jobId = :jobId AND status = 'completed' ORDER BY role ASC")
     suspend fun getCompletedCharacterSheets(jobId: String): List<NovelVideoCharacterSheet>
