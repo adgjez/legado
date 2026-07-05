@@ -123,7 +123,7 @@ fun NovelVideoJobDetailScreen(
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.novel_video_retry_job)) },
                                 onClick = {
-                                    currentJob?.let { scope.launch { viewModel.retryJob(it.id) } }
+                                    scope.launch { viewModel.retryJob(currentJob.id) }
                                     showOverflow = false
                                 }
                             )
@@ -320,7 +320,7 @@ private fun JobSummaryCard(job: NovelVideoJob, sceneCountPerChapter: Int, segmen
             if (job.errorMessage?.isNotBlank() == true) {
                 Spacer(Modifier.size(6.dp))
                 Text(
-                    text = job.errorMessage!!,
+                    text = job.errorMessage,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 4,
@@ -413,7 +413,7 @@ private fun CharacterSheetCard(sheet: NovelVideoCharacterSheet) {
             if (sheet.errorMessage?.isNotBlank() == true) {
                 Spacer(Modifier.size(4.dp))
                 Text(
-                    text = sheet.errorMessage!!,
+                    text = sheet.errorMessage,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 2,
@@ -470,7 +470,7 @@ private fun SegmentCard(segment: NovelVideoSegment) {
             if (segment.status == NovelVideoSegmentStatus.FAILED && segment.errorMessage?.isNotBlank() == true) {
                 Spacer(Modifier.size(4.dp))
                 Text(
-                    text = segment.errorMessage!!,
+                    text = segment.errorMessage,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 3,

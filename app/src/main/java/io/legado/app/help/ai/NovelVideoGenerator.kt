@@ -16,6 +16,7 @@ import io.legado.app.help.ai.AiImageGalleryManager.ImageMetadata
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -563,14 +564,9 @@ object NovelVideoGenerator {
                 id = "seg_${job.id}_${scene.sceneId}",
                 jobId = job.id,
                 chapterIndex = job.chapterStartIndex.takeIf { it >= 0 } ?: 0,
-                chapterTitle = job.chapterTitlesJson.let {
-                    runCatching {
-                        io.legado.app.utils.GSON.fromJson(
-                            it,
-                            List::class.java
-                        ) as? List<String>
-                    }.getOrNull()?.firstOrNull().orEmpty()
-                },
+                chapterTitle = io.legado.app.utils.GSON
+                    .fromJsonArray<String>(job.chapterTitlesJson)
+                    .getOrNull()?.firstOrNull().orEmpty(),
                 sceneId = scene.sceneId,
                 narration = scene.narration,
                 imagePrompt = scene.imagePrompt,

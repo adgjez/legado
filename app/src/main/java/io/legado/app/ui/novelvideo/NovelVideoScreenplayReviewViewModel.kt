@@ -44,11 +44,11 @@ class NovelVideoScreenplayReviewViewModel(app: Application) : AndroidViewModel(a
             appDb.novelVideoDao.getJobFlow(jobId).collectLatest { j ->
                 _job.value = j
                 if (j?.draftJson?.isNotBlank() == true) {
-                    _draft.value = ScreenplayDraft.fromJson(j.draftJson!!)
+                    _draft.value = ScreenplayDraft.fromJson(j.draftJson)
                 } else if (j?.screenplayJson?.isNotBlank() == true) {
                     // 已确认过的剧本也能查看（只读）
                     runCatching {
-                        val sp = io.legado.app.help.ai.Screenplay.fromJson(j.screenplayJson!!)
+                        val sp = io.legado.app.help.ai.Screenplay.fromJson(j.screenplayJson)
                         ScreenplayDraft(
                             taskId = sp.taskId,
                             title = sp.title,

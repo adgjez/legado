@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ModalBottomSheet
@@ -291,7 +292,7 @@ private fun BookSelector(
             enabled = enabled,
             label = { Text(stringResource(R.string.novel_video_select_book)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled)
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             allBooks.forEach { book ->
@@ -333,7 +334,7 @@ private fun ChapterRangeSelector(
                 readOnly = true,
                 label = { Text(stringResource(R.string.novel_video_config_chapter_start)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = startExpanded) },
-                modifier = Modifier.fillMaxWidth().menuAnchor()
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
             )
             ExposedDropdownMenu(expanded = startExpanded, onDismissRequest = { startExpanded = false }) {
                 chapters.forEachIndexed { idx, ch ->
@@ -358,7 +359,7 @@ private fun ChapterRangeSelector(
                 readOnly = true,
                 label = { Text(stringResource(R.string.novel_video_config_chapter_end)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = endExpanded) },
-                modifier = Modifier.fillMaxWidth().menuAnchor()
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
             )
             ExposedDropdownMenu(expanded = endExpanded, onDismissRequest = { endExpanded = false }) {
                 chapters.forEachIndexed { idx, ch ->
@@ -396,7 +397,7 @@ private fun <T> ProviderDropdown(
             readOnly = true,
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
