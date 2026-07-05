@@ -224,7 +224,9 @@ object ThemeConfig {
         }
         var hasTheme = false
         configList.forEachIndexed { index, config ->
-            if (newConfig.themeName == config.themeName) {
+            if (newConfig.themeName == config.themeName &&
+                newConfig.isNightTheme == config.isNightTheme
+            ) {
                 configList[index] = newConfig
                 hasTheme = true
                 return@forEachIndexed
@@ -244,7 +246,10 @@ object ThemeConfig {
             return
         }
         newConfigs.forEach { newConfig ->
-            val existingIndex = configList.indexOfFirst { it.themeName == newConfig.themeName }
+            val existingIndex = configList.indexOfFirst {
+                it.themeName == newConfig.themeName &&
+                    it.isNightTheme == newConfig.isNightTheme
+            }
             if (existingIndex != -1) {
                 configList[existingIndex] = newConfig
             } else {
