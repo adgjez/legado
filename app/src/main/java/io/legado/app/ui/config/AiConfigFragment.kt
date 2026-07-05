@@ -50,6 +50,7 @@ class AiConfigFragment : ComposeSettingFragment() {
         const val KEY_DEFAULT_MODEL_SETTINGS = "aiDefaultModelSettings"
         const val KEY_IMAGE_GALLERY = "aiImageGallery"
         const val KEY_IMAGE_PROVIDER_MANAGE = "aiImageProviderManage"
+        const val KEY_VIDEO_PROVIDER_MANAGE = "aiVideoProviderManage"
         const val KEY_MANAGE_PROVIDERS = "aiManageProviders"
         const val KEY_ADD_MCP_SERVER = "aiAddMcpServer"
         const val KEY_MANAGE_MCP_SERVERS = "aiManageMcpServers"
@@ -75,6 +76,7 @@ class AiConfigFragment : ComposeSettingFragment() {
         val mcpServers = AppConfig.aiMcpServerList
         val enabledMcpCount = mcpServers.count { it.enabled }
         val imageProviders = AppConfig.aiImageProviderList
+        val videoProviders = AppConfig.aiVideoProviderList
         val skills = AppConfig.aiSkillList
         val enabledSkillCount = skills.count { it.enabled }
         val worldBooks = AppConfig.aiWorldBookList
@@ -205,6 +207,22 @@ class AiConfigFragment : ComposeSettingFragment() {
                             onClick = {
                                 startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
                             }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_VIDEO_PROVIDER_MANAGE,
+                            title = getString(R.string.ai_video_provider_manage),
+                            summary = if (videoProviders.isEmpty()) {
+                                getString(R.string.ai_video_provider_summary_empty)
+                            } else {
+                                getString(
+                                    R.string.ai_video_provider_summary,
+                                    videoProviders.count { it.enabled },
+                                    videoProviders.size
+                                )
+                            },
+                            onClick = {
+                                startActivity(Intent(requireContext(), AiVideoProviderManageActivity::class.java))
+                            }
                         )
                     )
                 ),
@@ -316,7 +334,8 @@ class AiConfigFragment : ComposeSettingFragment() {
             PreferKey.aiAskModelId,
             PreferKey.aiSummaryModelId,
             PreferKey.aiReadAloudRoleModelId,
-            PreferKey.aiCurrentImageProviderId -> refreshUi()
+            PreferKey.aiCurrentImageProviderId,
+            PreferKey.aiCurrentVideoProviderId -> refreshUi()
             PreferKey.aiReadToolMode -> refreshUi()
         }
     }
