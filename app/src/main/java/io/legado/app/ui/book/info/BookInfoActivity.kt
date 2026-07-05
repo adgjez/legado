@@ -2518,31 +2518,50 @@ class BookInfoActivity :
             return
         }
         val density = resources.displayMetrics.density
-        val fallbackHeight = (target.contentHeight * density).toInt()
-        if (fallbackHeight > 0) {
-            applyUseWebIntroLayout(fallbackHeight)
-        }
         target.evaluateJavascript(
             """
                 (function() {
                   var body = document.body;
-                  var doc = document.documentElement;
-                  var bottom = 0;
-                  if (body) {
-                    Array.prototype.forEach.call(body.children || [], function(el) {
-                      var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
-                      if (style && (style.display === 'none' || style.visibility === 'hidden')) return;
-                      var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-                      if (rect) bottom = Math.max(bottom, rect.bottom + window.pageYOffset);
+                  if (!body) return 0;
+                  var origin = body.getBoundingClientRect ? body.getBoundingClientRect().top + window.pageYOffset : 0;
+                  var bottom = origin;
+                  function includeRect(rect, marginBottom) {
+                    if (!rect || rect.width <= 0 && rect.height <= 0) return;
+                    bottom = Math.max(bottom, rect.bottom + window.pageYOffset + (marginBottom || 0));
+                  }
+                  Array.prototype.forEach.call(body.querySelectorAll('*'), function(el) {
+                    var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+                    if (style && (style.display === 'none' || style.visibility === 'hidden')) return;
+                    var marginBottom = style ? (parseFloat(style.marginBottom) || 0) : 0;
+                    if (el.getClientRects) {
+                      Array.prototype.forEach.call(el.getClientRects(), function(rect) {
+                        includeRect(rect, marginBottom);
+                      });
+                    } else if (el.getBoundingClientRect) {
+                      includeRect(el.getBoundingClientRect(), marginBottom);
+                    }
+                  });
+                  if (document.createTreeWalker && document.createRange) {
+                    var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+                    var node;
+                    while ((node = walker.nextNode())) {
+                      if (!node.nodeValue || !node.nodeValue.trim()) continue;
+                      var range = document.createRange();
+                      range.selectNodeContents(node);
+                      Array.prototype.forEach.call(range.getClientRects(), function(rect) {
+                        includeRect(rect, 0);
+                      });
+                      range.detach && range.detach();
+                    }
+                  }
+                  if (bottom <= origin && body.getBoundingClientRect) {
+                    Array.prototype.forEach.call(body.getClientRects(), function(rect) {
+                      includeRect(rect, 0);
                     });
                   }
-                  var documentHeight = Math.max(
-                    body ? body.scrollHeight || 0 : 0,
-                    body ? body.offsetHeight || 0 : 0,
-                    doc ? doc.scrollHeight || 0 : 0,
-                    doc ? doc.offsetHeight || 0 : 0
-                  );
-                  return bottom > 1 ? bottom : documentHeight;
+                  var bodyStyle = window.getComputedStyle ? window.getComputedStyle(body) : null;
+                  var paddingBottom = bodyStyle ? (parseFloat(bodyStyle.paddingBottom) || 0) : 0;
+                  return Math.ceil(Math.max(0, bottom - origin + paddingBottom));
                 })();
             """.trimIndent()
         ) { result ->
