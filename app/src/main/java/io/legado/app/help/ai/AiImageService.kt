@@ -43,6 +43,28 @@ object AiImageService {
         return generateRaw(effectivePrompt(prompt, target), target).source
     }
 
+    /**
+     * 带参考图重载：用于小说→视频 Stage 5 的"场景图 + 角色三视图"参考生图。
+     *
+     * - [referenceImages] 为空时退化为 [generate]
+     * - OpenAI 类型 Provider 走 `/chat/completions`，content 为 `[{text}, {image_url}...]` 数组，
+     *   对齐 director_ai 的 gpt-4o-image-vip 用法
+     * - JS 类型 Provider 暂不支持参考图，自动退化为单图生成（参考图忽略）
+     */
+    suspend fun generate(
+        prompt: String,
+        referenceImages: List<String>,
+        provider: AiImageProviderConfig? = null
+    ): String {
+        if (referenceImages.isEmpty()) return generate(prompt, provider)
+        val target = resolveProvider(provider)
+        val effective = effectivePrompt(prompt, target)
+        return when (target.type) {
+            AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target).source
+            else -> generateByChatWithImages(effective, referenceImages, target).source
+        }
+    }
+
     suspend fun generateAndStore(
         prompt: String,
         provider: AiImageProviderConfig? = null,
@@ -50,6 +72,25 @@ object AiImageService {
     ): AiGeneratedImage {
         val target = resolveProvider(provider)
         val image = generateRaw(effectivePrompt(prompt, target), target)
+        return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model, metadata)
+    }
+
+    /**
+     * 带参考图的 [generateAndStore] 重载，用于 Stage 5 场景图入库。
+     */
+    suspend fun generateAndStore(
+        prompt: String,
+        referenceImages: List<String>,
+        provider: AiImageProviderConfig? = null,
+        metadata: AiImageGalleryManager.ImageMetadata = AiImageGalleryManager.ImageMetadata()
+    ): AiGeneratedImage {
+        if (referenceImages.isEmpty()) return generateAndStore(prompt, provider, metadata)
+        val target = resolveProvider(provider)
+        val effective = effectivePrompt(prompt, target)
+        val image = when (target.type) {
+            AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target)
+            else -> generateByChatWithImages(effective, referenceImages, target)
+        }
         return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model, metadata)
     }
 
@@ -202,6 +243,168 @@ object AiImageService {
             logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, effectiveModel, e)
             throw e
         }
+    }
+
+    /**
+     * 带参考图的 OpenAI Chat Completions 生图（gpt-4o-image-vip 风格）。
+     *
+     * 请求：POST `${baseUrl}/chat/completions`
+     * ```json
+     * {
+     *   "model": "gpt-4o-image-vip",
+     *   "messages": [{
+     *     "role": "user",
+     *     "content": [
+     *       {"type":"text","text":"<prompt>"},
+     *       {"type":"image_url","image_url":{"url":"<ref1>"}},
+     *       {"type":"image_url","image_url":{"url":"<ref2>"}}
+     *     ]
+     *   }]
+     * }
+     * ```
+     *
+     * 响应：从 `choices[0].message.content` 中提取图片 URL/base64。
+     * content 可能是字符串（包含 markdown 图片或 URL），也可能是数组（含 image_url 项）。
+     */
+    private suspend fun generateByChatWithImages(
+        prompt: String,
+        referenceImages: List<String>,
+        provider: AiImageProviderConfig
+    ): ImageGenerationResult {
+        val baseUrl = normalizeBaseUrl(provider.baseUrl)
+        require(baseUrl.isNotBlank()) { "Base URL is empty" }
+        val params = runCatching { JSONObject(provider.defaultParamsJson.ifBlank { "{}" }) }
+            .getOrDefault(JSONObject())
+        val effectiveModel = provider.model
+            .ifBlank { params.optString("model").ifBlank { "gpt-4o-image-vip" } }
+
+        val contentArray = JSONArray()
+        contentArray.put(JSONObject().apply {
+            put("type", "text")
+            put("text", prompt)
+        })
+        // 最多 3 张参考图（与 veo3.1 maxReferenceImages 一致）；多余的按顺序截断
+        referenceImages.filter { it.isNotBlank() }.take(3).forEach { url ->
+            contentArray.put(JSONObject().apply {
+                put("type", "image_url")
+                put("image_url", JSONObject().apply { put("url", url) })
+            })
+        }
+
+        val messagesArray = JSONArray()
+        messagesArray.put(JSONObject().apply {
+            put("role", "user")
+            put("content", contentArray)
+        })
+
+        val payload = JSONObject().apply {
+            put("model", effectiveModel)
+            put("messages", messagesArray)
+            put("stream", false)
+            mergeJson(params, ignored = setOf("endpoint", "model", "messages", "stream", "input", "tools", "response"))
+        }
+
+        val requestUrl = "${baseUrl.trimEnd('/')}/chat/completions"
+        val startedAt = System.currentTimeMillis()
+        var status = ""
+        try {
+            val response = provider.httpClient().newCallResponse {
+                url(requestUrl)
+                postJson(payload.toString())
+                addHeader("Accept", "application/json")
+                addHeader("Content-Type", "application/json")
+                provider.apiKey.takeIf { it.isNotBlank() }?.let {
+                    addHeader("Authorization", "Bearer $it")
+                }
+                addHeaders(AiChatService.parseCustomHeaders(provider.headers))
+            }
+            response.use {
+                status = "${it.code} ${it.message}"
+                val text = it.body.stringLimited(MAX_IMAGE_RESPONSE_BYTES)
+                if (!it.isSuccessful) error(text.ifBlank { status })
+                val root = JSONObject(text)
+                val source = extractImageFromChatResponse(root)
+                    ?: error("Chat 响应未包含图片字段: ${jsonShape(root)}")
+                logRequest(provider, requestUrl, status, startedAt, true, effectiveModel)
+                return ImageGenerationResult(source, effectiveModel)
+            }
+        } catch (e: Throwable) {
+            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, effectiveModel, e)
+            throw e
+        }
+    }
+
+    /**
+     * 从 chat/completions 响应里提取图片。
+     *
+     * 兼容多种返回形态：
+     * 1. `choices[0].message.content` 为数组，含 `{type:"image_url", image_url:{url}}` 项
+     * 2. `choices[0].message.content` 为字符串，可能是 URL / data URL / markdown `![](...)`
+     * 3. `choices[0].message.images` 数组（部分兼容实现）
+     * 4. 顶层 `data.url` / `data[0].url` 等 OpenAI 风格回退
+     */
+    private fun extractImageFromChatResponse(root: JSONObject): String? {
+        val choices = root.optJSONArray("choices")
+        if (choices != null && choices.length() > 0) {
+            val message = choices.optJSONObject(0)?.optJSONObject("message") ?: JSONObject()
+            // 形态 1：content 是数组
+            message.optJSONArray("content")?.let { contentArr ->
+                for (i in 0 until contentArr.length()) {
+                    val item = contentArr.optJSONObject(i) ?: continue
+                    if (item.optString("type") == "image_url") {
+                        val url = item.optJSONObject("image_url")?.optString("url").orEmpty()
+                        if (url.isNotBlank()) {
+                            runCatching { normalizeImageString(url) }.getOrNull()?.let { return it }
+                        }
+                    }
+                    // 部分实现直接放 url 字段
+                    item.optString("url").takeIf { it.isNotBlank() }?.let { url ->
+                        runCatching { normalizeImageString(url) }.getOrNull()?.let { return it }
+                    }
+                }
+            }
+            // 形态 2：content 是字符串
+            message.optString("content").takeIf { it.isNotBlank() }?.let { contentStr ->
+                extractImageUrlFromString(contentStr)?.let { return it }
+            }
+            // 形态 3：message.images 数组
+            message.optJSONArray("images")?.let { imagesArr ->
+                for (i in 0 until imagesArr.length()) {
+                    val item = imagesArr.opt(i)
+                    when (item) {
+                        is String -> runCatching { normalizeImageString(item) }.getOrNull()?.let { return it }
+                        is JSONObject -> imageFromOpenAiJson(item)?.let { return it }
+                    }
+                }
+            }
+        }
+        // 形态 4：顶层 OpenAI 风格回退
+        return imageFromOpenAiJson(root)
+    }
+
+    /**
+     * 从字符串里提取图片 URL / data URL。
+     * 支持：纯 URL、纯 data URL、markdown 图片 `![alt](url)`、HTML `<img src="url">`。
+     */
+    private fun extractImageUrlFromString(content: String): String? {
+        val trimmed = content.trim()
+        // 纯 URL / data URL
+        if (trimmed.startsWith("http", true) || trimmed.startsWith("data:", true)) {
+            return runCatching { normalizeImageString(trimmed) }.getOrNull()
+        }
+        // markdown: ![alt](url)
+        Regex("!\\[[^\\]]*]\\(([^)]+)\\)").find(trimmed)?.let { m ->
+            runCatching { normalizeImageString(m.groupValues[1]) }.getOrNull()?.let { return it }
+        }
+        // html: <img src="url">
+        Regex("<img[^>]+src=[\"']([^\"']+)[\"']").find(trimmed)?.let { m ->
+            runCatching { normalizeImageString(m.groupValues[1]) }.getOrNull()?.let { return it }
+        }
+        // 兜底：在字符串里搜第一个 http(s) URL
+        Regex("https?://\\S+\\.(?:png|jpe?g|webp|gif)\\S*", RegexOption.IGNORE_CASE).find(trimmed)?.let { m ->
+            runCatching { normalizeImageString(m.value) }.getOrNull()?.let { return it }
+        }
+        return null
     }
 
     private fun ResponseBody.stringLimited(maxBytes: Long): String {

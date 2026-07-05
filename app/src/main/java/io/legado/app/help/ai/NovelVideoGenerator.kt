@@ -1,10 +1,13 @@
 package io.legado.app.help.ai
 
+import android.util.Base64
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.NovelVideoCharacterSheet
+import io.legado.app.data.entities.NovelVideoCharacterSheetStatus
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.data.entities.NovelVideoSegment
@@ -12,8 +15,13 @@ import io.legado.app.data.entities.NovelVideoSegmentStatus
 import io.legado.app.help.ai.AiImageGalleryManager.ImageMetadata
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiChatMessage
+import io.legado.app.ui.main.ai.AiVideoProviderConfig
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import java.io.File
 
 /**
  * 小说→视频流水线编排器（参考 [AiChapterSummaryService] 的形态）。
@@ -23,12 +31,12 @@ import kotlinx.coroutines.delay
  * 2. LLM 生成剧本草稿 → [NovelVideoPromptBuilder] + [AiChatService] + [NovelVideoScreenplayParser]
  * 3. 剧本审阅（可选）→ postEvent(NOVEL_VIDEO_REVIEW_READY) + 挂起等待用户确认
  * 4. 提取角色 + 三视图 → [NovelVideoPromptBuilder.extractMainCharacters] + [AiImageService.generateAndStore]
- * 5. 逐场景生图 → AiImageService（Phase 4 加多图重载后启用）
- * 6. 逐场景生视频 → AiVideoService（Phase 4 启用）
+ * 5. 逐场景生图 → [AiImageService.generateAndStore]（多图参考重载，传入角色三视图）
+ * 6. 逐场景生视频 → [AiVideoTaskPoller.generate]（参考图 = 场景图 + 角色三视图）
  * 7. MediaMuxer 合并 → VideoMuxer（Phase 5 启用）
  * 8. 产物入库 + 通知 → BookChapter.resourceUrl + postEvent(NOVEL_VIDEO_COMPLETED)
  *
- * **当前实现进度**：Stage 1-4 完整可用；Stage 5-7 留 TODO 等 Phase 4/5；Stage 8 完成。
+ * **当前实现进度**：Stage 1-6 完整可用；Stage 7 留 TODO 等 Phase 5；Stage 8 完成。
  */
 object NovelVideoGenerator {
 
@@ -315,7 +323,14 @@ object NovelVideoGenerator {
     /**
      * Stage 5-7：逐场景生图 + 生视频 + 合并。
      *
-     * 当前实现：插入 segment 行（PENDING），Stage 5/6/7 留 TODO 等 Phase 4/5。
+     * Stage 5: 对每个 segment 调用 [AiImageService.generateAndStore] 的多图参考重载，
+     *          参考图 = 已完成的角色三视图（最多 2 张），用于保持人物一致性。
+     * Stage 6: 对每个 segment 调用 [AiVideoTaskPoller.generate]，
+     *          参考图 = 场景图 + 角色三视图（最多 3 张，场景图优先）。
+     * Stage 7: 合并 → TODO Phase 5（VideoMuxer）。
+     *
+     * 并发：按 [NovelVideoParams.concurrency] 分批，批内并行、批间串行。
+     * 断点续传：跳过已 VIDEO_COMPLETED 的 segment；IMAGE_COMPLETED 的跳过生图直接进 Stage 6。
      */
     private suspend fun runScenePipeline(
         job: NovelVideoJob,
@@ -328,15 +343,159 @@ object NovelVideoGenerator {
         // 1. 落库 segment 行（断点续传时跳过已存在的）
         ensureSegments(job, screenplay)
 
-        // 2. Stage 5: 逐场景生图（TODO Phase 4：需 AiImageService 多图重载）
-        // 3. Stage 6: 逐场景生视频（TODO Phase 4：需 AiVideoService）
-        // 4. Stage 7: 合并（TODO Phase 5：需 VideoMuxer）
-        // 当前 Phase 3 仅落库 segments，让流水线结构完整可测；
-        // Phase 4/5 完成后在此处补齐调用。
-        val segments = appDb.novelVideoDao.getSegmentsByJob(job.id)
-        if (segments.isNotEmpty() && segments.all { it.status == NovelVideoSegmentStatus.VIDEO_COMPLETED }) {
-            // Phase 5 完成后这里会真的合并；当前 stub 直接置 MERGING 等待 Phase 5
+        val allSegments = appDb.novelVideoDao.getSegmentsByJob(job.id)
+        // 仅处理未完成且未失败的 segment（FAILED 段需用户显式重试）
+        val pendingSegments = allSegments.filter {
+            it.status != NovelVideoSegmentStatus.VIDEO_COMPLETED &&
+                it.status != NovelVideoSegmentStatus.FAILED
+        }
+        if (pendingSegments.isEmpty()) {
+            // 全部已完成或失败，直接进 Stage 7
             updateJobStatus(job.id, NovelVideoJobStatus.MERGING, "等待合并")
+            return
+        }
+
+        // 预解析角色三视图引用（API 可用的 URL/data URL）
+        val characterRefs = characterSheets
+            .filter { it.isCompleted }
+            .mapNotNull { resolveImageRef(it.combinedViewUrl) }
+            .take(2)  // 最多 2 张角色参考图
+
+        val imageProvider = AiImageService.providerByIdOrNull(params.imageProviderId)
+        val videoProvider = AiVideoService.providerByIdOrNull(params.videoProviderId)
+
+        // 2. 分批并发处理
+        val concurrency = params.concurrency.coerceIn(1, 4)
+        pendingSegments.chunked(concurrency).forEach { batch ->
+            checkCancelled(isCancelled, job.id)
+            coroutineScope {
+                batch.map { segment ->
+                    async {
+                        runCatching {
+                            processSegment(job, segment, characterRefs, params, imageProvider, videoProvider, isCancelled)
+                        }.onFailure { e ->
+                            AppLog.put("Segment 处理异常 ${segment.id}", e)
+                            appDb.novelVideoDao.updateSegmentStatus(
+                                segment.id,
+                                NovelVideoSegmentStatus.FAILED,
+                                e.message,
+                                System.currentTimeMillis()
+                            )
+                            postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
+                        }
+                    }
+                }.awaitAll()
+            }
+            // 每批结束后发一次进度事件
+            postEvent(EventBus.NOVEL_VIDEO_PROGRESS, job.id)
+        }
+
+        // 3. Stage 7: 合并（TODO Phase 5）
+        updateJobStatus(job.id, NovelVideoJobStatus.MERGING, "等待合并")
+    }
+
+    /**
+     * 处理单个 segment：Stage 5 生图 → Stage 6 生视频。
+     * 失败时更新状态为 FAILED 并返回（不抛异常，避免影响同批其他 segment）。
+     *
+     * 注意：[segment] 参数是不可变快照，状态更新后通过 [currentStatus] 局部变量跟踪，
+     * 避免 Stage 5 完成后因 `segment.status` 仍是旧值而跳过 Stage 6。
+     */
+    private suspend fun processSegment(
+        job: NovelVideoJob,
+        segment: NovelVideoSegment,
+        characterRefs: List<String>,
+        params: NovelVideoParams,
+        imageProvider: io.legado.app.ui.main.ai.AiImageProviderConfig?,
+        videoProvider: AiVideoProviderConfig?,
+        isCancelled: () -> Boolean
+    ) {
+        var imageUrl = segment.imageUrl
+        var currentStatus = segment.status
+
+        // ========== Stage 5: 逐场景生图 ==========
+        if (currentStatus == NovelVideoSegmentStatus.PENDING ||
+            currentStatus == NovelVideoSegmentStatus.IMAGE_GENERATING
+        ) {
+            checkCancelled(isCancelled, job.id)
+            appDb.novelVideoDao.updateSegmentStatus(
+                segment.id, NovelVideoSegmentStatus.IMAGE_GENERATING, null, System.currentTimeMillis()
+            )
+            val imagePrompt = NovelVideoPromptBuilder.buildSceneImagePrompt(segment, params.stylePrompt)
+            val sanitizedImagePrompt = NovelVideoPromptBuilder.sanitizeImagePrompt(imagePrompt)
+            val metadata = ImageMetadata(
+                bookName = job.bookName,
+                chapterIndex = segment.chapterIndex,
+                chapterTitle = segment.chapterTitle,
+                sourceType = "novel_video_scene",
+                sourceText = segment.narration
+            )
+            val imageResult = runCatching {
+                AiImageService.generateAndStore(sanitizedImagePrompt, characterRefs, imageProvider, metadata)
+            }
+            if (imageResult.isFailure) {
+                val err = imageResult.exceptionOrNull()?.message
+                AppLog.put("场景生图失败 ${segment.id}", imageResult.exceptionOrNull())
+                appDb.novelVideoDao.updateSegmentStatus(
+                    segment.id, NovelVideoSegmentStatus.FAILED, err, System.currentTimeMillis()
+                )
+                postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
+                return
+            }
+            val savedImage = imageResult.getOrThrow()
+            imageUrl = savedImage.localPath
+            currentStatus = NovelVideoSegmentStatus.IMAGE_COMPLETED
+            appDb.novelVideoDao.updateSegmentImage(
+                segment.id, imageUrl, NovelVideoSegmentStatus.IMAGE_COMPLETED, System.currentTimeMillis()
+            )
+            postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
+        }
+
+        // ========== Stage 6: 逐场景生视频 ==========
+        if (currentStatus == NovelVideoSegmentStatus.IMAGE_COMPLETED ||
+            currentStatus == NovelVideoSegmentStatus.VIDEO_GENERATING
+        ) {
+            checkCancelled(isCancelled, job.id)
+            appDb.novelVideoDao.updateSegmentStatus(
+                segment.id, NovelVideoSegmentStatus.VIDEO_GENERATING, null, System.currentTimeMillis()
+            )
+            val videoPrompt = NovelVideoPromptBuilder.buildSceneVideoPrompt(segment)
+            val sanitizedVideoPrompt = NovelVideoPromptBuilder.sanitizeVideoPrompt(videoPrompt)
+            // 参考图：场景图优先 + 角色三视图（最多 3 张）
+            val videoRefs = buildList {
+                resolveImageRef(imageUrl)?.let { add(it) }
+                addAll(characterRefs)
+            }.take(3)
+
+            val videoResult = AiVideoTaskPoller.generate(
+                prompt = sanitizedVideoPrompt,
+                seconds = params.sceneDurationSeconds,
+                size = params.resolution,
+                referenceImages = videoRefs,
+                jobId = job.id,
+                segId = segment.id,
+                provider = videoProvider,
+                isCancelled = isCancelled
+            )
+            when (videoResult) {
+                is AiVideoTaskPoller.Result.Success -> {
+                    appDb.novelVideoDao.updateSegmentVideo(
+                        segment.id,
+                        videoResult.remoteUrl,
+                        videoResult.localPath,
+                        params.sceneDurationSeconds * 1000L,
+                        NovelVideoSegmentStatus.VIDEO_COMPLETED,
+                        System.currentTimeMillis()
+                    )
+                }
+                is AiVideoTaskPoller.Result.Failed -> {
+                    AppLog.put("场景生视频失败 ${segment.id}: ${videoResult.message}", null)
+                    appDb.novelVideoDao.updateSegmentStatus(
+                        segment.id, NovelVideoSegmentStatus.FAILED, videoResult.message, System.currentTimeMillis()
+                    )
+                }
+            }
+            postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
         }
     }
 
@@ -376,8 +535,9 @@ object NovelVideoGenerator {
     /**
      * Stage 8：合并产物入库 + 通知。
      *
-     * Phase 3 stub：仅更新状态为 COMPLETED，outputPath 等 Phase 5 完成后回填。
-     * 若 Phase 4/5 尚未实现（无 segment 完成），标 FAILED 提示待实现。
+     * Stage 5/6 已实现，segment 应有 VIDEO_COMPLETED 产物。
+     * Stage 7（MediaMuxer 合并）待 Phase 5；当前以"多段独立视频"作为产物，
+     * outputPath 暂为第一段本地路径，Phase 5 完成后替换为合并后的单文件。
      */
     private suspend fun finalizeJob(
         job: NovelVideoJob,
@@ -391,11 +551,11 @@ object NovelVideoGenerator {
         val progress = appDb.novelVideoDao.getSegmentProgress(job.id)
         val finalStatus = when {
             progress.completed == 0 && progress.total > 0 -> {
-                // Phase 3 checkpoint：Stage 5/6/7 未实现，无 segment 完成
+                // 所有 segment 都失败了
                 updateJobStatus(
                     job.id,
                     NovelVideoJobStatus.FAILED,
-                    "Stage 5/6/7 待 Phase 4/5 实现（AiVideoService + VideoMuxer）"
+                    "全部 ${progress.total} 个场景生成失败"
                 )
                 postEvent(EventBus.NOVEL_VIDEO_FAILED, job.id)
                 return
@@ -403,10 +563,15 @@ object NovelVideoGenerator {
             progress.isMajorityFailed -> NovelVideoJobStatus.PARTIAL_FAILED
             else -> NovelVideoJobStatus.COMPLETED
         }
+        // 产物路径：Phase 5 之前用第一段视频；Phase 5 完成后替换为合并文件
+        val completedSegs = segments.filter { it.status == NovelVideoSegmentStatus.VIDEO_COMPLETED }
+        val outputPath = completedSegs.firstOrNull()?.localVideoPath
+        val totalDuration = completedSegs.sumOf { it.durationMs ?: 0L }
         appDb.novelVideoDao.updateJob(
             job.copy(
                 status = finalStatus,
-                totalDurationMs = segments.sumOf { it.durationMs ?: 0L },
+                outputPath = outputPath,
+                totalDurationMs = totalDuration,
                 updatedAt = System.currentTimeMillis()
             )
         )
@@ -447,6 +612,44 @@ object NovelVideoGenerator {
 
     private fun checkCancelled(isCancelled: () -> Boolean, jobId: String) {
         if (isCancelled()) throw kotlinx.coroutines.CancellationException("任务被取消：$jobId")
+    }
+
+    /**
+     * 把图片引用解析为 API 可用的形式（URL 或 data URL）。
+     *
+     * - "http(s)://..." 或 "data:" 开头 → 直接返回（API 可直接拉取/内联）
+     * - 本地文件路径 → 读取并编码为 `data:image/...;base64,...`
+     * - null/空/不存在 → null
+     *
+     * 用于 Stage 5/6 构建参考图列表：character sheet 的 combinedViewUrl 和 segment 的 imageUrl
+     * 都可能存的是 localPath（[AiImageGalleryManager.saveGeneratedImage] 的产物），需要转换。
+     */
+    private fun resolveImageRef(source: String?): String? {
+        val raw = source?.trim().orEmpty()
+        if (raw.isBlank()) return null
+        if (raw.startsWith("http", true) || raw.startsWith("data:", true)) return raw
+        val file = File(raw)
+        if (!file.isFile) return null
+        return runCatching {
+            val bytes = file.readBytes()
+            val mime = detectImageMime(bytes)
+            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            "data:$mime;base64,$base64"
+        }.onFailure {
+            AppLog.put("图片引用转 data URL 失败: $raw", it)
+        }.getOrNull()
+    }
+
+    private fun detectImageMime(bytes: ByteArray): String {
+        if (bytes.size >= 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
+        ) return "image/png"
+        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) return "image/jpeg"
+        if (bytes.size >= 12 && bytes.copyOfRange(0, 4).toString(Charsets.ISO_8859_1) == "RIFF" &&
+            bytes.copyOfRange(8, 12).toString(Charsets.ISO_8859_1) == "WEBP"
+        ) return "image/webp"
+        if (bytes.size >= 3 && bytes.copyOfRange(0, 3).toString(Charsets.ISO_8859_1) == "GIF") return "image/gif"
+        return "image/png"
     }
 }
 
