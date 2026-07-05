@@ -21,6 +21,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -33,10 +34,10 @@ import java.io.File
  * 4. 提取角色 + 三视图 → [NovelVideoPromptBuilder.extractMainCharacters] + [AiImageService.generateAndStore]
  * 5. 逐场景生图 → [AiImageService.generateAndStore]（多图参考重载，传入角色三视图）
  * 6. 逐场景生视频 → [AiVideoTaskPoller.generate]（参考图 = 场景图 + 角色三视图）
- * 7. MediaMuxer 合并 → VideoMuxer（Phase 5 启用）
+ * 7. MediaMuxer 合并 → [VideoMuxer.merge]（无损 remux，时间戳重基准）
  * 8. 产物入库 + 通知 → BookChapter.resourceUrl + postEvent(NOVEL_VIDEO_COMPLETED)
  *
- * **当前实现进度**：Stage 1-6 完整可用；Stage 7 留 TODO 等 Phase 5；Stage 8 完成。
+ * **当前实现进度**：Stage 1-7 完整可用；Stage 8 完成。
  */
 object NovelVideoGenerator {
 
@@ -390,8 +391,60 @@ object NovelVideoGenerator {
             postEvent(EventBus.NOVEL_VIDEO_PROGRESS, job.id)
         }
 
-        // 3. Stage 7: 合并（TODO Phase 5）
-        updateJobStatus(job.id, NovelVideoJobStatus.MERGING, "等待合并")
+        // 3. Stage 7: MediaMuxer 合并已完成的段
+        mergeCompletedSegments(job, isCancelled)
+    }
+
+    /**
+     * Stage 7：把所有 VIDEO_COMPLETED 的 segment 合并为单个 MP4。
+     * 合并结果写入 job.outputPath；失败时 outputPath 留空，不影响 job 完成态。
+     */
+    private suspend fun mergeCompletedSegments(
+        job: NovelVideoJob,
+        isCancelled: () -> Boolean
+    ) {
+        checkCancelled(isCancelled, job.id)
+        updateJobStatus(job.id, NovelVideoJobStatus.MERGING, "合并视频段")
+
+        val completedSegs = appDb.novelVideoDao.getSegmentsByStatus(job.id, NovelVideoSegmentStatus.VIDEO_COMPLETED)
+        if (completedSegs.isEmpty()) {
+            AppLog.put("VideoMuxer 跳过：无已完成的 segment，jobId=${job.id}")
+            return
+        }
+
+        val inputPaths = completedSegs
+            .sortedBy { it.sceneId }
+            .mapNotNull { it.localVideoPath?.takeIf { p -> File(p).isFile } }
+        if (inputPaths.isEmpty()) {
+            AppLog.put("VideoMuxer 跳过：segment 无本地视频文件，jobId=${job.id}")
+            return
+        }
+
+        val outputPath = File(appCtx.filesDir, "novel_video/${job.id}/merged.mp4").absolutePath
+        val result = VideoMuxer.merge(inputPaths, outputPath)
+        when (result) {
+            is VideoMuxer.MergeResult.Success -> {
+                appDb.novelVideoDao.updateJob(
+                    job.copy(
+                        outputPath = result.outputPath,
+                        totalDurationMs = result.totalDurationMs,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+                AppLog.put("VideoMuxer 合并成功：${result.segmentCount} 段 → ${result.outputPath}")
+            }
+            is VideoMuxer.MergeResult.Failed -> {
+                // 合并失败不阻塞 job 完成，fallback 到首段视频
+                AppLog.put("VideoMuxer 合并失败，回退首段视频：${result.message}")
+                val fallbackPath = inputPaths.first()
+                appDb.novelVideoDao.updateJob(
+                    job.copy(
+                        outputPath = fallbackPath,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
     }
 
     /**
@@ -533,11 +586,11 @@ object NovelVideoGenerator {
     }
 
     /**
-     * Stage 8：合并产物入库 + 通知。
+     * Stage 8：产物入库 + 通知。
      *
-     * Stage 5/6 已实现，segment 应有 VIDEO_COMPLETED 产物。
-     * Stage 7（MediaMuxer 合并）待 Phase 5；当前以"多段独立视频"作为产物，
-     * outputPath 暂为第一段本地路径，Phase 5 完成后替换为合并后的单文件。
+     * Stage 7 已在 [mergeCompletedSegments] 中完成合并并写入 outputPath。
+     * 这里只更新最终状态（COMPLETED/PARTIAL_FAILED/FAILED）。
+     * 若 Stage 7 合并失败，outputPath 已 fallback 到首段视频。
      */
     private suspend fun finalizeJob(
         job: NovelVideoJob,
@@ -547,7 +600,6 @@ object NovelVideoGenerator {
         isCancelled: () -> Boolean
     ) {
         checkCancelled(isCancelled, job.id)
-        val segments = appDb.novelVideoDao.getSegmentsByJob(job.id)
         val progress = appDb.novelVideoDao.getSegmentProgress(job.id)
         val finalStatus = when {
             progress.completed == 0 && progress.total > 0 -> {
@@ -563,15 +615,11 @@ object NovelVideoGenerator {
             progress.isMajorityFailed -> NovelVideoJobStatus.PARTIAL_FAILED
             else -> NovelVideoJobStatus.COMPLETED
         }
-        // 产物路径：Phase 5 之前用第一段视频；Phase 5 完成后替换为合并文件
-        val completedSegs = segments.filter { it.status == NovelVideoSegmentStatus.VIDEO_COMPLETED }
-        val outputPath = completedSegs.firstOrNull()?.localVideoPath
-        val totalDuration = completedSegs.sumOf { it.durationMs ?: 0L }
+        // 重新读取 job（Stage 7 可能已更新 outputPath/totalDurationMs）
+        val latestJob = appDb.novelVideoDao.getJob(job.id) ?: job
         appDb.novelVideoDao.updateJob(
-            job.copy(
+            latestJob.copy(
                 status = finalStatus,
-                outputPath = outputPath,
-                totalDurationMs = totalDuration,
                 updatedAt = System.currentTimeMillis()
             )
         )
