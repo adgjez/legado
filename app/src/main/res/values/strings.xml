@@ -713,6 +713,16 @@
     <string name="ai_image_delete_insert_confirm">删除这张插图？图库中的原图会保留。</string>
     <string name="ai_image_insert_deleted">插图已删除</string>
     <string name="ai_image_insert_not_found">未找到插图引用</string>
+    <string name="novel_video">小说转视频</string>
+    <string name="novel_video_idle">等待任务</string>
+    <string name="novel_video_no_pending">无待处理任务</string>
+    <string name="novel_video_drafting">生成剧本中</string>
+    <string name="novel_video_review_ready">等待剧本审阅</string>
+    <string name="novel_video_generating">生成视频中</string>
+    <string name="novel_video_merging">合并视频中</string>
+    <string name="novel_video_completed">已完成</string>
+    <string name="novel_video_failed">已失败</string>
+    <string name="novel_video_cancelled">已取消</string>
     <string name="ai_tavily_api_key">Tavily API key</string>
     <string name="ai_tavily_api_key_hint">tvly-...</string>
     <string name="ai_tavily_api_key_summary">Tap to set your Tavily API key.</string>
