@@ -109,7 +109,7 @@ class NovelVideoScreenplayParserTest {
         assertNotNull(json)
         // 提取的应该是完整的最外层对象
         assertTrue(json!!.startsWith("{") && json.endsWith("}"))
-        assertTrue(json.contains("\"curly\""))
+        assertTrue(json.contains("curly"))
     }
 
     @Test

@@ -2,6 +2,7 @@ package io.legado.app.help.ai
 
 import androidx.annotation.Keep
 import com.google.gson.JsonSyntaxException
+import com.google.gson.annotations.SerializedName
 import io.legado.app.utils.GSON
 
 /**
@@ -33,13 +34,13 @@ data class Screenplay(
 
 @Keep
 data class ScreenplayDraft(
-    val taskId: String = "",
+    @SerializedName("task_id") val taskId: String = "",
     val title: String = "",
     /** 兼容 legacy 字段名 `script_title`。 */
-    val scriptTitle: String = "",
+    @SerializedName("script_title") val scriptTitle: String = "",
     val genre: String = "",
-    val estimatedDurationSeconds: Int = 0,
-    val emotionalArc: List<String> = emptyList(),
+    @SerializedName("estimated_duration_seconds") val estimatedDurationSeconds: Int = 0,
+    @SerializedName("emotional_arc") val emotionalArc: List<String> = emptyList(),
     val scenes: List<Scene> = emptyList()
 ) {
     fun toJson(): String = GSON.toJson(this)
@@ -55,15 +56,15 @@ data class ScreenplayDraft(
 
 @Keep
 data class Scene(
-    val sceneId: Int = 1,
+    @SerializedName("scene_id") val sceneId: Int = 1,
     val narration: String = "",
     val mood: String = "",
-    val emotionalHook: String = "",
-    val imagePrompt: String = "",
-    val videoPrompt: String = "",
+    @SerializedName("emotional_hook") val emotionalHook: String = "",
+    @SerializedName("image_prompt") val imagePrompt: String = "",
+    @SerializedName("video_prompt") val videoPrompt: String = "",
+    @SerializedName("character_description") val characterDescription: String = "",
     /** 兼容 camelCase 命名 `characterDescription`。 */
-    val characterDescription: String = "",
-    val characterDescriptionCamel: String = ""
+    @SerializedName("characterDescription") val characterDescriptionCamel: String = ""
 ) {
     /** 统一取 snake_case 优先，回退 camelCase。 */
     val effectiveCharacterDescription: String

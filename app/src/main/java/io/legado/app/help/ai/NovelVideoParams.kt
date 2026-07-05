@@ -46,7 +46,8 @@ data class NovelVideoParams(
 
     companion object {
         fun fromJson(json: String): NovelVideoParams =
-            runCatching { GSON.fromJson(json, NovelVideoParams::class.java) }.getOrDefault(NovelVideoParams())
+            runCatching { GSON.fromJson(json, NovelVideoParams::class.java) }.getOrNull()
+                ?: NovelVideoParams()
 
         fun fromJob(job: NovelVideoJob): NovelVideoParams = fromJson(job.paramsJson)
     }

@@ -58,6 +58,8 @@ object NovelVideoScreenplayParser {
             .replace('’', '\'')
         // 中文冒号 → ASCII 冒号（粗暴兜底）
         text = text.replace('：', ':')
+        // 中文逗号 → ASCII 逗号（LLM 常把 JSON 分隔符写成中文逗号）
+        text = text.replace('，', ',')
         return text
     }
 
