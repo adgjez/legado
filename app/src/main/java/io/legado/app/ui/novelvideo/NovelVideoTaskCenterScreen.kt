@@ -73,6 +73,7 @@ fun NovelVideoTaskCenterScreen(
     val completedJobs by viewModel.completedJobs.collectAsStateWithLifecycle()
     val failedJobs by viewModel.failedJobs.collectAsStateWithLifecycle()
     val serviceRunning by viewModel.serviceRunning.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var showConfigSheet by rememberSaveable { mutableStateOf(false) }
@@ -210,7 +211,7 @@ fun NovelVideoTaskCenterScreen(
                 onDismiss = { menuJob = null },
                 onOpenDetail = { onOpenJobDetail(job); menuJob = null },
                 onOpenReview = { onOpenReview(job); menuJob = null },
-                onRetry = { viewModel.retryJob(job.id); menuJob = null },
+                onRetry = { scope.launch { viewModel.retryJob(job.id) }; menuJob = null },
                 onCancel = { cancelConfirmJob = job; menuJob = null },
                 onDelete = { deleteConfirmJob = job; menuJob = null }
             )
@@ -223,7 +224,7 @@ fun NovelVideoTaskCenterScreen(
                 text = { Text(stringResource(R.string.novel_video_confirm_delete)) },
                 confirmButton = {
                     androidx.compose.material3.TextButton(onClick = {
-                        viewModel.deleteJob(job.id)
+                        scope.launch { viewModel.deleteJob(job.id) }
                         deleteConfirmJob = null
                     }) { Text(stringResource(R.string.ok)) }
                 },
@@ -242,7 +243,7 @@ fun NovelVideoTaskCenterScreen(
                 text = { Text(stringResource(R.string.novel_video_confirm_cancel)) },
                 confirmButton = {
                     androidx.compose.material3.TextButton(onClick = {
-                        viewModel.cancelJob(job.id)
+                        scope.launch { viewModel.cancelJob(job.id) }
                         cancelConfirmJob = null
                     }) { Text(stringResource(R.string.ok)) }
                 },
