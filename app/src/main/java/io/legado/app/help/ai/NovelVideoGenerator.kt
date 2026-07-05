@@ -619,7 +619,30 @@ object NovelVideoGenerator {
                 updatedAt = System.currentTimeMillis()
             )
         )
+        // 写回 BookChapter.resourceUrl，让阅读页能播放入口
+        if (params.attachToBookChapter && finalStatus != NovelVideoJobStatus.FAILED) {
+            runCatching { attachOutputToChapter(latestJob, job.chapterStartIndex) }
+                .onFailure { AppLog.put("写回 BookChapter.resourceUrl 失败 jobId=${job.id}", it) }
+        }
         postEvent(EventBus.NOVEL_VIDEO_COMPLETED, job.id)
+    }
+
+    /**
+     * 把合并产物写回首章 BookChapter：
+     * - resourceUrl = outputPath（视频文件本地路径）
+     * - imgUrl = coverPath（视频封面，原为「音频真实URL / 标题段评图」字段，spec 第 18 行复用承载视频产物 URL）
+     *
+     * 失败不阻塞任务完成，仅记日志。
+     */
+    private suspend fun attachOutputToChapter(job: NovelVideoJob, chapterIndex: Int) {
+        val outputPath = job.outputPath?.takeIf { it.isNotBlank() } ?: return
+        val chapter = appDb.bookChapterDao.getChapter(job.bookUrl, chapterIndex) ?: return
+        appDb.bookChapterDao.update(
+            chapter.copy(
+                resourceUrl = outputPath,
+                imgUrl = job.coverPath ?: chapter.imgUrl
+            )
+        )
     }
 
     // ============================================================

@@ -26,6 +26,7 @@ object ReadMenuButtonConfig {
         const val CHARACTERS = "characters"
         const val BUBBLE = "bubble"
         const val NOVEL_TO_VIDEO = "novelToVideo"
+        const val PLAY_CHAPTER_VIDEO = "playChapterVideo"
 
         val ids = setOf(
             SEARCH,
@@ -41,7 +42,8 @@ object ReadMenuButtonConfig {
             PARAGRAPH_RULES,
             CHARACTERS,
             BUBBLE,
-            NOVEL_TO_VIDEO
+            NOVEL_TO_VIDEO,
+            PLAY_CHAPTER_VIDEO
         )
     }
 

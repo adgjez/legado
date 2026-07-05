@@ -33,6 +33,7 @@ import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.get
 import androidx.core.view.isVisible
@@ -201,6 +202,7 @@ import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
+import io.legado.app.utils.openFileUri
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.spToPx
@@ -3449,6 +3451,33 @@ class ReadBookActivity : BaseReadBookActivity(),
             return
         }
         startActivity(NovelVideoTaskCenterActivity.newIntent(this, book))
+    }
+
+    override fun openChapterVideo() {
+        val book = ReadBook.book ?: run {
+            toastOnUi("当前书籍不存在")
+            return
+        }
+        val chapterIndex = ReadBook.durChapterIndex
+        lifecycleScope.launch {
+            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
+            val resourceUrl = chapter?.resourceUrl?.takeIf { it.isNotBlank() }
+            if (resourceUrl == null) {
+                toastOnUi("本章还没有视频")
+                return@launch
+            }
+            val file = File(resourceUrl)
+            if (!file.isFile) {
+                toastOnUi("视频文件不存在")
+                return@launch
+            }
+            val uri = if (resourceUrl.startsWith("content://")) {
+                android.net.Uri.parse(resourceUrl)
+            } else {
+                FileProvider.getUriForFile(this@ReadBookActivity, AppConst.authority, file)
+            }
+            openFileUri(uri, "video/*")
+        }
     }
 
     override fun showSearchSetting() {
