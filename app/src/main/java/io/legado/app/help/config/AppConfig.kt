@@ -1111,7 +1111,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     }
 
     var novelVideoDefaultParams: NovelVideoParams
-        get() = NovelVideoParams.fromJson(appCtx.getPrefString(PreferKey.novelVideoDefaultParams))
+        get() = NovelVideoParams.fromJson(appCtx.getPrefString(PreferKey.novelVideoDefaultParams) ?: "")
         set(value) {
             appCtx.putPrefString(PreferKey.novelVideoDefaultParams, value.toJson())
         }

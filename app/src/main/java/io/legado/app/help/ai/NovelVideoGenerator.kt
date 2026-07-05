@@ -189,7 +189,7 @@ object NovelVideoGenerator {
      * 审阅页 UI 调用：用户取消任务。
      */
     suspend fun cancelFromReview(jobId: String) {
-        appDb.novelVideoDao.updateJobStatus(jobId, NovelVideoJobStatus.CANCELLED, "用户在审阅页取消")
+        updateJobStatus(jobId, NovelVideoJobStatus.CANCELLED, "用户在审阅页取消")
         ReviewConfirmationStore.resolve(jobId, confirmed = false)
     }
 

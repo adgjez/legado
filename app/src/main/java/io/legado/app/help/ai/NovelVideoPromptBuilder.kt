@@ -278,7 +278,7 @@ Composition: all three views same size, equal spacing, full body visible, neutra
 
     /** 形如 "Alice: a young girl..." 取 "Alice" 当 name；前缀超过 15 字符则不取。 */
     private fun extractNameAndBody(desc: String, fallbackIdx: Int): Pair<String, String> {
-        val colonIdx = desc.indexOfAny(listOf(':', '：'))
+        val colonIdx = desc.indexOfAny(charArrayOf(':', '：'))
         if (colonIdx in 1..15) {
             val name = desc.substring(0, colonIdx).trim()
             if (name.length <= 15 && name.all { it.isLetterOrDigit() || it.isWhitespace() }) {

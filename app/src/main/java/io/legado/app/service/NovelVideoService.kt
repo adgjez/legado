@@ -3,6 +3,7 @@ package io.legado.app.service
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -16,6 +17,7 @@ import io.legado.app.help.ai.NovelVideoGenerator
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
+import io.legado.app.utils.startService
 import io.legado.app.ui.main.MainActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -251,7 +253,7 @@ class NovelVideoService : BaseService() {
     // 通知
     // ============================================================
 
-    private fun refreshNotificationContent() {
+    private suspend fun refreshNotificationContent() {
         val jobId = currentJobId
         notificationContent = if (jobId == null) {
             getString(R.string.novel_video_idle)

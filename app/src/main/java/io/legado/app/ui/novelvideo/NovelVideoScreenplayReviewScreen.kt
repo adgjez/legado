@@ -14,10 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -40,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -81,7 +78,7 @@ fun NovelVideoScreenplayReviewScreen(
                 title = { Text(stringResource(R.string.novel_video_screenplay_review)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        Icon(painter = painterResource(R.drawable.ic_arrow_back), contentDescription = null)
                     }
                 }
             )
@@ -160,7 +157,7 @@ fun NovelVideoScreenplayReviewScreen(
                 SceneEditCard(
                     scene = scene,
                     editable = editable,
-                    onUpdate = { updater -> viewModel.updateScene(scene.sceneId, updater) },
+                    onUpdate = { newScene -> viewModel.updateScene(scene.sceneId) { newScene } },
                     onDelete = { viewModel.deleteScene(scene.sceneId) }
                 )
             }
@@ -212,7 +209,7 @@ private fun ReviewBottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedButton(onClick = onAddScene, enabled = !submitting) {
-                Icon(Icons.Filled.Add, contentDescription = null)
+                Icon(painter = painterResource(R.drawable.ic_add), contentDescription = null)
                 Spacer(Modifier.size(4.dp))
                 Text(stringResource(R.string.novel_video_review_add_scene))
             }
@@ -237,7 +234,7 @@ private fun ReviewBottomBar(
 private fun SceneEditCard(
     scene: Scene,
     editable: Boolean,
-    onUpdate: (Scene) -> Scene,
+    onUpdate: (Scene) -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -262,7 +259,7 @@ private fun SceneEditCard(
                 if (editable) {
                     IconButton(onClick = onDelete) {
                         Icon(
-                            Icons.Filled.Delete,
+                            painter = painterResource(R.drawable.ic_outline_delete),
                             contentDescription = stringResource(R.string.novel_video_review_delete_scene),
                             tint = MaterialTheme.colorScheme.error
                         )
