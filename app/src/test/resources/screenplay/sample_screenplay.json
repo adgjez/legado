@@ -1,0 +1,36 @@
+{
+  "task_id": "nv_test_001",
+  "title": "校园清晨",
+  "genre": "校园日常",
+  "estimated_duration_seconds": 35,
+  "emotional_arc": ["宁静", "期待", "温暖"],
+  "scenes": [
+    {
+      "scene_id": 1,
+      "narration": "晨光洒在教室的窗台上，苏晓推开窗户，深吸一口清新的空气。",
+      "mood": "宁静",
+      "emotional_hook": "新一天的开始",
+      "image_prompt": "anime style, a classroom interior at sunrise, soft golden light streaming through large windows, empty desks, peaceful atmosphere",
+      "video_prompt": "slow pan across classroom, gentle camera movement from window to desks",
+      "character_description": "Su Xiao: a young high school girl with long black hair, wearing a clean white shirt and navy skirt, gentle expression"
+    },
+    {
+      "scene_id": 2,
+      "narration": "林然抱着课本走进教室，看到苏晓，露出温暖的笑容。",
+      "mood": "期待",
+      "emotional_hook": "相遇的瞬间",
+      "image_prompt": "anime style, a boy entering a sunlit classroom holding textbooks, smiling warmly at a girl by the window",
+      "video_prompt": "medium shot, slow dolly in toward the boy",
+      "character_description": "Lin Ran: a teenage boy with short brown hair, wearing school uniform, kind smile"
+    },
+    {
+      "scene_id": 3,
+      "narration": "两人相视而笑，窗外的樱花随风飘落。",
+      "mood": "温暖",
+      "emotional_hook": "心动瞬间",
+      "image_prompt": "anime style, two students smiling at each other in a classroom, cherry blossom petals drifting outside the window, soft warm light",
+      "video_prompt": "close-up on faces, slow zoom in, soft focus background",
+      "character_description": "Su Xiao and Lin Ran standing together, maintaining consistent character designs from previous scenes"
+    }
+  ]
+}
