@@ -1282,6 +1282,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
                 if (wasApplied) {
                     ThemePackageManager.apply(this@ThemeManageActivity, entry, switchNightMode = false)
+                    AppearanceKitManager.syncCurrentThemeRef(entry.packageInfo.isNightTheme, entry)
                     if (entry.packageInfo.isNightTheme) {
                         appliedNightThemeOverride = entry.packageInfo.name
                     } else {
@@ -1736,14 +1737,16 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     entry
                 }
                 ThemePackageManager.apply(this@ThemeManageActivity, localEntry, switchNightMode = false)
+                AppearanceKitManager.syncCurrentThemeRef(localEntry.packageInfo.isNightTheme, localEntry)
+                localEntry
             }.onFailure {
                 if (it.isJobCancellation()) return@onFailure
                 toastOnUi(getString(R.string.theme_apply_failed, it.localizedMessage))
             }.onSuccess {
-                if (entry.packageInfo.isNightTheme) {
-                    appliedNightThemeOverride = entry.packageInfo.name
+                if (it.packageInfo.isNightTheme) {
+                    appliedNightThemeOverride = it.packageInfo.name
                 } else {
-                    appliedDayThemeOverride = entry.packageInfo.name
+                    appliedDayThemeOverride = it.packageInfo.name
                 }
                 toastOnUi(getString(R.string.theme_applied))
                 loadThemes()

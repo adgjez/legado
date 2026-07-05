@@ -40,6 +40,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.AppCloudStorage
+import io.legado.app.help.config.AppearanceKitManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.MainBottomNavConfig
 import io.legado.app.help.config.NavigationBarIconConfig
@@ -865,7 +866,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     NavigationBarIconConfig.addOrUpdate(config.copy(name = name), editingEntry)
                 }
             }.onSuccess {
-                notifyAppliedIfNeeded(it)
+                if (notifyAppliedIfNeeded(it)) {
+                    AppearanceKitManager.syncCurrentNavigationBarRef(it.config.isNightMode, it)
+                }
                 toastOnUi(R.string.theme_saved_local)
                 loadPackages()
                 if (enqueueUploadIfNeeded(it)) {
@@ -947,6 +950,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 withContext(Dispatchers.IO) { if (entry.source == NavigationBarIconConfig.Source.REMOTE) NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE) else entry }
             }.onSuccess {
                 NavigationBarIconConfig.apply(it)
+                AppearanceKitManager.syncCurrentNavigationBarRef(it.config.isNightMode, it)
                 postEvent(EventBus.NAVIGATION_BAR_CHANGED, it.config.isNightMode)
                 loadPackages()
             }.onFailure {
@@ -1067,11 +1071,13 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
 
-    private fun notifyAppliedIfNeeded(entry: NavigationBarIconConfig.Entry) {
+    private fun notifyAppliedIfNeeded(entry: NavigationBarIconConfig.Entry): Boolean {
         if (entry.dirName == NavigationBarIconConfig.activeDirName(entry.config.isNightMode)) {
             NavigationBarIconConfig.apply(entry)
             postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
+            return true
         }
+        return false
     }
 
     private fun effectModeLabel(value: String): String {

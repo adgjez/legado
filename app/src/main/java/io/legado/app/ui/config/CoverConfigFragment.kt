@@ -4,6 +4,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.AppearanceKitManager
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.model.BookCover
 import io.legado.app.ui.config.compose.ComposeSettingFragment
@@ -224,6 +225,9 @@ class CoverConfigFragment : ComposeSettingFragment() {
             ) { index ->
                 val selected = if (index <= 0) null else collections.getOrNull(index - 1)
                 CoverCollectionManager.setSelected(isNight, selected?.id)
+                lifecycleScope.launch {
+                    AppearanceKitManager.syncCurrentCoverCollectionRef(isNight, selected)
+                }
                 refreshSettings()
                 refreshCoverCollection()
             }

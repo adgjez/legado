@@ -211,6 +211,58 @@ object AppearanceKitManager {
         true
     }
 
+    suspend fun syncCurrentThemeRef(isNight: Boolean, entry: ThemePackageManager.Entry?): Boolean {
+        val ref = entry
+            ?.takeIf { it.source != ThemePackageManager.Source.BUILTIN }
+            ?.let { ComponentRef(it.dirName, it.packageInfo.name) }
+        return updateCurrentBinding { binding ->
+            binding.setTheme(isNight, ref)
+        }
+    }
+
+    suspend fun syncCurrentTopBarRef(isNight: Boolean, entry: TopBarConfig.Entry?): Boolean {
+        val ref = entry
+            ?.takeIf { it.dirName != TopBarConfig.DEFAULT_DIR_NAME }
+            ?.let { ComponentRef(it.dirName, it.config.name) }
+        return updateCurrentBinding { binding ->
+            binding.setTopBar(isNight, ref)
+        }
+    }
+
+    suspend fun syncCurrentNavigationBarRef(isNight: Boolean, entry: NavigationBarIconConfig.Entry?): Boolean {
+        val ref = entry
+            ?.takeIf { it.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME }
+            ?.let { ComponentRef(it.dirName, it.config.name) }
+        return updateCurrentBinding { binding ->
+            binding.setNavigationBar(isNight, ref)
+        }
+    }
+
+    suspend fun syncCurrentCoverCollectionRef(isNight: Boolean, collection: CoverCollectionManager.Collection?): Boolean {
+        val ref = collection?.let { ComponentRef(it.id, it.name) }
+        return updateCurrentBinding { binding ->
+            binding.setCoverCollection(isNight, ref)
+        }
+    }
+
+    private suspend fun updateCurrentBinding(update: (KitBinding) -> Unit): Boolean = withContext(IO) {
+        val currentId = appCtx.getPrefString(PreferKey.currentAppearanceKitId, "")
+            ?.takeIf { it.isNotBlank() }
+            ?: return@withContext false
+        val kits = loadIndex()
+        val index = kits.indexOfFirst { it.id == currentId }
+        if (index < 0) return@withContext false
+        val nextBinding = kits[index].binding.copy()
+        update(nextBinding)
+        val nextKits = kits.toMutableList()
+        nextKits[index] = kits[index].copy(
+            binding = nextBinding,
+            updatedAt = System.currentTimeMillis()
+        )
+        saveIndex(nextKits)
+        true
+    }
+
     suspend fun editableOptions(isNight: Boolean): AppearanceKitEditOptions = withContext(IO) {
         AppearanceKitEditOptions(
             themes = ThemePackageManager.loadLocalOnly(isNight)
@@ -789,7 +841,7 @@ data class KitBinding(
         )
     }
 
-    fun setTheme(isNight: Boolean, ref: ComponentRef) {
+    fun setTheme(isNight: Boolean, ref: ComponentRef?) {
         if (isNight) {
             nightTheme = ref
         } else {
@@ -797,7 +849,7 @@ data class KitBinding(
         }
     }
 
-    fun setTopBar(isNight: Boolean, ref: ComponentRef) {
+    fun setTopBar(isNight: Boolean, ref: ComponentRef?) {
         if (isNight) {
             nightTopBar = ref
         } else {
@@ -805,7 +857,7 @@ data class KitBinding(
         }
     }
 
-    fun setNavigationBar(isNight: Boolean, ref: ComponentRef) {
+    fun setNavigationBar(isNight: Boolean, ref: ComponentRef?) {
         if (isNight) {
             nightNavigationBar = ref
         } else {
@@ -813,7 +865,7 @@ data class KitBinding(
         }
     }
 
-    fun setCoverCollection(isNight: Boolean, ref: ComponentRef) {
+    fun setCoverCollection(isNight: Boolean, ref: ComponentRef?) {
         if (isNight) {
             nightCoverCollection = ref
         } else {

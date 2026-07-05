@@ -25,6 +25,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.AppCloudStorage
+import io.legado.app.help.config.AppearanceKitManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
 import io.legado.app.lib.cloud.CloudStorageType
@@ -637,6 +638,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
             }.onSuccess {
                 TopBarConfig.apply(it)
+                AppearanceKitManager.syncCurrentTopBarRef(it.config.isNightMode, it)
                 postEvent(EventBus.TOP_BAR_CHANGED, it.config.isNightMode)
                 loadPackages()
             }.onFailure {
@@ -796,6 +798,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     it.dirName == TopBarConfig.activeDirName(it.config.isNightMode)
                 ) {
                     TopBarConfig.apply(it)
+                    AppearanceKitManager.syncCurrentTopBarRef(it.config.isNightMode, it)
                     postEvent(EventBus.TOP_BAR_CHANGED, it.config.isNightMode)
                 }
                 toastOnUi(R.string.theme_saved_local)
