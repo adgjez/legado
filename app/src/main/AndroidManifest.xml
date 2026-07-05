@@ -322,6 +322,17 @@
             android:name=".ui.main.ai.AiImageGalleryActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.novelvideo.NovelVideoTaskCenterActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.novelvideo.NovelVideoJobDetailActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.novelvideo.NovelVideoScreenplayReviewActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.config.AiWorldBookManageActivity"
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
