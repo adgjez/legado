@@ -38,6 +38,17 @@ object AiVideoService {
     }
 
     /**
+     * 429 限流异常，携带 Retry-After（秒）。
+     *
+     * submit 在 HTTP 429 时抛此异常，submitWithRetry 捕获后按 retryAfterSeconds
+     * 等待再重试，避免 4xx 一律不重试导致限流直接失败。
+     */
+    class VideoRateLimitedException(
+        val retryAfterSeconds: Long?,
+        message: String
+    ) : IllegalStateException(message)
+
+    /**
      * 提交视频生成任务（旧签名，向后兼容）。
      *
      * 内部构造 [VideoSubmitRequest] 后调 [submit] 新签名。
@@ -98,6 +109,15 @@ object AiVideoService {
         response.use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
+                // 429 限流：单独抛 VideoRateLimitedException，携带 Retry-After，允许重试
+                if (resp.code == 429) {
+                    val retryAfter = resp.header("Retry-After")?.toLongOrNull()
+                    throw VideoRateLimitedException(
+                        retryAfterSeconds = retryAfter,
+                        message = "视频提交被限流：HTTP 429" +
+                            (retryAfter?.let { "，Retry-After=${it}s" } ?: "")
+                    )
+                }
                 // N7：错误消息仅保留 HTTP 状态码和简短 message，不包含响应体。
                 // 响应体可能含 Provider 内部错误堆栈、API 密钥片段、账户标识等敏感信息，
                 // 完整暴露到 errorMessage 会经通知/UI/日志流出设备。

@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -142,7 +143,10 @@ object AiVideoTaskPoller {
 
     /**
      * 提交任务，最多重试 [MAX_SUBMIT_RETRY] 次。
-     * 网络异常/5xx 重试；4xx（鉴权/参数错误）直接放弃。
+     * - 网络异常/5xx：立即重试
+     * - 429 限流：读 Retry-After header 等待后重试，429 不计入放弃次数
+     *   （限流是暂态，服务商要求降速而非放弃）
+     * - 其他 4xx（400/401/403/404 等鉴权/参数错误）：直接放弃
      */
     private suspend fun submitWithRetry(
         request: VideoSubmitRequest,
@@ -150,21 +154,37 @@ object AiVideoTaskPoller {
         isCancelled: () -> Boolean
     ): String? {
         val maxAttempts = MAX_SUBMIT_RETRY + 1
-        repeat(maxAttempts) { attempt ->
+        var attempt = 0
+        var rateLimitedAttempts = 0
+        while (attempt < maxAttempts) {
             if (isCancelled()) return null
             try {
                 return AiVideoService.submit(request, provider)
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: AiVideoService.VideoRateLimitedException) {
+                // 429 限流：等待 Retry-After 后重试，不计入放弃次数
+                // 上限 5 次限流重试，防止服务商持续限流导致无限等待
+                if (rateLimitedAttempts >= MAX_RATE_LIMIT_RETRY) {
+                    AppLog.put("视频提交限流重试达上限（$MAX_RATE_LIMIT_RETRY 次），放弃")
+                    return null
+                }
+                rateLimitedAttempts++
+                // Retry-After 缺失时默认等 10s；上限 60s 避免过长阻塞
+                val waitMs = (e.retryAfterSeconds ?: 10L).coerceIn(1L, 60L) * 1000L
+                AppLog.put("视频提交被限流（429），${waitMs}ms 后重试（限流重试 $rateLimitedAttempts/$MAX_RATE_LIMIT_RETRY）")
+                delay(waitMs)
+                // 限流重试不递增 attempt，仍受 maxAttempts 兜底
             } catch (e: Throwable) {
+                attempt++
                 val msg = e.message.orEmpty()
                 // 4xx 类错误（鉴权/参数）不重试：用正则匹配 " 4xx " 形态的状态码
                 // 避免旧的 contains(" 40") 误匹配 "page 40" 或漏判 43x
                 if (HTTP_4XX_REGEX.containsMatchIn(msg)) {
-                    AppLog.put("视频提交 ${attempt + 1}/$maxAttempts 失败（4xx，不重试）", e)
+                    AppLog.put("视频提交 $attempt/$maxAttempts 失败（4xx，不重试）", e)
                     return null
                 }
-                AppLog.put("视频提交 ${attempt + 1}/$maxAttempts 失败：$msg", e)
+                AppLog.put("视频提交 $attempt/$maxAttempts 失败：$msg", e)
             }
         }
         return null
