@@ -74,8 +74,8 @@ class AiVideoServiceAgnesTest {
 
     @Test
     fun numFramesFor3SecondsAt24fps() {
-        // 3*24=72, 向上取到 8n+1: 81 (8*10+1=81)
-        assertEquals(81, AiVideoService.computeAgnesNumFramesStatic(3, 24))
+        // 3*24=72, 向上取到 8n+1: 73 (8*9+1=73)
+        assertEquals(73, AiVideoService.computeAgnesNumFramesStatic(3, 24))
     }
 
     @Test
@@ -92,8 +92,8 @@ class AiVideoServiceAgnesTest {
 
     @Test
     fun numFramesFor18SecondsAt24fps() {
-        // 18*24=432, 向上取到 8n+1: 441 (8*55+1=441)
-        assertEquals(441, AiVideoService.computeAgnesNumFramesStatic(18, 24))
+        // 18*24=432, 向上取到 8n+1: 433 (8*54+1=433)
+        assertEquals(433, AiVideoService.computeAgnesNumFramesStatic(18, 24))
     }
 
     @Test

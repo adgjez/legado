@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.google.gson.JsonParser
 import org.json.JSONObject
 import splitties.init.appCtx
 import java.io.File
@@ -129,30 +130,44 @@ object AiVideoService {
     ): VideoSubmitRequest {
         val paramsJson = target.defaultParamsJson
         if (paramsJson.isBlank()) return request
-        val root = runCatching { JSONObject(paramsJson) }.getOrNull() ?: return request
+        // 用 GSON 而非 org.json.JSONObject：Android 单元测试默认用 android.jar 的 org.json stub，
+        // 其方法会抛 RuntimeException("Stub!")。GSON 在 JVM 测试环境可用，避免 stub 问题。
+        val root = runCatching {
+            JsonParser.parseString(paramsJson).asJsonObject
+        }.getOrNull() ?: return request
+
+        fun optInt(key: String): Int? =
+            root.get(key)?.takeIf { !it.isJsonNull }?.asInt
+        fun optString(key: String): String? =
+            root.get(key)?.takeIf { !it.isJsonNull }?.asString?.ifBlank { null }
+        fun optBool(key: String): Boolean? =
+            root.get(key)?.takeIf { !it.isJsonNull }?.asBoolean
 
         // 通用：seed（Agnes/豆包都支持）
-        val seed = request.seed ?: root.opt("seed")?.let { (it as? Number)?.toInt() }
+        val seed = request.seed ?: optInt("seed")
 
         return when (target.type) {
             AiVideoProviderConfig.TYPE_AGNES -> {
-                val mode = request.mode ?: root.optString("mode").ifBlank { null }
-                val neg = request.negativePrompt ?: root.optString("negative_prompt").ifBlank { null }
-                val steps = request.numInferenceSteps
-                    ?: root.opt("num_inference_steps")?.let { (it as? Number)?.toInt() }
+                val mode = request.mode ?: optString("mode")
+                val neg = request.negativePrompt ?: optString("negative_prompt")
+                val steps = request.numInferenceSteps ?: optInt("num_inference_steps")
                 request.copy(
                     mode = mode, negativePrompt = neg, seed = seed, numInferenceSteps = steps
                 )
             }
             AiVideoProviderConfig.TYPE_DOUBAO -> {
-                val cameraFixed = request.cameraFixed ?: root.opt("camera_fixed")?.let { it as? Boolean }
-                val returnLast = request.returnLastFrame || root.optBoolean("return_last_frame", false)
-                val genAudio = request.generateAudio ?: root.opt("generate_audio")?.let { it as? Boolean }
-                val watermark = request.watermark || root.optBoolean("watermark", false)
-                val draft = request.draft || root.optBoolean("draft", false)
+                // Boolean 字段（watermark/returnLastFrame/draft）用 OR 合并语义：
+                // 因 VideoSubmitRequest 中这些字段为非空 Boolean（默认 false），
+                // 无法区分「未设置」与「显式 false」，故任一为 true 则 true。
+                // nullable 字段（cameraFixed/generateAudio）支持调用方覆盖 Provider 默认值。
+                val cameraFixed = request.cameraFixed ?: optBool("camera_fixed")
+                val returnLast = request.returnLastFrame || (optBool("return_last_frame") ?: false)
+                val genAudio = request.generateAudio ?: optBool("generate_audio")
+                val watermark = request.watermark || (optBool("watermark") ?: false)
+                val draft = request.draft || (optBool("draft") ?: false)
                 // 豆包 duration 可在 defaultParamsJson 配置，但 request.seconds 优先
                 val seconds = if (request.seconds > 0) request.seconds
-                else root.opt("duration")?.let { (it as? Number)?.toInt() }?.takeIf { it > 0 } ?: request.seconds
+                else optInt("duration")?.takeIf { it > 0 } ?: request.seconds
                 request.copy(
                     seed = seed,
                     cameraFixed = cameraFixed,

@@ -177,7 +177,11 @@ class AiVideoServiceDoubaoTest {
     }
 
     /**
-     * 豆包 type：request 显式指定的字段应覆盖 Provider 默认值（调用方优先）。
+     * 豆包 type：request 显式指定的 nullable 字段应覆盖 Provider 默认值（调用方优先）。
+     *
+     * 注意：Boolean 非空字段（watermark/returnLastFrame/draft）用 OR 合并语义，
+     * 无法用 request=false 覆盖 provider=true（因默认 false 无法区分「未设置」）。
+     * 故此处只验证 nullable 字段（cameraFixed/seed）的覆盖；watermark 走 OR 合并见 doubaoMergeInjectsAllAdvancedParams。
      */
     @Test
     fun doubaoMergeRequestOverridesProviderDefaults() {
@@ -201,9 +205,11 @@ class AiVideoServiceDoubaoTest {
             seed = 999
         )
         val merged = AiVideoService.mergeProviderParams(request, provider)
+        // nullable 字段：request 显式值覆盖 provider 默认值
         assertEquals(true, merged.cameraFixed)
-        assertFalse(merged.watermark)
         assertEquals(999, merged.seed)
+        // Boolean 非空字段：OR 合并，provider=true 即使 request=false 仍为 true
+        assertTrue(merged.watermark)
     }
 
     /**
