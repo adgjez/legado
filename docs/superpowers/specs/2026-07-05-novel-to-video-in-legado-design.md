@@ -918,4 +918,128 @@ interface VideoClient {
 
 ---
 
+## 13. 实施完成摘要
+
+> 本节登记两轮代码审查与修复的最终状态。spec 第 10 节的 18 步 MVP 路径已全部完成。
+
+### 13.1 完成状态总览
+
+| 轮次 | 范围 | 修复数 | 新增/更新测试数 | CI 结果 |
+|---|---|---|---|---|
+| 第一轮 | P0-P3 代码审查修复 | 51 | 43 | ✓ |
+| 第二轮 | 高+中风险（D1-D6 + H1-H4 + M1-M4） | 10 | 3 | ✓ |
+| 第二轮 | 低风险（L1-L3） | 3 | 5 | ✓ |
+| 第二轮 | 系统性风险（中间态写入覆写取消信号） | 1 | 6 | ✓ |
+| **合计** | | **65 修复** | **57 测试** | **全部通过** |
+
+### 13.2 第二轮深度审查修复清单
+
+#### 高风险 D1-D6 — NovelVideo 终态用无条件写入（TOCTOU / 覆写并发终态）
+
+全部改用条件更新 `updateJobFinalStatus(WithError)?IfNotFinished`（`WHERE status NOT IN ('completed','failed','partial_failed','cancelled')`），把"检查 + 写入"合并为原子 SQL：
+
+- D1 `cancelFromReview` 写 CANCELLED 可覆写已 COMPLETED
+- D2 剧本损坏写 FAILED 可覆写并发 CANCELLED
+- D3 视频文件缺失写 FAILED
+- D4 全部场景失败写 FAILED
+- D5 合并未产出写 FAILED
+- D6 `markCancelledIfRunning` 先查后写有 TOCTOU 窗口 → 直接条件更新
+
+#### 高风险 H1-H4 — 其他子系统吞掉 CancellationException
+
+在所有 `catch(Throwable)` / `runCatching{}.getOrElse{}` 入口先 `if (throwable is CancellationException) throw throwable` 重抛：
+
+- H1 `AiToolExecutor` — `runCatching` + `.getOrElse` 两处
+- H2 `AiChatService` — CancellationException 被包装成 AiChatException
+- H3 `AiReadAloudRoleService` — catch(Throwable) 降级为 STATUS_FAILED
+- H4 `AiReadAloudBgmService` — 同 H3
+
+#### 中风险 M1-M4 — 边界一致性
+
+- M1 `buildDramaSystemPrompt` 未对 `sceneDurationSeconds` 做 coerceIn → `coerceIn(1, 30)`
+- M2 `maxCharacters` 下界不一致（coerced 允许 0，extractMainCharacters 强制 1）→ 统一 `coerceIn(1, 3)`
+- M3 `ScreenplayDraft` 两套 fromJson 逻辑不一致 → `parseDraft` 复用 `ScreenplayDraft.fromJson`
+- M4 `markSegmentFailed` 默认参数硬编码 `"failed"` → 改用 `NovelVideoSegmentStatus.FAILED` 常量
+
+#### 低风险 L1-L3
+
+- L1 DAO SQL 状态字面量与 Kotlin 常量手动同步 → 新增 5 个 SQL-常量集合一致性测试（常量值修改后测试立即失败）
+- L2 `@ColumnInfo(defaultValue=...)` 用字面量 → 改用 `const val` 编译期常量
+- L3 `AiVideoTaskPoller.Stage.GENERATING` 与 `NovelVideoJobStatus.GENERATING` 同值不同源 → 加注释说明语义不同
+
+#### 系统性风险 — 中间态写入覆写取消信号
+
+**根因链**：`markCancelledIfRunning` 写 CANCELLED → generator 中间态写入（DRAFTING/GENERATING/MERGING）用无条件 UPDATE 覆写回中间态 → `finalizeJob` 的条件更新因 status 不在终态集合而"成功"写入 COMPLETED → **用户已取消的任务被标记为已完成**。
+
+**修复**：
+- DAO 新增 `updateJobDraftIfNotFinished` / `updateJobScreenplayIfNotFinished` / `updateJobOutputIfNotFinished` 三个条件部分更新方法
+- `NovelVideoGenerator.updateJobStatus` helper 统一改用条件更新（覆盖所有中间态写入）
+- ViewModel 的 `cancelJob` TOCTOU 也改用条件更新
+
+### 13.3 新增测试用例登记
+
+#### `NovelVideoDaoRobolectricTest`（Robolectric + Room in-memory DB）
+
+D1-D6 终态条件更新验证：
+- `updateJobFinalStatusWithErrorIfNotFinishedDoesNotOverwriteCompleted`
+- `updateJobFinalStatusWithErrorIfNotFinishedDoesNotOverwriteFailed`
+- `updateJobFinalStatusWithErrorIfNotFinishedWritesOnRunningJob`
+
+L1 SQL-常量集合一致性验证（5 项）：
+- `getRunningJobsReturnsExactlyRunningStates`
+- `getCompletedJobsReturnsCompletedAndPartialFailed`
+- `getFailedJobsReturnsFailedAndCancelled`
+- `updateJobFinalStatusIfNotFinishedExcludesExactlyFinishedStates`
+- `getNextResumableSegmentExcludesVideoCompleted`
+
+系统性修复验证（6 项）：
+- `updateJobDraftIfNotFinishedDoesNotOverwriteCancelled`
+- `updateJobDraftIfNotFinishedWritesOnRunningJob`
+- `updateJobScreenplayIfNotFinishedDoesNotOverwriteCancelled`
+- `updateJobOutputIfNotFinishedDoesNotOverwriteCancelled`
+- `updateJobOutputIfNotFinishedWritesOnMergingJob`
+- `updateJobFinalStatusIfNotFinishedDoesNotOverwriteCancelledForIntermediateStatus`
+
+#### `NovelVideoParamsTest`（M2 更新）
+
+- `fromJsonClampsMaxCharactersToRange1To3`（原 `...0To3`）
+- `fromJsonPreservesValidExtremeValuesWithoutClamping` 中 maxCharacters 边界从 0 改为 1
+
+#### `NovelVideoScreenplayParserTest`（M3 更新）
+
+- `parseThrowsWhenScenesIsEmpty` 期望从 `IllegalArgumentException`（"剧本没有场景"）改为 `JsonSyntaxException`（"场景为空"）
+
+### 13.4 受影响文件清单
+
+**DAO / 实体层**
+- `data/dao/NovelVideoDao.kt`（新增 4 个条件更新方法 + M4）
+- `data/entities/NovelVideoJob.kt`（L2）
+- `data/entities/NovelVideoSegment.kt`（L2）
+- `data/entities/NovelVideoCharacterSheet.kt`（L2）
+
+**流水线 / 服务层**
+- `help/ai/NovelVideoGenerator.kt`（D1-D5 + M1 + 系统性修复核心）
+- `service/NovelVideoService.kt`（D6 + 系统性修复）
+- `help/ai/NovelVideoPromptBuilder.kt`（M1）
+- `help/ai/NovelVideoParams.kt`（M2）
+- `help/ai/NovelVideoScreenplayParser.kt`（M3）
+- `help/ai/AiVideoTaskPoller.kt`（L3）
+
+**AI 基建（CancellationException 修复）**
+- `help/ai/AiToolExecutor.kt`（H1）
+- `help/ai/AiChatService.kt`（H2）
+- `help/ai/AiReadAloudRoleService.kt`（H3）
+- `help/ai/AiReadAloudBgmService.kt`（H4）
+
+**UI ViewModel**
+- `ui/novelvideo/NovelVideoTaskCenterViewModel.kt`（系统性修复 — cancelJob TOCTOU）
+- `ui/novelvideo/NovelVideoJobDetailViewModel.kt`（系统性修复 — cancelJob TOCTOU）
+
+**测试**
+- `test/java/io/legado/app/data/dao/NovelVideoDaoRobolectricTest.kt`（D1-D6 + L1 + 系统性修复）
+- `test/java/io/legado/app/help/ai/NovelVideoParamsTest.kt`（M2）
+- `test/java/io/legado/app/help/ai/NovelVideoScreenplayParserTest.kt`（M3）
+
+---
+
 **Spec 结束。** 实施时如遇具体技术细节与本文档冲突，以本文档为准并在此处更新。
