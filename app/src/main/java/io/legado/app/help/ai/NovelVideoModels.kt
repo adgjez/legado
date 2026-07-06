@@ -50,7 +50,9 @@ data class ScreenplayDraft(
 
     companion object {
         fun fromJson(json: String): ScreenplayDraft =
-            runCatching { GSON.fromJson(json, ScreenplayDraft::class.java) }.getOrDefault(ScreenplayDraft())
+            runCatching { GSON.fromJson(json, ScreenplayDraft::class.java) }.getOrNull()
+                ?.takeIf { it.scenes.isNotEmpty() }
+                ?: throw JsonSyntaxException("ScreenplayDraft 解析失败或场景为空：$json")
     }
 }
 

@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -182,10 +183,12 @@ fun NovelVideoScreenplayReviewScreen(
             }
         )
     }
-    if (addSceneDialog) {
-        // 直接添加一个空白场景，不开弹窗（简化交互）
-        addSceneDialog = false
-        viewModel.addScene()
+    // 用 LaunchedEffect 把副作用挪出组合过程，避免组合期间写状态触发重组风暴
+    LaunchedEffect(addSceneDialog) {
+        if (addSceneDialog) {
+            addSceneDialog = false
+            viewModel.addScene()
+        }
     }
 }
 

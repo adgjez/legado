@@ -5,6 +5,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.model.webBook.WebBook
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
@@ -36,6 +37,8 @@ object NovelVideoChapterLoader {
                     bookChapter = chapter,
                     needSave = false
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 lastError = e
                 if (attempt < MAX_RETRY - 1) {

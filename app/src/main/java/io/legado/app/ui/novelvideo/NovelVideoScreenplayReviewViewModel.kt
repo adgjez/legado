@@ -44,7 +44,10 @@ class NovelVideoScreenplayReviewViewModel(app: Application) : AndroidViewModel(a
             appDb.novelVideoDao.getJobFlow(jobId).collectLatest { j ->
                 _job.value = j
                 if (j?.draftJson?.isNotBlank() == true) {
-                    _draft.value = ScreenplayDraft.fromJson(j.draftJson)
+                    // draftJson 损坏时不让 collectLatest 终止，降级为 null 让 UI 显示空态
+                    _draft.value = runCatching {
+                        ScreenplayDraft.fromJson(j.draftJson)
+                    }.getOrNull()
                 } else if (j?.screenplayJson?.isNotBlank() == true) {
                     // 已确认过的剧本也能查看（只读）
                     runCatching {

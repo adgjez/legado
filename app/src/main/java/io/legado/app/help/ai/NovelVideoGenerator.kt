@@ -19,6 +19,7 @@ import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -101,14 +102,16 @@ object NovelVideoGenerator {
         isCancelled: () -> Boolean
     ) {
         // Stage 1: 加载章节正文
-        updateJobStatus(job.id, NovelVideoJobStatus.GENERATING, "加载章节正文")
+        // 保持 DRAFTING 状态：若改为 GENERATING，崩溃后重启会进入 runGenerationStages
+        // 并因 screenplayJson 为 null 抛异常，导致任务不可恢复
+        updateJobStatus(job.id, NovelVideoJobStatus.DRAFTING, "加载章节正文")
         val chapters = loadChapters(book, job)
         val firstChapter = chapters.first()
         val chapterText = NovelVideoChapterLoader.loadChapterText(book, firstChapter)
         checkCancelled(isCancelled, job.id)
 
         // Stage 2: LLM 生成剧本草稿
-        updateJobStatus(job.id, NovelVideoJobStatus.GENERATING, "生成剧本草稿")
+        updateJobStatus(job.id, NovelVideoJobStatus.DRAFTING, "生成剧本草稿")
         val draft = generateScreenplayWithRetry(book, firstChapter, chapterText, params, null)
         checkCancelled(isCancelled, job.id)
 
@@ -164,6 +167,8 @@ object NovelVideoGenerator {
                     modelConfigOverride = resolveLlmModelConfig(params)
                 )
                 return NovelVideoScreenplayParser.parse(raw)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 lastError = e
                 feedback = "上次返回无法解析为合法 JSON（错误：${e.message}）。请严格按 JSON Schema 输出，不要包裹 markdown，使用 ASCII 双引号，不要尾随逗号。"
@@ -197,12 +202,12 @@ object NovelVideoGenerator {
 
     private suspend fun confirmScreenplayInternal(jobId: String, draft: ScreenplayDraft) {
         val screenplay = Screenplay.fromDraft(draft)
-        appDb.novelVideoDao.updateJob(
-            appDb.novelVideoDao.getJob(jobId)!!.copy(
-                screenplayJson = io.legado.app.utils.GSON.toJson(screenplay),
-                status = NovelVideoJobStatus.SCREENPLAY_CONFIRMED,
-                updatedAt = System.currentTimeMillis()
-            )
+        // 用 DAO 部分更新避免 read-modify-write 竞态（之前用 !! 在 TOCTOU 窗口期会 NPE）
+        appDb.novelVideoDao.updateJobScreenplay(
+            jobId,
+            io.legado.app.utils.GSON.toJson(screenplay),
+            NovelVideoJobStatus.SCREENPLAY_CONFIRMED,
+            System.currentTimeMillis()
         )
     }
 
@@ -218,6 +223,14 @@ object NovelVideoGenerator {
                 throw IllegalStateException("任务已取消或不存在")
             }
             if (job.status == NovelVideoJobStatus.SCREENPLAY_CONFIRMED) return
+            // 兜底：job 进入其他终态（FAILED/COMPLETED 等）时不应继续等待
+            if (job.status in NovelVideoJobStatus.FINISHED_STATES) {
+                throw IllegalStateException("任务已进入终态：${job.status}")
+            }
+            // 仅在 PENDING_REVIEW 状态下等待；其他中间态也视为异常
+            if (job.status != NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW) {
+                throw IllegalStateException("任务状态异常，无法继续等待审阅：${job.status}")
+            }
             delay(400)
         }
     }
@@ -236,7 +249,16 @@ object NovelVideoGenerator {
             ?: throw IllegalStateException("任务不存在：$jobId")
         val screenplayJson = job.screenplayJson
             ?: throw IllegalStateException("剧本未确认，screenplayJson 为空")
-        val screenplay = Screenplay.fromJson(screenplayJson)
+        // screenplayJson 损坏时降级为 FAILED，避免断点续传时反复抛异常卡死
+        val screenplay = try {
+            Screenplay.fromJson(screenplayJson)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            updateJobStatus(jobId, NovelVideoJobStatus.FAILED, "剧本数据损坏：${e.message}")
+            postEvent(EventBus.NOVEL_VIDEO_FAILED, jobId)
+            return
+        }
 
         // Stage 4: 角色三视图
         updateJobStatus(jobId, NovelVideoJobStatus.GENERATING, "生成角色三视图")
@@ -311,6 +333,8 @@ object NovelVideoGenerator {
                 updatedAt = System.currentTimeMillis()
             )
         }.getOrElse { e ->
+            // 协程取消必须向上传播，不能当作角色表失败处理
+            if (e is CancellationException) throw e
             NovelVideoCharacterSheet(
                 id = "cs_${job.id}_${index}",
                 jobId = job.id,
@@ -381,6 +405,8 @@ object NovelVideoGenerator {
                         runCatching {
                             processSegment(job, segment, characterRefs, params, imageProvider, videoProvider, isCancelled)
                         }.onFailure { e ->
+                            // 协程取消必须向上传播，不能当作 segment 失败处理
+                            if (e is CancellationException) throw e
                             AppLog.put("Segment 处理异常 ${segment.id}", e)
                             appDb.novelVideoDao.updateSegmentStatus(
                                 segment.id,
@@ -430,12 +456,14 @@ object NovelVideoGenerator {
         val result = VideoMuxer.merge(inputPaths, outputPath)
         when (result) {
             is VideoMuxer.MergeResult.Success -> {
-                appDb.novelVideoDao.updateJob(
-                    job.copy(
-                        outputPath = result.outputPath,
-                        totalDurationMs = result.totalDurationMs,
-                        updatedAt = System.currentTimeMillis()
-                    )
+                // 用 DAO 部分更新避免 job.copy 把陈旧 status 写回（之前 status 会被回退为 SCREENPLAY_CONFIRMED）
+                appDb.novelVideoDao.updateJobOutput(
+                    job.id,
+                    result.outputPath,
+                    null,
+                    result.totalDurationMs,
+                    NovelVideoJobStatus.MERGING,
+                    System.currentTimeMillis()
                 )
                 AppLog.put("VideoMuxer 合并成功：${result.segmentCount} 段 → ${result.outputPath}")
             }
@@ -443,11 +471,13 @@ object NovelVideoGenerator {
                 // 合并失败不阻塞 job 完成，fallback 到首段视频
                 AppLog.put("VideoMuxer 合并失败，回退首段视频：${result.message}")
                 val fallbackPath = inputPaths.first()
-                appDb.novelVideoDao.updateJob(
-                    job.copy(
-                        outputPath = fallbackPath,
-                        updatedAt = System.currentTimeMillis()
-                    )
+                appDb.novelVideoDao.updateJobOutput(
+                    job.id,
+                    fallbackPath,
+                    null,
+                    null,
+                    NovelVideoJobStatus.MERGING,
+                    System.currentTimeMillis()
                 )
             }
         }
@@ -507,6 +537,8 @@ object NovelVideoGenerator {
                     break
                 }
                 lastErr = result.exceptionOrNull()
+                // 协程取消必须向上传播，不进入重试循环
+                if (lastErr is CancellationException) throw lastErr!!
                 AppLog.put("场景生图失败 attempt=$attempt ${segment.id}", lastErr)
                 if (attempt < maxRetry) delay(1_000L * attempt)
             }

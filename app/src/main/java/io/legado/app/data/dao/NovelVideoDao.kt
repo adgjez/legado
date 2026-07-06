@@ -107,7 +107,7 @@ interface NovelVideoDao {
     @Query("UPDATE novel_video_segments SET videoUrl = :videoUrl, localVideoPath = :localPath, durationMs = :durationMs, status = :status, updatedAt = :time WHERE id = :segmentId")
     suspend fun updateSegmentVideo(segmentId: String, videoUrl: String?, localPath: String?, durationMs: Long?, status: String, time: Long = System.currentTimeMillis())
 
-    @Query("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'video_completed' THEN 1 ELSE 0 END) AS completed, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed FROM novel_video_segments WHERE jobId = :jobId")
+    @Query("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status = 'video_completed' THEN 1 ELSE 0 END), 0) AS completed, COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed FROM novel_video_segments WHERE jobId = :jobId")
     suspend fun getSegmentProgress(jobId: String): SegmentProgress
 
     /* ------------------------ CharacterSheet ----------------------- */
