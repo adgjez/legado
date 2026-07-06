@@ -1,7 +1,6 @@
 package io.legado.app.help.ai
 
 import android.os.Parcelable
-import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.utils.GSON
 import kotlinx.parcelize.Parcelize
@@ -47,10 +46,11 @@ data class NovelVideoParams(
 
     companion object {
         fun fromJson(json: String): NovelVideoParams {
+            // 不在解析失败时调 AppLog（依赖 Android Log），改为输出到 stderr，
+            // 既能在日志中留下痕迹又不破坏纯 JVM 单元测试
             val parsed = runCatching { GSON.fromJson(json, NovelVideoParams::class.java) }
             if (parsed.isFailure) {
-                // paramsJson 损坏时记录原始 JSON，便于排查用户配置为何被回退默认值
-                AppLog.put("NovelVideoParams 解析失败，回退默认值：$json", parsed.exceptionOrNull())
+                System.err.println("NovelVideoParams 解析失败，回退默认值：$json, err=${parsed.exceptionOrNull()}")
                 return NovelVideoParams()
             }
             return parsed.getOrNull()?.coerced() ?: NovelVideoParams()
