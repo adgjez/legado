@@ -525,17 +525,30 @@ object AiVideoService {
             ?: error("未配置文生视频 Provider，请先在设置中添加")
     }
 
-    private fun buildSubmitUrl(provider: AiVideoProviderConfig): String {
+    internal fun buildSubmitUrl(provider: AiVideoProviderConfig): String {
         val submit = provider.submitUrl.trim()
         val resolved = if (submit.isNotBlank()) {
             if (submit.startsWith("http")) submit
-            else "${provider.baseUrl.trimEnd('/')}/${submit.trimStart('/')}"
+            else {
+                // submitUrl 是相对路径（如 /videos），需要 baseUrl 拼。
+                // 视频编辑页无 baseUrl 字段（save 时强制空），故从 pollUrlTemplate
+                // 反推 origin（scheme+host[+port]）作为兜底。
+                val base = provider.baseUrl.trimEnd('/').ifBlank {
+                    inferOriginFromPollUrl(provider.pollUrlTemplate)
+                }
+                if (base.isBlank()) {
+                    error("视频 submitUrl 是相对路径（$submit）但 baseUrl 和 pollUrlTemplate 均无 host，请填完整 URL")
+                }
+                "$base/${submit.trimStart('/')}"
+            }
         } else {
-            val base = provider.baseUrl.trimEnd('/')
+            val base = provider.baseUrl.trimEnd('/').ifBlank {
+                inferOriginFromPollUrl(provider.pollUrlTemplate)
+            }
             when {
                 base.endsWith("/v1") -> "$base/videos"
                 base.endsWith("/videos") -> base
-                base.isBlank() -> error("Provider baseUrl 和 submitUrl 均为空")
+                base.isBlank() -> error("Provider submitUrl/baseUrl/pollUrlTemplate 均无 host，请填完整 URL")
                 else -> "$base/v1/videos"
             }
         }
@@ -545,6 +558,25 @@ object AiVideoService {
             error("视频提交 URL 无效（缺 http/https scheme）：$resolved。请检查 submitUrl/baseUrl 配置")
         }
         return resolved
+    }
+
+    /**
+     * 从 pollUrlTemplate 反推 origin（scheme://host[:port]）。
+     *
+     * 视频编辑页无 baseUrl 字段（save 时强制空），但预置 Provider 都填了完整
+     * pollUrlTemplate（如 https://ark.cn-beijing.volces.com/api/v3/.../tasks/{taskId}）。
+     * 当用户把 submitUrl 填成相对路径（如 /videos）时，从 pollUrl 提取 origin 作为兜底，
+     * 避免拼出无 scheme 的 URL。
+     *
+     * 返回空字符串表示无法反推。
+     */
+    internal fun inferOriginFromPollUrl(pollUrlTemplate: String): String {
+        val tpl = pollUrlTemplate.trim()
+        if (!tpl.startsWith("http://") && !tpl.startsWith("https://")) return ""
+        // 提取 scheme://host[:port]，截到第一个 '/' 之后的第一个 '/' 之前
+        val schemeEnd = tpl.indexOf("://") + 3
+        val pathStart = tpl.indexOf('/', schemeEnd)
+        return if (pathStart > 0) tpl.substring(0, pathStart) else tpl
     }
 
     /**
