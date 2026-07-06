@@ -175,12 +175,14 @@ fun NovelVideoJobConfigSheet(
             )
 
             // 文本参数
-            OutlinedTextField(
+            // resolution 用下拉框限制为常用预设，避免自由文本输入非法值导致视频 API 报晦涩错误
+            val resolutionOptions = remember {
+                listOf("1280x720", "1920x1080", "1024x1024", "720x1280", "1080x1920")
+            }
+            ResolutionDropdown(
                 value = params.resolution,
-                onValueChange = { params = params.copy(resolution = it) },
-                label = { Text(stringResource(R.string.novel_video_config_resolution)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                options = resolutionOptions,
+                onValueChange = { params = params.copy(resolution = it) }
             )
             OutlinedTextField(
                 value = params.stylePrompt,
@@ -412,6 +414,37 @@ private fun <T> ProviderDropdown(
                     text = { Text(itemLabel(item)) },
                     onClick = {
                         onSelect(itemId(item))
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ResolutionDropdown(
+    value: String,
+    options: List<String>,
+    onValueChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(R.string.novel_video_config_resolution)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { opt ->
+                DropdownMenuItem(
+                    text = { Text(opt) },
+                    onClick = {
+                        onValueChange(opt)
                         expanded = false
                     }
                 )

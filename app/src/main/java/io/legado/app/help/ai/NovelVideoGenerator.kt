@@ -424,7 +424,7 @@ object NovelVideoGenerator {
                             // 协程取消必须向上传播，不能当作 segment 失败处理
                             if (e is CancellationException) throw e
                             AppLog.put("Segment 处理异常 ${segment.id}", e)
-                            appDb.novelVideoDao.updateSegmentStatus(
+                            appDb.novelVideoDao.markSegmentFailed(
                                 segment.id,
                                 NovelVideoSegmentStatus.FAILED,
                                 e.message,
@@ -464,7 +464,11 @@ object NovelVideoGenerator {
             .sortedBy { it.sceneId }
             .mapNotNull { it.localVideoPath?.takeIf { p -> File(p).isFile } }
         if (inputPaths.isEmpty()) {
-            AppLog.put("VideoMuxer 跳过：segment 无本地视频文件，jobId=${job.id}")
+            // segment 标记 VIDEO_COMPLETED 但本地 mp4 缺失：不应静默跳过，
+            // 否则 finalizeJob 会因 completed>0 误判 COMPLETED，得到无视频可播的"已完成"任务
+            AppLog.put("VideoMuxer 失败：${completedSegs.size} 段标记完成但本地视频文件缺失，jobId=${job.id}")
+            updateJobStatus(job.id, NovelVideoJobStatus.FAILED, "已完成段的视频文件缺失")
+            postEvent(EventBus.NOVEL_VIDEO_FAILED, job.id)
             return
         }
 
@@ -560,7 +564,7 @@ object NovelVideoGenerator {
             }
             if (savedImage == null) {
                 val err = lastErr?.message
-                appDb.novelVideoDao.updateSegmentStatus(
+                appDb.novelVideoDao.markSegmentFailed(
                     segment.id, NovelVideoSegmentStatus.FAILED, err, System.currentTimeMillis()
                 )
                 postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
@@ -620,7 +624,7 @@ object NovelVideoGenerator {
             }
             when (success) {
                 null -> {
-                    appDb.novelVideoDao.updateSegmentStatus(
+                    appDb.novelVideoDao.markSegmentFailed(
                         segment.id, NovelVideoSegmentStatus.FAILED, failedMsg, System.currentTimeMillis()
                     )
                 }
@@ -645,7 +649,10 @@ object NovelVideoGenerator {
     private suspend fun ensureSegments(job: NovelVideoJob, screenplay: Screenplay) {
         val existing = appDb.novelVideoDao.getSegmentsByJob(job.id)
         val existingSceneIds = existing.map { it.sceneId }.toSet()
-        val toInsert = screenplay.scenes.filter { it.sceneId !in existingSceneIds }.map { scene ->
+        // 对 screenplay.scenes 按 sceneId 去重，防止 LLM 误返回重复 sceneId 时
+        // insertSegments 的 REPLACE 策略静默覆写先插入的段
+        val uniqueScenes = screenplay.scenes.distinctBy { it.sceneId }
+        val toInsert = uniqueScenes.filter { it.sceneId !in existingSceneIds }.map { scene ->
             NovelVideoSegment(
                 id = "seg_${job.id}_${scene.sceneId}",
                 jobId = job.id,
@@ -683,6 +690,8 @@ object NovelVideoGenerator {
     ) {
         checkCancelled(isCancelled, job.id)
         val progress = appDb.novelVideoDao.getSegmentProgress(job.id)
+        // 重新读取 job：Stage 7 已写入 outputPath/totalDurationMs
+        val latestJob = appDb.novelVideoDao.getJob(job.id) ?: job
         val finalStatus = when {
             progress.completed == 0 && progress.total > 0 -> {
                 // 所有 segment 都失败了
@@ -690,6 +699,16 @@ object NovelVideoGenerator {
                     job.id,
                     NovelVideoJobStatus.FAILED,
                     "全部 ${progress.total} 个场景生成失败"
+                )
+                postEvent(EventBus.NOVEL_VIDEO_FAILED, job.id)
+                return
+            }
+            // outputPath 为空说明 Stage 7 合并未产出可播放文件，不应标记 COMPLETED
+            latestJob.outputPath.isNullOrBlank() && progress.completed > 0 -> {
+                updateJobStatus(
+                    job.id,
+                    NovelVideoJobStatus.FAILED,
+                    "视频合并未产出文件"
                 )
                 postEvent(EventBus.NOVEL_VIDEO_FAILED, job.id)
                 return
@@ -706,8 +725,6 @@ object NovelVideoGenerator {
             AppLog.put("jobId=${job.id} 已被并发置为终态，finalizeJob 跳过")
             return
         }
-        // 重新读取 job（Stage 7 可能已更新 outputPath/totalDurationMs）
-        val latestJob = appDb.novelVideoDao.getJob(job.id) ?: job
         // 写回 BookChapter.resourceUrl，让阅读页能播放入口
         if (params.attachToBookChapter && finalStatus != NovelVideoJobStatus.FAILED) {
             runCatching { attachOutputToChapter(latestJob, job.chapterStartIndex) }

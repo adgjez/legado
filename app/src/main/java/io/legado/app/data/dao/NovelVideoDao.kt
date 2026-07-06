@@ -105,8 +105,12 @@ interface NovelVideoDao {
     @Query("SELECT * FROM novel_video_segments WHERE jobId = :jobId AND status IN ('pending','image_generating','image_completed','video_generating','failed') ORDER BY chapterIndex ASC, sceneId ASC LIMIT 1")
     suspend fun getNextPendingSegment(jobId: String): NovelVideoSegment?
 
-    @Query("UPDATE novel_video_segments SET status = :status, errorMessage = :err, retryCount = retryCount + 1, updatedAt = :time WHERE id = :segmentId")
+    @Query("UPDATE novel_video_segments SET status = :status, errorMessage = :err, updatedAt = :time WHERE id = :segmentId")
     suspend fun updateSegmentStatus(segmentId: String, status: String, err: String?, time: Long = System.currentTimeMillis())
+
+    /** 标记 segment 失败并递增 retryCount；正常状态流转用 [updateSegmentStatus] 不递增。 */
+    @Query("UPDATE novel_video_segments SET status = :status, errorMessage = :err, retryCount = retryCount + 1, updatedAt = :time WHERE id = :segmentId")
+    suspend fun markSegmentFailed(segmentId: String, status: String = "failed", err: String?, time: Long = System.currentTimeMillis())
 
     @Query("UPDATE novel_video_segments SET imageUrl = :imageUrl, status = :status, updatedAt = :time WHERE id = :segmentId")
     suspend fun updateSegmentImage(segmentId: String, imageUrl: String?, status: String, time: Long = System.currentTimeMillis())

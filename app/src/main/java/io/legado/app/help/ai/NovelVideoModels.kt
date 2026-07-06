@@ -15,14 +15,17 @@ import io.legado.app.utils.GSON
 
 @Keep
 data class Screenplay(
-    val taskId: String,
-    val title: String,
-    val scenes: List<Scene>
+    // 非空字段需默认值：GSON 通过 Unsafe 实例化，解析 "{}" 时字段在 JVM 层为 null，
+    // 不给默认值会在后续访问 scenes 等字段时抛 NPE
+    val taskId: String = "",
+    val title: String = "",
+    val scenes: List<Scene> = emptyList()
 ) {
     companion object {
         fun fromJson(json: String): Screenplay =
             runCatching { GSON.fromJson(json, Screenplay::class.java) }.getOrNull()
-                ?: throw JsonSyntaxException("Screenplay 解析失败")
+                ?.takeIf { it.scenes.isNotEmpty() }
+                ?: throw JsonSyntaxException("Screenplay 解析失败或场景为空：$json")
 
         fun fromDraft(draft: ScreenplayDraft): Screenplay = Screenplay(
             taskId = draft.taskId.ifBlank { "nv_${System.currentTimeMillis()}" },

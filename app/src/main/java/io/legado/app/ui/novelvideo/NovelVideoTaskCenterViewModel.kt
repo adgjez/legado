@@ -8,6 +8,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoJobStatus
+import io.legado.app.data.entities.NovelVideoSegmentStatus
 import io.legado.app.help.ai.NovelVideoParams
 import io.legado.app.service.NovelVideoService
 import io.legado.app.utils.GSON
@@ -83,7 +84,8 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
         chapters: List<BookChapter>,
         params: NovelVideoParams
     ): String = withContext(Dispatchers.IO) {
-        val jobId = "nv_${System.currentTimeMillis()}_${(0..9999).random().toString().padStart(4, '0')}"
+        // 用 UUID 防止同毫秒创建碰撞（原 timestamp+random 有 1/10000 概率覆写前一个 job）
+        val jobId = "nv_${java.util.UUID.randomUUID()}"
         val chapterTitles = chapters
             .filter { it.index in chapterStartIndex..chapterEndIndex }
             .map { it.title }
@@ -118,8 +120,8 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
         val job = appDb.novelVideoDao.getJob(jobId) ?: return@withContext
         if (job.status == NovelVideoJobStatus.FAILED || job.status == NovelVideoJobStatus.CANCELLED) {
             val segments = appDb.novelVideoDao.getSegmentsByJob(jobId)
-            segments.filter { it.status == "failed" }.forEach { seg ->
-                appDb.novelVideoDao.updateSegmentStatus(seg.id, "pending", null)
+            segments.filter { it.status == NovelVideoSegmentStatus.FAILED }.forEach { seg ->
+                appDb.novelVideoDao.updateSegmentStatus(seg.id, NovelVideoSegmentStatus.PENDING, null)
             }
             appDb.novelVideoDao.updateJobStatusWithError(
                 jobId, NovelVideoJobStatus.GENERATING, null

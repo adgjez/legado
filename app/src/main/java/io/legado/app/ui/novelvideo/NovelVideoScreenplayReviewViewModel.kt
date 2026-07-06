@@ -39,10 +39,17 @@ class NovelVideoScreenplayReviewViewModel(app: Application) : AndroidViewModel(a
     private val _submitting = MutableStateFlow(false)
     val submitting: StateFlow<Boolean> = _submitting.asStateFlow()
 
+    private var lastSeenStatus: String? = null
+
     fun bind(jobId: String) {
         viewModelScope.launch {
             appDb.novelVideoDao.getJobFlow(jobId).collectLatest { j ->
                 _job.value = j
+                // 仅在首次加载或 status 变化时重载 draft，避免用户编辑期间被 DB 推送覆写
+                val statusChanged = j?.status != lastSeenStatus
+                lastSeenStatus = j?.status
+                if (!statusChanged && _draft.value != null) return@collectLatest
+
                 if (j?.draftJson?.isNotBlank() == true) {
                     // draftJson 损坏时不让 collectLatest 终止，降级为 null 让 UI 显示空态
                     _draft.value = runCatching {
