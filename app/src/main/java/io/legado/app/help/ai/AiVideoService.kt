@@ -527,17 +527,24 @@ object AiVideoService {
 
     private fun buildSubmitUrl(provider: AiVideoProviderConfig): String {
         val submit = provider.submitUrl.trim()
-        if (submit.isNotBlank()) {
-            return if (submit.startsWith("http")) submit
+        val resolved = if (submit.isNotBlank()) {
+            if (submit.startsWith("http")) submit
             else "${provider.baseUrl.trimEnd('/')}/${submit.trimStart('/')}"
+        } else {
+            val base = provider.baseUrl.trimEnd('/')
+            when {
+                base.endsWith("/v1") -> "$base/videos"
+                base.endsWith("/videos") -> base
+                base.isBlank() -> error("Provider baseUrl 和 submitUrl 均为空")
+                else -> "$base/v1/videos"
+            }
         }
-        val base = provider.baseUrl.trimEnd('/')
-        return when {
-            base.endsWith("/v1") -> "$base/videos"
-            base.endsWith("/videos") -> base
-            base.isBlank() -> error("Provider baseUrl 和 submitUrl 均为空")
-            else -> "$base/v1/videos"
+        // 最终 URL 必须是 http/https；否则 okhttp 会抛 IllegalArgumentException，
+        // 错误信息含原始字符串（可能含 path 片段），不利于定位。
+        if (!resolved.startsWith("http://") && !resolved.startsWith("https://")) {
+            error("视频提交 URL 无效（缺 http/https scheme）：$resolved。请检查 submitUrl/baseUrl 配置")
         }
+        return resolved
     }
 
     /**

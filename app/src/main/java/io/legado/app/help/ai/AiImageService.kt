@@ -60,10 +60,11 @@ object AiImageService {
         if (referenceImages.isEmpty()) return generate(prompt, provider)
         val target = resolveProvider(provider)
         val effective = effectivePrompt(prompt, target)
-        return when (target.type) {
-            AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target).source
+        return when {
+            target.type == AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target).source
             // Agnes Image 2.1 Flash 原生支持 extra_body.image 参考图（图生图），保持人物一致性
-            AiImageProviderConfig.TYPE_AGNES ->
+            // 容错：type=openai 但 model=agnes-image-* 也走 Agnes 路径
+            target.type == AiImageProviderConfig.TYPE_AGNES || isAgnesImageModel(target) ->
                 generateByAgnesImagesApi(effective, target, referenceImages).source
             // 仅 chat vision model（如 gpt-4o-image-vip）支持 image_url 参考图；
             // images API 类 model（gpt-image-1 / dall-e-3）走 /images/generations 不支持参考图，
@@ -99,9 +100,10 @@ object AiImageService {
         if (referenceImages.isEmpty()) return generateAndStore(prompt, provider, metadata)
         val target = resolveProvider(provider)
         val effective = effectivePrompt(prompt, target)
-        val image = when (target.type) {
-            AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target)
-            AiImageProviderConfig.TYPE_AGNES ->
+        val image = when {
+            target.type == AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target)
+            // 容错：type=openai 但 model=agnes-image-* 也走 Agnes 路径
+            target.type == AiImageProviderConfig.TYPE_AGNES || isAgnesImageModel(target) ->
                 generateByAgnesImagesApi(effective, target, referenceImages)
             else -> if (isChatVisionModel(target)) {
                 generateByChatWithImages(effective, referenceImages, target)
@@ -149,6 +151,19 @@ object AiImageService {
         return model.contains("gpt-4o") || model.contains("image-vip") || model.contains("vision")
     }
 
+    /**
+     * 判断 provider 是否为 Agnes Image model（agnes-image-2.1-flash 等）。
+     *
+     * 容错：即使 type 字段仍为 openai（旧 Provider 未切换 type），
+     * 只要 model 名含 "agnes-image" 就走 Agnes images API 路径，避免
+     * 被错误塞进 OpenAI chat/completions 端点导致 404 或参考图失效。
+     */
+    internal fun isAgnesImageModel(provider: AiImageProviderConfig): Boolean {
+        if (provider.type == AiImageProviderConfig.TYPE_AGNES) return true
+        val model = provider.model.lowercase()
+        return model.contains("agnes-image")
+    }
+
     private fun effectivePrompt(prompt: String, provider: AiImageProviderConfig): String {
         val style = provider.stylePrompt.trim()
         val content = prompt.trim()
@@ -160,9 +175,11 @@ object AiImageService {
     }
 
     private suspend fun generateRaw(prompt: String, target: AiImageProviderConfig): ImageGenerationResult {
-        return when (target.type) {
-            AiImageProviderConfig.TYPE_JS -> generateByJs(prompt, target)
-            AiImageProviderConfig.TYPE_AGNES -> generateByAgnesImagesApi(prompt, target)
+        return when {
+            target.type == AiImageProviderConfig.TYPE_JS -> generateByJs(prompt, target)
+            // Agnes type 或 model 名为 agnes-image-*（容错旧配置 type=openai）
+            target.type == AiImageProviderConfig.TYPE_AGNES || isAgnesImageModel(target) ->
+                generateByAgnesImagesApi(prompt, target)
             else -> generateByOpenAi(prompt, target)
         }
     }
