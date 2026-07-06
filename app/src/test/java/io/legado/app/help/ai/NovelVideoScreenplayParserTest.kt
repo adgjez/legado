@@ -189,12 +189,14 @@ class NovelVideoScreenplayParserTest {
 
     @Test
     fun parseThrowsWhenScenesIsEmpty() {
+        // M3: parseDraft 复用 ScreenplayDraft.fromJson 后，空场景在解析阶段即抛
+        // JsonSyntaxException（而非等到 validate 抛 IllegalArgumentException）
         val raw = """{"task_id":"x","title":"t","scenes":[]}"""
         try {
             NovelVideoScreenplayParser.parse(raw)
-            fail("expected IllegalArgumentException")
-        } catch (e: IllegalArgumentException) {
-            assertTrue(e.message?.contains("剧本没有场景") == true)
+            fail("expected JsonSyntaxException")
+        } catch (e: JsonSyntaxException) {
+            assertTrue(e.message?.contains("场景为空") == true)
         }
     }
 
