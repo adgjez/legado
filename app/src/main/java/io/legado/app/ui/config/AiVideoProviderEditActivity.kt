@@ -86,7 +86,8 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             )
             setContent {
                 val isOpenAi = providerType == AiVideoProviderConfig.TYPE_OPENAI ||
-                    providerType == AiVideoProviderConfig.TYPE_AGNES
+                    providerType == AiVideoProviderConfig.TYPE_AGNES ||
+                    providerType == AiVideoProviderConfig.TYPE_DOUBAO
                 AiVideoProviderEditScreen(
                     name = nameText,
                     onNameChange = { nameText = it },
@@ -153,6 +154,11 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             applyAgnesPreset()
             return
         }
+        if (provider == null && providerType == AiVideoProviderConfig.TYPE_DOUBAO) {
+            // 新建豆包 Seedance 2.0 Provider 时预填配置
+            applyDoubaoPreset()
+            return
+        }
         nameText = provider?.name.orEmpty()
         submitUrlText = provider?.submitUrl.orEmpty()
         pollUrlTemplateText = provider?.pollUrlTemplate.orEmpty()
@@ -200,18 +206,52 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         apiKeyText = ""
     }
 
+    /**
+     * 豆包 Seedance 2.0 预置配置：填好 submitUrl/pollUrlTemplate/JSONPath/状态值，
+     * 用户只需填入 apiKey（即火山引擎 ARK API Key）即可使用。
+     *
+     * 端点：`POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks`
+     * 轮询：`GET https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/{taskId}`
+     * taskIdJsonPath: `$.id`
+     * videoUrlJsonPath: `$.content.video_url`
+     * statusJsonPath: `$.status`，done=`succeeded`，failed=`failed`
+     */
+    private fun applyDoubaoPreset() {
+        nameText = "豆包 Seedance 2.0"
+        modelText = "doubao-seedance-2-0-260128"
+        submitUrlText = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"
+        pollUrlTemplateText = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/{taskId}"
+        taskIdJsonPathText = "\$.id"
+        videoUrlJsonPathText = "\$.content.video_url"
+        statusJsonPathText = "\$.status"
+        doneStatusValueText = "succeeded"
+        failedStatusValueText = "failed"
+        maxReferenceImagesText = "1"
+        submitTimeoutText = "60000"
+        pollTimeoutText = "600000"
+        pollIntervalText = "3000"
+        enabledState = true
+        paramsText = ""
+        scriptText = ""
+        jsLibText = ""
+        headersText = ""
+        apiKeyText = ""
+    }
+
     private fun selectType() {
         showComposeActionListDialog(
             title = getString(R.string.ai_video_provider_type),
             labels = listOf(
                 getString(R.string.ai_video_provider_openai),
                 getString(R.string.ai_video_provider_agnes),
+                getString(R.string.ai_video_provider_doubao),
                 getString(R.string.ai_video_provider_js)
             )
         ) { index ->
             providerType = when (index) {
                 0 -> AiVideoProviderConfig.TYPE_OPENAI
                 1 -> AiVideoProviderConfig.TYPE_AGNES
+                2 -> AiVideoProviderConfig.TYPE_DOUBAO
                 else -> AiVideoProviderConfig.TYPE_JS
             }
         }
@@ -237,7 +277,8 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             return
         }
         if ((providerType == AiVideoProviderConfig.TYPE_OPENAI ||
-                providerType == AiVideoProviderConfig.TYPE_AGNES) &&
+                providerType == AiVideoProviderConfig.TYPE_AGNES ||
+                providerType == AiVideoProviderConfig.TYPE_DOUBAO) &&
             submitUrlText.isBlank()
         ) {
             toastOnUi(R.string.ai_provider_url_required)
@@ -296,6 +337,24 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                     "  \"negative_prompt\": \"blurry, low quality, distorted\",\n" +
                     "  \"seed\": 42,\n" +
                     "  \"num_inference_steps\": 30\n" +
+                    "}"
+            }
+            AiVideoProviderConfig.TYPE_DOUBAO -> {
+                // 豆包 Seedance 2.0 高级参数模板：
+                // - duration: 视频时长秒数（4-15 或 -1 自动）；这里不设，由 NovelVideoParams.sceneDurationSeconds 注入
+                // - camera_fixed: 镜头固定，避免运镜抖动（适合稳定叙事场景）
+                // - return_last_frame: 返回尾帧，用于续拍衔接
+                // - generate_audio: 是否生成音频
+                // - watermark: 是否加水印
+                // - seed: 随机种子
+                "// 豆包 Seedance 2.0 高级参数（按模型自适应注入）\n" +
+                    "// duration 由 NovelVideoParams.sceneDurationSeconds 自动覆盖\n" +
+                    "{\n" +
+                    "  \"camera_fixed\": false,\n" +
+                    "  \"return_last_frame\": false,\n" +
+                    "  \"generate_audio\": false,\n" +
+                    "  \"watermark\": false,\n" +
+                    "  \"seed\": 42\n" +
                     "}"
             }
             else -> ""

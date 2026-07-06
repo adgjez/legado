@@ -658,11 +658,18 @@ object NovelVideoGenerator {
                 } else {
                     NovelVideoPromptBuilder.rewriteVideoPromptForSafety(videoPrompt)
                 }
-                val result = AiVideoTaskPoller.generate(
+                // Stage 6：构造 VideoSubmitRequest 提交。
+                // 高级参数（mode/negative_prompt/seed/camera_fixed/generate_audio 等）由
+                // AiVideoService.submit 内部按 videoProvider.type 从 defaultParamsJson 自动注入，
+                // 实现「按所选模型自适应发挥其能力」——配 Agnes 用关键帧模式，配豆包用 camera_fixed 等。
+                val submitRequest = VideoSubmitRequest(
                     prompt = sanitizedPrompt,
                     seconds = params.sceneDurationSeconds,
                     size = params.resolution,
-                    referenceImages = videoRefs,
+                    referenceImages = videoRefs
+                )
+                val result = AiVideoTaskPoller.generate(
+                    request = submitRequest,
                     jobId = job.id,
                     segId = segment.id,
                     provider = videoProvider,

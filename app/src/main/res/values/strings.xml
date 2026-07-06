@@ -692,6 +692,7 @@
     <string name="ai_video_provider_manage_summary">配置 veo3.1 风格的 submit/poll 双端点视频生成接口或 JS 脚本，供小说转视频流水线使用。</string>
     <string name="ai_video_provider_openai">OpenAI 风格视频</string>
     <string name="ai_video_provider_agnes">Agnes Video V2.0（预置）</string>
+    <string name="ai_video_provider_doubao">豆包 Seedance 2.0（预置）</string>
     <string name="ai_video_provider_js">JS 生视频规则</string>
     <string name="ai_video_provider_type">供应商类型</string>
     <string name="ai_video_params">请求参数 JSON</string>

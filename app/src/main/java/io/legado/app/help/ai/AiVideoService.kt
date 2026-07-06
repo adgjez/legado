@@ -37,14 +37,10 @@ object AiVideoService {
     }
 
     /**
-     * 提交视频生成任务。
+     * 提交视频生成任务（旧签名，向后兼容）。
      *
-     * @param prompt 视频提示词（英文）
-     * @param seconds 视频时长（秒）
-     * @param size 分辨率，如 "1280x720"
-     * @param referenceImages 参考图 URL 列表（最多 [AiVideoProviderConfig.maxReferenceImages] 张）
-     * @param provider Provider 配置；null 则用当前默认
-     * @return taskId
+     * 内部构造 [VideoSubmitRequest] 后调 [submit] 新签名。
+     * 高级参数完全由 [AiVideoProviderConfig.defaultParamsJson] 提供（按模型自适应）。
      */
     suspend fun submit(
         prompt: String,
@@ -53,17 +49,50 @@ object AiVideoService {
         referenceImages: List<String>,
         provider: AiVideoProviderConfig? = null
     ): String = withContext(Dispatchers.IO) {
+        submit(
+            VideoSubmitRequest(
+                prompt = prompt,
+                seconds = seconds,
+                size = size,
+                referenceImages = referenceImages
+            ),
+            provider
+        )
+    }
+
+    /**
+     * 提交视频生成任务（新签名，接收统一抽象 [VideoSubmitRequest]）。
+     *
+     * 按 [AiVideoProviderConfig.type] 分发：
+     * - [AiVideoProviderConfig.TYPE_OPENAI] → [submitMultipart]（veo3.1 风格 multipart）
+     * - [AiVideoProviderConfig.TYPE_AGNES] → [submitAgnesJson]（Agnes V2.0 JSON body）
+     * - [AiVideoProviderConfig.TYPE_DOUBAO] → [submitDoubaoJson]（豆包 Seedance 2.0 content[] 结构）
+     *
+     * 调用方只需在 [request] 中提供基础字段（prompt/seconds/size/referenceImages），
+     * 高级字段（mode/negative_prompt/seed/camera_fixed/generate_audio 等）会通过
+     * [mergeProviderParams] 从 [AiVideoProviderConfig.defaultParamsJson] 自动注入，
+     * 实现「按所选模型自适应发挥其能力」。若 [request] 显式指定了某高级字段，则覆盖 Provider 默认值。
+     *
+     * @return taskId
+     */
+    suspend fun submit(
+        request: VideoSubmitRequest,
+        provider: AiVideoProviderConfig? = null
+    ): String = withContext(Dispatchers.IO) {
         val target = resolveProvider(provider)
         val requestUrl = buildSubmitUrl(target)
         val maxRefs = target.maxReferenceImages.coerceAtLeast(1)
-        val refs = referenceImages.filter { it.isNotBlank() }.take(maxRefs)
+        val refs = request.referenceImages.filter { it.isNotBlank() }.take(maxRefs)
+        // 关键：合并 Provider 的 defaultParamsJson 高级参数到 request（按模型自适应）
+        val merged = mergeProviderParams(request, target).copy(referenceImages = refs)
 
-        val response = if (target.type == AiVideoProviderConfig.TYPE_AGNES) {
-            // Agnes Video V2.0：JSON body，字段为 width/height/num_frames/frame_rate
-            submitAgnesJson(target, requestUrl, prompt, seconds, size, refs)
-        } else {
-            // 默认（veo3.1 风格）：multipart/form-data
-            submitMultipart(target, requestUrl, prompt, seconds, size, refs)
+        val response = when (target.type) {
+            AiVideoProviderConfig.TYPE_AGNES ->
+                submitAgnesJson(target, requestUrl, merged)
+            AiVideoProviderConfig.TYPE_DOUBAO ->
+                submitDoubaoJson(target, requestUrl, merged)
+            else ->
+                submitMultipart(target, requestUrl, merged)
         }
         response.use { resp ->
             val text = resp.body?.string().orEmpty()
@@ -82,27 +111,83 @@ object AiVideoService {
     }
 
     /**
+     * 把 [AiVideoProviderConfig.defaultParamsJson] 中的高级参数合并进 [VideoSubmitRequest]。
+     *
+     * 「按模型自适应」核心：用户在 Provider 编辑页配置该 Provider 支持的高级参数，
+     * 这里在提交时自动注入到 request。若 request 已显式提供某字段，则保留 request 的值（调用方覆盖）。
+     *
+     * 各 type 支持的字段：
+     * - Agnes: mode / negative_prompt / seed / num_inference_steps
+     * - 豆包: seed / camera_fixed / return_last_frame / generate_audio / watermark / draft / resolution / ratio / duration
+     * - OpenAI 风格: 无高级字段（仅 duration/size 由 request 主字段携带）
+     *
+     * 解析失败、字段缺失、类型不匹配等一律跳过该字段，不影响默认流程。
+     */
+    internal fun mergeProviderParams(
+        request: VideoSubmitRequest,
+        target: AiVideoProviderConfig
+    ): VideoSubmitRequest {
+        val paramsJson = target.defaultParamsJson
+        if (paramsJson.isBlank()) return request
+        val root = runCatching { JSONObject(paramsJson) }.getOrNull() ?: return request
+
+        // 通用：seed（Agnes/豆包都支持）
+        val seed = request.seed ?: root.opt("seed")?.let { (it as? Number)?.toInt() }
+
+        return when (target.type) {
+            AiVideoProviderConfig.TYPE_AGNES -> {
+                val mode = request.mode ?: root.optString("mode").ifBlank { null }
+                val neg = request.negativePrompt ?: root.optString("negative_prompt").ifBlank { null }
+                val steps = request.numInferenceSteps
+                    ?: root.opt("num_inference_steps")?.let { (it as? Number)?.toInt() }
+                request.copy(
+                    mode = mode, negativePrompt = neg, seed = seed, numInferenceSteps = steps
+                )
+            }
+            AiVideoProviderConfig.TYPE_DOUBAO -> {
+                val cameraFixed = request.cameraFixed ?: root.opt("camera_fixed")?.let { it as? Boolean }
+                val returnLast = request.returnLastFrame || root.optBoolean("return_last_frame", false)
+                val genAudio = request.generateAudio ?: root.opt("generate_audio")?.let { it as? Boolean }
+                val watermark = request.watermark || root.optBoolean("watermark", false)
+                val draft = request.draft || root.optBoolean("draft", false)
+                // 豆包 duration 可在 defaultParamsJson 配置，但 request.seconds 优先
+                val seconds = if (request.seconds > 0) request.seconds
+                else root.opt("duration")?.let { (it as? Number)?.toInt() }?.takeIf { it > 0 } ?: request.seconds
+                request.copy(
+                    seed = seed,
+                    cameraFixed = cameraFixed,
+                    returnLastFrame = returnLast,
+                    generateAudio = genAudio,
+                    watermark = watermark,
+                    draft = draft,
+                    seconds = seconds
+                )
+            }
+            else -> request.copy(seed = seed)
+        }
+    }
+
+    /**
      * veo3.1 风格的 multipart/form-data 提交。
      * 参考图作为重复的 input_reference 字段（multipart 同名多值）。
      */
     private suspend fun submitMultipart(
         target: AiVideoProviderConfig,
         requestUrl: String,
-        prompt: String,
-        seconds: Int,
-        size: String,
-        refs: List<String>
+        request: VideoSubmitRequest
     ): okhttp3.Response {
         val formMap = linkedMapOf<String, Any>(
             "model" to target.model.ifBlank { "veo3.1-components" },
-            "prompt" to prompt,
-            "seconds" to seconds.toString(),
-            "size" to size,
-            "watermark" to "false"
+            "prompt" to request.prompt,
+            "seconds" to request.seconds.toString(),
+            "size" to request.size,
+            "watermark" to request.watermark.toString()
         )
+        // OpenAI 风格也支持 seed（如 veo3.1 的 seed 参数）
+        request.seed?.let { formMap["seed"] = it.toString() }
         return target.httpClient(target.validSubmitTimeout()).newCallResponse {
             url(requestUrl)
-            buildMultipartBody(target, formMap, refs)
+            buildMultipartBody(target, formMap, request.referenceImages)
             addHeader("Accept", "application/json")
             target.apiKey.takeIf { it.isNotBlank() }?.let {
                 addHeader("Authorization", "Bearer $it")
@@ -120,8 +205,8 @@ object AiVideoService {
      * - 参考图：
      *   - 1 张 → 顶层 image 字段（图生视频模式）
      *   - 2+ 张 → extra_body.image 数组
-     *   - 若 defaultParamsJson 含 mode=keyframes → extra_body.mode=keyframes（关键帧过渡）
-     * - 高级参数（来自 defaultParamsJson，可选）：
+     *   - 若 mode=keyframes → extra_body.mode=keyframes（关键帧过渡）
+     * - 高级参数（已由 [mergeProviderParams] 注入到 [VideoSubmitRequest]）：
      *   - negative_prompt：反向提示词
      *   - seed：随机种子
      *   - num_inference_steps：推理步数
@@ -132,30 +217,26 @@ object AiVideoService {
     private suspend fun submitAgnesJson(
         target: AiVideoProviderConfig,
         requestUrl: String,
-        prompt: String,
-        seconds: Int,
-        size: String,
-        refs: List<String>
+        request: VideoSubmitRequest
     ): okhttp3.Response {
-        val (width, height) = parseSizeStatic(size)
+        val (width, height) = parseSizeStatic(request.size)
         val frameRate = 24
         // num_frames 需满足 8n+1 规则且 ≤ 441
-        val numFrames = computeAgnesNumFramesStatic(seconds, frameRate)
-        // 从 defaultParamsJson 读取可选高级参数
-        val params = parseAgnesExtraParams(target.defaultParamsJson)
-        val mode = params.mode
+        val numFrames = computeAgnesNumFramesStatic(request.seconds, frameRate)
+        val refs = request.referenceImages
+        val mode = request.mode
 
         val jsonBody = JSONObject().apply {
             put("model", target.model.ifBlank { "agnes-video-v2.0" })
-            put("prompt", prompt)
+            put("prompt", request.prompt)
             put("width", width)
             put("height", height)
             put("num_frames", numFrames)
             put("frame_rate", frameRate)
-            // 可选高级字段
-            params.negativePrompt?.takeIf { it.isNotBlank() }?.let { put("negative_prompt", it) }
-            params.seed?.let { put("seed", it) }
-            params.numInferenceSteps?.let { put("num_inference_steps", it) }
+            // 可选高级字段（已由 mergeProviderParams 注入）
+            request.negativePrompt?.takeIf { it.isNotBlank() }?.let { put("negative_prompt", it) }
+            request.seed?.let { put("seed", it) }
+            request.numInferenceSteps?.let { put("num_inference_steps", it) }
 
             // 参考图分支：单图走顶层 image，多图走 extra_body.image 数组
             when {
@@ -189,36 +270,132 @@ object AiVideoService {
     }
 
     /**
-     * 解析 Agnes Provider 的 defaultParamsJson，提取高级可选参数。
+     * 豆包 Seedance 2.0 的 JSON body 提交。
      *
-     * 支持的字段（全部可选）：
-     * - mode: "ti2vid" 或 "keyframes"（关键帧模式需 ≥2 张参考图）
-     * - negative_prompt: 反向提示词
-     * - seed: 随机种子（Int）
-     * - num_inference_steps: 推理步数（Int）
+     * 与 OpenAI/Agnes 风格差异巨大，采用 `content[]` 数组结构（OpenAI Chat 风格的 messages）：
+     * ```
+     * {
+     *   "model": "doubao-seedance-2-0-260128",
+     *   "content": [
+     *     {"type": "text", "text": "<prompt>"},
+     *     {"type": "image_url", "image_url": {"url": "<ref1>"}},
+     *     {"type": "image_url", "image_url": {"url": "<ref2>"}}
+     *   ],
+     *   "duration": 5,
+     *   "resolution": "720p",
+     *   "ratio": "16:9",
+     *   "camera_fixed": false,
+     *   "return_last_frame": false,
+     *   "generate_audio": false,
+     *   "watermark": false,
+     *   "seed": 12345
+     * }
+     * ```
      *
-     * 解析失败返回全 null 的对象，不影响默认文生视频流程。
+     * 字段映射：
+     * - request.prompt → content[0] = {type:text, text:prompt}
+     * - request.referenceImages → content[1..n] = {type:image_url, image_url:{url:...}}（最多 [AiVideoProviderConfig.maxReferenceImages] 张）
+     * - request.seconds → duration（4-15 整数；超出范围由豆包侧校验）
+     * - request.size → resolution + ratio（自动转换，详见 [parseDoubaoResolution]）
+     * - request.cameraFixed / returnLastFrame / generateAudio / watermark / seed → 顶层字段
+     *
+     * 端点：`POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks`
+     * taskIdJsonPath: `$.id`，轮询：`GET /contents/generations/tasks/{id}`
+     * videoUrlJsonPath: `$.content.video_url`，statusJsonPath: `$.status`
+     * done=`succeeded`，failed=`failed`
+     *
+     * @see <a href="https://www.volcengine.com/docs/82379/1399008">豆包 Seedance 2.0 文档</a>
      */
-    private fun parseAgnesExtraParams(paramsJson: String): AgnesExtraParams {
-        if (paramsJson.isBlank()) return AgnesExtraParams()
-        return runCatching {
-            val root = JSONObject(paramsJson)
-            AgnesExtraParams(
-                mode = root.optString("mode").ifBlank { null },
-                negativePrompt = root.optString("negative_prompt").ifBlank { null },
-                seed = root.opt("seed") as? Int,
-                numInferenceSteps = root.opt("num_inference_steps") as? Int
-            )
-        }.getOrDefault(AgnesExtraParams())
+    private suspend fun submitDoubaoJson(
+        target: AiVideoProviderConfig,
+        requestUrl: String,
+        request: VideoSubmitRequest
+    ): okhttp3.Response {
+        val (resolution, ratio) = parseDoubaoResolution(request.size)
+        val contentArray = org.json.JSONArray().apply {
+            // 文本提示词必填，放第一位
+            put(JSONObject().apply {
+                put("type", "text")
+                put("text", request.prompt)
+            })
+            // 参考图作为 image_url 项追加
+            request.referenceImages.forEach { url ->
+                put(JSONObject().apply {
+                    put("type", "image_url")
+                    put("image_url", JSONObject().apply { put("url", url) })
+                })
+            }
+        }
+
+        val jsonBody = JSONObject().apply {
+            put("model", target.model.ifBlank { "doubao-seedance-2-0-260128" })
+            put("content", contentArray)
+            put("duration", request.seconds)
+            put("resolution", resolution)
+            // ratio 仅在非 adaptive 时下发；adaptive 让豆包按参考图自动决定
+            if (ratio != "adaptive") put("ratio", ratio)
+            // 高级可选字段（已由 mergeProviderParams 注入）
+            request.cameraFixed?.let { put("camera_fixed", it) }
+            if (request.returnLastFrame) put("return_last_frame", true)
+            request.generateAudio?.let { put("generate_audio", it) }
+            put("watermark", request.watermark)
+            if (request.draft) put("draft", true)
+            request.seed?.let { put("seed", it) }
+        }
+        val body = jsonBody.toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        return target.httpClient(target.validSubmitTimeout()).newCallResponse {
+            url(requestUrl)
+            post(body)
+            addHeader("Accept", "application/json")
+            target.apiKey.takeIf { it.isNotBlank() }?.let {
+                addHeader("Authorization", "Bearer $it")
+            }
+            addHeaders(AiChatService.parseCustomHeaders(target.headers))
+        }
     }
 
-    /** Agnes 高级参数容器。 */
-    private data class AgnesExtraParams(
-        val mode: String? = null,
-        val negativePrompt: String? = null,
-        val seed: Int? = null,
-        val numInferenceSteps: Int? = null
-    )
+    /**
+     * 把 [size] 转换为豆包 Seedance 的 (resolution, ratio)。
+     *
+     * 支持两种输入：
+     * 1. 直接的豆包 resolution 字符串："480p" / "720p" / "1080p" → (size, "adaptive")
+     * 2. WxH 形式："1280x720" → 按宽高比映射到 ratio，按短边映射到 resolution：
+     *    - 16:9 / 9:16 / 1:1 三种比例
+     *    - 短边 ≥ 1080 → 1080p；≥ 720 → 720p；否则 480p
+     *
+     * 解析失败默认 (720p, 16:9)。
+     */
+    fun parseDoubaoResolution(size: String): Pair<String, String> {
+        val trimmed = size.trim().lowercase()
+        // 直接是 resolution 字符串
+        if (trimmed in setOf("480p", "720p", "1080p")) return trimmed to "adaptive"
+        val (w, h) = parseSizeStatic(trimmed)
+        // 计算比例
+        val ratio = when {
+            w == h -> "1:1"
+            w > h -> {
+                val r = w.toDouble() / h
+                if (kotlin.math.abs(r - 16.0 / 9) < 0.15) "16:9"
+                else if (kotlin.math.abs(r - 4.0 / 3) < 0.15) "4:3"
+                else "16:9" // 默认横屏
+            }
+            else -> {
+                val r = h.toDouble() / w
+                if (kotlin.math.abs(r - 16.0 / 9) < 0.15) "9:16"
+                else if (kotlin.math.abs(r - 4.0 / 3) < 0.15) "3:4"
+                else "9:16" // 默认竖屏
+            }
+        }
+        // 短边决定 resolution
+        val shortSide = minOf(w, h)
+        val resolution = when {
+            shortSide >= 1080 -> "1080p"
+            shortSide >= 720 -> "720p"
+            else -> "480p"
+        }
+        return resolution to ratio
+    }
 
     /**
      * 轮询视频任务直到完成或失败。

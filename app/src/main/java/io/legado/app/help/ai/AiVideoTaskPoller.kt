@@ -51,17 +51,10 @@ object AiVideoTaskPoller {
     }
 
     /**
-     * 端到端生成一段视频。
+     * 端到端生成一段视频（旧签名，向后兼容）。
      *
-     * @param prompt 视频提示词（已经过 [NovelVideoPromptBuilder.sanitizeVideoPrompt] 净化）
-     * @param seconds 时长
-     * @param size 分辨率
-     * @param referenceImages 参考图（角色三视图 + 场景图，最多 [AiVideoProviderConfig.maxReferenceImages] 张）
-     * @param jobId 用于下载路径隔离
-     * @param segId 用于下载文件命名
-     * @param provider Provider；null 用当前默认
-     * @param isCancelled 取消信号，每 ~400ms 检查一次
-     * @param onStatus 状态回调（[Stage] 常量）
+     * 内部构造 [VideoSubmitRequest] 后调 [generate] 新签名。
+     * 高级参数完全由 [AiVideoProviderConfig.defaultParamsJson] 提供（按模型自适应）。
      */
     suspend fun generate(
         prompt: String,
@@ -74,8 +67,43 @@ object AiVideoTaskPoller {
         isCancelled: () -> Boolean = { false },
         onStatus: (String) -> Unit = {}
     ): Result = withContext(Dispatchers.IO) {
+        generate(
+            VideoSubmitRequest(
+                prompt = prompt,
+                seconds = seconds,
+                size = size,
+                referenceImages = referenceImages
+            ),
+            jobId = jobId, segId = segId,
+            provider = provider, isCancelled = isCancelled, onStatus = onStatus
+        )
+    }
+
+    /**
+     * 端到端生成一段视频（新签名，接收 [VideoSubmitRequest]）。
+     *
+     * 调用方只需在 [request] 中提供基础字段（prompt/seconds/size/referenceImages），
+     * 高级参数（mode/negative_prompt/seed/camera_fixed/generate_audio 等）由
+     * [AiVideoService.submit] 内部按 Provider type 从 [AiVideoProviderConfig.defaultParamsJson]
+     * 自动注入，实现「按所选模型自适应发挥其能力」。
+     *
+     * @param request 视频生成请求（基础字段必填，高级字段可选，留空则用 Provider 配置）
+     * @param jobId 用于下载路径隔离
+     * @param segId 用于下载文件命名
+     * @param provider Provider；null 用当前默认
+     * @param isCancelled 取消信号，每 ~400ms 检查一次
+     * @param onStatus 状态回调（[Stage] 常量）
+     */
+    suspend fun generate(
+        request: VideoSubmitRequest,
+        jobId: String,
+        segId: String,
+        provider: AiVideoProviderConfig? = null,
+        isCancelled: () -> Boolean = { false },
+        onStatus: (String) -> Unit = {}
+    ): Result = withContext(Dispatchers.IO) {
         onStatus(Stage.SUBMITTING)
-        val taskId = submitWithRetry(prompt, seconds, size, referenceImages, provider, isCancelled)
+        val taskId = submitWithRetry(request, provider, isCancelled)
             ?: return@withContext Result.Failed("视频任务提交失败（重试 ${MAX_SUBMIT_RETRY + 1} 次仍失败）", null)
 
         onStatus(Stage.QUEUED)
@@ -117,10 +145,7 @@ object AiVideoTaskPoller {
      * 网络异常/5xx 重试；4xx（鉴权/参数错误）直接放弃。
      */
     private suspend fun submitWithRetry(
-        prompt: String,
-        seconds: Int,
-        size: String,
-        referenceImages: List<String>,
+        request: VideoSubmitRequest,
         provider: AiVideoProviderConfig?,
         isCancelled: () -> Boolean
     ): String? {
@@ -128,7 +153,7 @@ object AiVideoTaskPoller {
         repeat(maxAttempts) { attempt ->
             if (isCancelled()) return null
             try {
-                return AiVideoService.submit(prompt, seconds, size, referenceImages, provider)
+                return AiVideoService.submit(request, provider)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {

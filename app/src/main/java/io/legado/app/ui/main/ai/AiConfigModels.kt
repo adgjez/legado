@@ -268,5 +268,6 @@ data class AiVideoProviderConfig(
         const val TYPE_OPENAI = "openai"
         const val TYPE_JS = "js"
         const val TYPE_AGNES = "agnes"
+        const val TYPE_DOUBAO = "doubao"
     }
 }
