@@ -801,6 +801,7 @@
     <string name="novel_video_select_book">选择书籍</string>
     <string name="novel_video_no_screenplay">暂无剧本</string>
     <string name="novel_video_no_segments">暂无分镜段</string>
+    <string name="novel_video_job_not_found">任务不存在或已删除</string>
     <string name="novel_video_no_characters">暂无角色</string>
     <string name="novel_video_no_output">视频尚未生成</string>
     <string name="novel_video_duration_format">时长 %1$s</string>

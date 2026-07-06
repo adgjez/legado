@@ -150,12 +150,13 @@ fun NovelVideoJobDetailScreen(
         }
     ) { padding ->
         if (currentJob == null) {
+            // M11：区分"任务不存在"与"无分镜段"，原复用 novel_video_no_segments 文案误导用户
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = stringResource(R.string.novel_video_no_segments),
+                    text = stringResource(R.string.novel_video_job_not_found),
                     color = MaterialTheme.colorScheme.outline
                 )
             }

@@ -198,5 +198,7 @@ data class SegmentProgress(
 
     /** 是否失败段过多（>50%）。 */
     val isMajorityFailed: Boolean
-        get() = total > 0 && failed * 2 > total
+        // M3：原 `failed * 2 > total` 严格大于，50% 失败时误判 COMPLETED。
+        // 改为 >= 让 50% 失败也标 PARTIAL_FAILED，避免用户看到"已完成"但视频缺失一半场景。
+        get() = total > 0 && failed * 2 >= total
 }

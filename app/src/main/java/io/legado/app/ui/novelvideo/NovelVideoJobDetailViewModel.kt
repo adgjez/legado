@@ -14,6 +14,7 @@ import io.legado.app.help.ai.NovelVideoParams
 import io.legado.app.service.NovelVideoService
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.share
+import splitties.init.appCtx
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,7 +48,14 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
     private val _params = MutableStateFlow(NovelVideoParams())
     val params: StateFlow<NovelVideoParams> = _params.asStateFlow()
 
+    private var boundJobId: String? = null
+
+    /**
+     * M9：bind 幂等——同一 jobId 不重复订阅 Flow，避免旋转后收集器累积。
+     */
     fun bind(jobId: String) {
+        if (boundJobId == jobId) return
+        boundJobId = jobId
         viewModelScope.launch {
             appDb.novelVideoDao.getJobFlow(jobId).collectLatest {
                 _job.value = it
@@ -67,10 +75,16 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
         _serviceRunning.value = NovelVideoService.isRun
     }
 
-    /** 删除任务。 */
+    /**
+     * 删除任务。
+     * M1：同时清理磁盘上的分镜视频与合并产物文件。
+     */
     suspend fun deleteJob(jobId: String) = withContext(Dispatchers.IO) {
         jobOpMutex.withLock {
             appDb.novelVideoDao.deleteJob(jobId)
+            runCatching {
+                java.io.File(appCtx.filesDir, "novel_video/$jobId").deleteRecursively()
+            }
         }
     }
 
@@ -87,11 +101,18 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
                 job.status == NovelVideoJobStatus.PARTIAL_FAILED ||
                 job.status == NovelVideoJobStatus.CANCELLED
             ) {
-                val segs = appDb.novelVideoDao.getSegmentsByJob(jobId)
-                segs.filter { it.status == io.legado.app.data.entities.NovelVideoSegmentStatus.FAILED }.forEach { seg ->
-                    appDb.novelVideoDao.updateSegmentStatus(seg.id, io.legado.app.data.entities.NovelVideoSegmentStatus.PENDING, null)
-                }
-                // R6：用条件更新推进 GENERATING，若期间已被并发置为终态（如 CANCELLED），不覆写
+                // M4+M5：智能重置非 VIDEO_COMPLETED 段，保留已生成的 imageUrl
+                appDb.novelVideoDao.getSegmentsByJob(jobId)
+                    .filter { it.status != io.legado.app.data.entities.NovelVideoSegmentStatus.VIDEO_COMPLETED }
+                    .forEach { seg ->
+                        val newStatus = if (seg.imageUrl != null) {
+                            io.legado.app.data.entities.NovelVideoSegmentStatus.IMAGE_COMPLETED
+                        } else {
+                            io.legado.app.data.entities.NovelVideoSegmentStatus.PENDING
+                        }
+                        appDb.novelVideoDao.updateSegmentStatus(seg.id, newStatus, null)
+                    }
+                // R6：用条件更新推进 GENERATING
                 appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
                     jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
                 )

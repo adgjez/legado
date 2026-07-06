@@ -12,6 +12,7 @@ import io.legado.app.data.entities.NovelVideoSegmentStatus
 import io.legado.app.help.ai.NovelVideoParams
 import io.legado.app.service.NovelVideoService
 import io.legado.app.utils.GSON
+import splitties.init.appCtx
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,10 +110,17 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
         jobId
     }
 
-    /** 删除任务：FK CASCADE 会清理 segments 和 character sheets。 */
+    /**
+     * 删除任务：FK CASCADE 会清理 segments 和 character sheets。
+     * M1：同时清理磁盘上的分镜视频与合并产物文件，避免孤儿文件累积。
+     */
     suspend fun deleteJob(jobId: String) = withContext(Dispatchers.IO) {
         jobOpMutex.withLock {
             appDb.novelVideoDao.deleteJob(jobId)
+            // 清理 filesDir/novel_video/<jobId>/ 目录（分镜段 + 合并产物）
+            runCatching {
+                java.io.File(appCtx.filesDir, "novel_video/$jobId").deleteRecursively()
+            }
         }
     }
 
@@ -131,10 +139,20 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
                 job.status == NovelVideoJobStatus.PARTIAL_FAILED ||
                 job.status == NovelVideoJobStatus.CANCELLED
             ) {
-                val segments = appDb.novelVideoDao.getSegmentsByJob(jobId)
-                segments.filter { it.status == NovelVideoSegmentStatus.FAILED }.forEach { seg ->
-                    appDb.novelVideoDao.updateSegmentStatus(seg.id, NovelVideoSegmentStatus.PENDING, null)
-                }
+                // M4+M5：智能重置非 VIDEO_COMPLETED 段，保留已生成的 imageUrl 避免重复生图。
+                // - imageUrl 非空 → 重置为 IMAGE_COMPLETED（跳过 Stage 5 直接进 Stage 6）
+                // - imageUrl 为空 → 重置为 PENDING（从头开始）
+                // 覆盖 FAILED 段和中间态段（IMAGE_GENERATING/VIDEO_GENERATING，CANCELLED 时可能残留）
+                appDb.novelVideoDao.getSegmentsByJob(jobId)
+                    .filter { it.status != NovelVideoSegmentStatus.VIDEO_COMPLETED }
+                    .forEach { seg ->
+                        val newStatus = if (seg.imageUrl != null) {
+                            NovelVideoSegmentStatus.IMAGE_COMPLETED
+                        } else {
+                            NovelVideoSegmentStatus.PENDING
+                        }
+                        appDb.novelVideoDao.updateSegmentStatus(seg.id, newStatus, null)
+                    }
                 // R6：用条件更新推进 GENERATING，若期间已被并发置为终态（如 CANCELLED），不覆写
                 appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
                     jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()

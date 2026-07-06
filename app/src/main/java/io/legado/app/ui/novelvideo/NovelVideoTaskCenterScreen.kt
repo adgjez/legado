@@ -1,6 +1,7 @@
 package io.legado.app.ui.novelvideo
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -266,8 +267,7 @@ private fun JobCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .clickable(onClick = onLongClick),  // 简化：单击触发长按菜单；正式版可改 combinedClickable
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = novelVideoCardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
@@ -289,7 +289,9 @@ private fun JobCard(
             }
             Spacer(Modifier.size(4.dp))
             Text(
-                text = formatChapterRange(job),
+                text = remember(job.chapterTitlesJson, job.chapterStartIndex, job.chapterEndIndex) {
+                    formatChapterRange(job)
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

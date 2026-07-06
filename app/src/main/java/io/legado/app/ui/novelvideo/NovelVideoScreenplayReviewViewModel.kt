@@ -40,8 +40,14 @@ class NovelVideoScreenplayReviewViewModel(app: Application) : AndroidViewModel(a
     val submitting: StateFlow<Boolean> = _submitting.asStateFlow()
 
     private var lastSeenStatus: String? = null
+    private var boundJobId: String? = null
 
+    /**
+     * M9：bind 幂等——同一 jobId 不重复订阅 Flow，避免旋转后收集器累积。
+     */
     fun bind(jobId: String) {
+        if (boundJobId == jobId) return
+        boundJobId = jobId
         viewModelScope.launch {
             appDb.novelVideoDao.getJobFlow(jobId).collectLatest { j ->
                 _job.value = j

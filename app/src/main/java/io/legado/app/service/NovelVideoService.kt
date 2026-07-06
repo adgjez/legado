@@ -19,6 +19,7 @@ import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.startService
+import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.ui.main.MainActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -72,17 +73,21 @@ class NovelVideoService : BaseService() {
          * `pipelineJob?.isActive == true` 判断保证幂等。
          */
         fun start(@Suppress("UNUSED_PARAMETER") context: Context) {
-            appCtx.startService<NovelVideoService> {
+            // M13：用 startForegroundServiceCompat 替代 startService，
+            // 避免后台调用时 Android 8+ 抛 IllegalStateException
+            val intent = Intent(appCtx, NovelVideoService::class.java).apply {
                 action = IntentAction.start
             }
+            appCtx.startForegroundServiceCompat(intent)
         }
 
         /** 停止整个服务：取消当前 job + 中止循环 + stopSelf。 */
         fun stop(@Suppress("UNUSED_PARAMETER") context: Context) {
             if (!isRun) return
-            appCtx.startService<NovelVideoService> {
+            val intent = Intent(appCtx, NovelVideoService::class.java).apply {
                 action = IntentAction.stop
             }
+            appCtx.startForegroundServiceCompat(intent)
         }
 
         /**
@@ -91,9 +96,10 @@ class NovelVideoService : BaseService() {
          */
         fun cancelCurrentJob() {
             if (!isRun) return
-            appCtx.startService<NovelVideoService> {
+            val intent = Intent(appCtx, NovelVideoService::class.java).apply {
                 action = IntentAction.remove
             }
+            appCtx.startForegroundServiceCompat(intent)
         }
     }
 
@@ -240,15 +246,22 @@ class NovelVideoService : BaseService() {
         }
     }
 
-    /** 取下一个该跑的 job：优先 DRAFTING/SCREENPLAY_CONFIRMED/GENERATING，其次 SCREENPLAY_PENDING_REVIEW。 */
+    /**
+     * 取下一个该跑的 job。
+     *
+     * M8 修复：跳过 SCREENPLAY_PENDING_REVIEW 状态的 job，避免它阻塞调度。
+     * 原实现在只有 PENDING_REVIEW job 时会取它并进入 awaitReviewConfirmation 长期挂起，
+     * 导致后续新建的 DRAFTING job 无法推进。现在仅返回可立即推进的 job，
+     * PENDING_REVIEW 由用户审阅后调 confirmScreenplay 触发 start 来推进。
+     */
     private suspend fun pickNextJob(): String? {
         val running = appDb.novelVideoDao.getRunningJobs()
         if (running.isEmpty()) return null
-        // 优先非"等待审阅"的（可以立即推进）
-        val ready = running.firstOrNull {
-            it.status != NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW
-        }
-        return (ready ?: running.first()).id
+        // 仅返回可立即推进的 job（排除等待审阅和已暂停）
+        return running.firstOrNull {
+            it.status != NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW &&
+                it.status != NovelVideoJobStatus.PAUSED
+        }?.id
     }
 
     /**
@@ -360,10 +373,16 @@ class NovelVideoService : BaseService() {
     }
 
     private fun upNotification() {
-        notificationBuilder.setContentText(notificationContent)
-        notificationManager.notify(
-            NotificationId.NovelVideoService,
-            notificationBuilder.build()
-        )
+        // M12：POST_NOTIFICATIONS 被拒时部分 OEM 会对 notify() 抛 SecurityException，
+        // 不捕获会导致 1 秒刷新循环崩溃终止整个服务。仿 AudioPlayService 加 try/catch。
+        try {
+            notificationBuilder.setContentText(notificationContent)
+            notificationManager.notify(
+                NotificationId.NovelVideoService,
+                notificationBuilder.build()
+            )
+        } catch (e: SecurityException) {
+            AppLog.put("NovelVideoService 通知刷新被拒绝（POST_NOTIFICATIONS 未授权）", e)
+        }
     }
 }
