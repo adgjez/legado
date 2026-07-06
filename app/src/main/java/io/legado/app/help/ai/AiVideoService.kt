@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import splitties.init.appCtx
 import java.io.File
@@ -83,7 +85,7 @@ object AiVideoService {
      * veo3.1 风格的 multipart/form-data 提交。
      * 参考图作为重复的 input_reference 字段（multipart 同名多值）。
      */
-    private fun submitMultipart(
+    private suspend fun submitMultipart(
         target: AiVideoProviderConfig,
         requestUrl: String,
         prompt: String,
@@ -119,7 +121,7 @@ object AiVideoService {
      *
      * @see <a href="https://agnes-ai.com/zh-Hans/docs/agnes-video-v20">Agnes Video V2.0 文档</a>
      */
-    private fun submitAgnesJson(
+    private suspend fun submitAgnesJson(
         target: AiVideoProviderConfig,
         requestUrl: String,
         prompt: String,
@@ -127,10 +129,10 @@ object AiVideoService {
         size: String,
         refs: List<String>
     ): okhttp3.Response {
-        val (width, height) = parseSize(size)
+        val (width, height) = parseSizeStatic(size)
         val frameRate = 24
         // num_frames 需满足 8n+1 规则且 ≤ 441
-        val numFrames = computeAgnesNumFrames(seconds, frameRate)
+        val numFrames = computeAgnesNumFramesStatic(seconds, frameRate)
         val jsonBody = JSONObject().apply {
             put("model", target.model.ifBlank { "agnes-video-v2.0" })
             put("prompt", prompt)
@@ -144,10 +146,8 @@ object AiVideoService {
                 put("extra_body", extraBody)
             }
         }
-        val body = okhttp3.RequestBody.create(
-            okhttp3.MediaType.get("application/json; charset=utf-8"),
-            jsonBody.toString()
-        )
+        val body = jsonBody.toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
         return target.httpClient(target.validSubmitTimeout()).newCallResponse {
             url(requestUrl)
             post(body)
@@ -158,19 +158,6 @@ object AiVideoService {
             addHeaders(AiChatService.parseCustomHeaders(target.headers))
         }
     }
-
-    /** 从 "1280x720" 解析出 (width, height)，失败用默认 1152x768。 */
-    private fun parseSize(size: String): Pair<Int, Int> = parseSizeStatic(size)
-
-    /**
-     * 根据 seconds 计算 num_frames，需满足 8n+1 规则且 ≤ 441。
-     * - 3s → 81 (8*10+1, 81/24≈3.4s)
-     * - 5s → 121 (8*15+1, 121/24≈5.0s)
-     * - 10s → 241 (8*30+1, 241/24≈10.0s)
-     * - 18s → 441 (8*55+1, 441/24≈18.4s)
-     */
-    private fun computeAgnesNumFrames(seconds: Int, frameRate: Int): Int =
-        computeAgnesNumFramesStatic(seconds, frameRate)
 
     /**
      * 轮询视频任务直到完成或失败。
@@ -350,35 +337,33 @@ object AiVideoService {
             .build()
     }
 
-    companion object {
-        /** 从 "1280x720" 解析出 (width, height)，失败用默认 1152x768。 */
-        fun parseSizeStatic(size: String): Pair<Int, Int> {
-            val parts = size.trim().lowercase().split("x")
-            if (parts.size == 2) {
-                val w = parts[0].trim().toIntOrNull()
-                val h = parts[1].trim().toIntOrNull()
-                if (w != null && h != null && w > 0 && h > 0) return w to h
-            }
-            return 1152 to 768
+    /** 从 "1280x720" 解析出 (width, height)，失败用默认 1152x768。 */
+    fun parseSizeStatic(size: String): Pair<Int, Int> {
+        val parts = size.trim().lowercase().split("x")
+        if (parts.size == 2) {
+            val w = parts[0].trim().toIntOrNull()
+            val h = parts[1].trim().toIntOrNull()
+            if (w != null && h != null && w > 0 && h > 0) return w to h
         }
+        return 1152 to 768
+    }
 
-        /**
-         * 根据 seconds 计算 num_frames，需满足 8n+1 规则且 ≤ 441。
-         * - 3s → 81 (8*10+1, 81/24≈3.4s)
-         * - 5s → 121 (8*15+1, 121/24≈5.0s)
-         * - 10s → 241 (8*30+1, 241/24≈10.0s)
-         * - 18s → 441 (8*55+1, 441/24≈18.4s)
-         */
-        fun computeAgnesNumFramesStatic(seconds: Int, frameRate: Int): Int {
-            val raw = seconds * frameRate
-            // 找到 >= raw 的最小 8n+1 值
-            var n = (raw - 1) / 8
-            var candidate = 8 * n + 1
-            while (candidate < raw) {
-                n++
-                candidate = 8 * n + 1
-            }
-            return candidate.coerceAtMost(441).coerceAtLeast(1)
+    /**
+     * 根据 seconds 计算 num_frames，需满足 8n+1 规则且 ≤ 441。
+     * - 3s → 81 (8*10+1, 81/24≈3.4s)
+     * - 5s → 121 (8*15+1, 121/24≈5.0s)
+     * - 10s → 241 (8*30+1, 241/24≈10.0s)
+     * - 18s → 441 (8*55+1, 441/24≈18.4s)
+     */
+    fun computeAgnesNumFramesStatic(seconds: Int, frameRate: Int): Int {
+        val raw = seconds * frameRate
+        // 找到 >= raw 的最小 8n+1 值
+        var n = (raw - 1) / 8
+        var candidate = 8 * n + 1
+        while (candidate < raw) {
+            n++
+            candidate = 8 * n + 1
         }
+        return candidate.coerceAtMost(441).coerceAtLeast(1)
     }
 }
