@@ -164,7 +164,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         modelText = "agnes-image-2.1-flash"
         baseUrlText = "https://apihub.agnes-ai.com/v1"
         paramsText = ""
-        stylePrompt = ""
+        stylePromptText = ""
         scriptText = ""
         jsLibText = ""
         headersText = ""
