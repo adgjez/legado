@@ -22,9 +22,11 @@ import io.legado.app.ui.main.MainActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.util.concurrent.atomic.AtomicBoolean
@@ -92,6 +94,8 @@ class NovelVideoService : BaseService() {
     }
 
     private var pipelineJob: Job? = null
+    // 跨线程读写（IO 协程写、主线程 startForegroundNotification 读），需 @Volatile 保证可见性
+    @Volatile
     private var notificationContent: String = appCtx.getString(R.string.service_starting)
 
     private val notificationBuilder by lazy {
@@ -136,6 +140,9 @@ class NovelVideoService : BaseService() {
                 }
                 IntentAction.remove -> {
                     // 取消当前 job，但保持服务运行（pipeline loop 会自动接下一个）
+                    // 注意：仅设 cancelFlag 供 generate 内部 checkCancelled 轮询；
+                    // 不调 pipelineJob?.cancel()，否则会取消整个循环导致服务停止。
+                    // 长 suspend 调用（如 chatStream）会在下一个 checkCancelled 点响应。
                     cancelFlag.set(true)
                 }
             }
@@ -214,7 +221,9 @@ class NovelVideoService : BaseService() {
             )
         } catch (e: CancellationException) {
             // 取消：把 job 标记为 CANCELLED（若尚未终结）
-            markCancelledIfRunning(jobId, e.message)
+            // 协程已处于 cancelling 态，suspend 调用会立即抛 CancellationException，
+            // 必须用 NonCancellable 包裹才能完成 DB 写入
+            withContext(NonCancellable) { markCancelledIfRunning(jobId, e.message) }
             // 不重新抛出 —— 让 while 循环判断是否继续取下一个 job
             if (pipelineJob?.isActive != true) {
                 // 整个 pipeline 已被取消（IntentAction.stop），退出循环
@@ -222,13 +231,19 @@ class NovelVideoService : BaseService() {
             }
         } catch (e: Throwable) {
             AppLog.put("小说→视频任务失败 jobId=$jobId", e)
-            appDb.novelVideoDao.updateJobStatusWithError(
-                jobId,
-                NovelVideoJobStatus.FAILED,
-                e.message,
-                System.currentTimeMillis()
-            )
-            postEvent(EventBus.NOVEL_VIDEO_FAILED, jobId)
+            // 若 job 已被并发写入终态（如用户已取消），不覆写，避免 CANCELLED 被改成 FAILED
+            val cur = appDb.novelVideoDao.getJob(jobId)
+            if (cur != null && cur.status in NovelVideoJobStatus.FINISHED_STATES) {
+                AppLog.put("jobId=$jobId 已处于终态 ${cur.status}，不覆写为 FAILED")
+            } else {
+                appDb.novelVideoDao.updateJobStatusWithError(
+                    jobId,
+                    NovelVideoJobStatus.FAILED,
+                    e.message,
+                    System.currentTimeMillis()
+                )
+                postEvent(EventBus.NOVEL_VIDEO_FAILED, jobId)
+            }
         } finally {
             currentJobId = null
             postEvent(EventBus.NOVEL_VIDEO_PROGRESS, "")
@@ -245,7 +260,8 @@ class NovelVideoService : BaseService() {
                 reason ?: "用户取消",
                 System.currentTimeMillis()
             )
-            postEvent(EventBus.NOVEL_VIDEO_FAILED, jobId)
+            // 用户主动取消不应弹"失败"通知；发 PROGRESS 让 UI 刷新列表看到 CANCELLED 状态
+            postEvent(EventBus.NOVEL_VIDEO_PROGRESS, jobId)
         }
     }
 

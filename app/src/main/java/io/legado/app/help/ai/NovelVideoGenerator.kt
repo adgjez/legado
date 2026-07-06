@@ -87,6 +87,11 @@ object NovelVideoGenerator {
                 // 断点续传：从第一个未完成 segment 恢复
                 runGenerationStages(jobId, book, params, isCancelled)
             }
+            NovelVideoJobStatus.MERGING -> {
+                // 断点续传：Stage 7 合并中断（如进程崩溃），重走 Stage 4-8
+                // 已 VIDEO_COMPLETED 的 segment 会被跳过，mergeCompletedSegments 重新合并
+                runGenerationStages(jobId, book, params, isCancelled)
+            }
             else -> throw IllegalStateException("任务状态不支持启动：${job.status}")
         }
     }
@@ -115,13 +120,14 @@ object NovelVideoGenerator {
         val draft = generateScreenplayWithRetry(book, firstChapter, chapterText, params, null)
         checkCancelled(isCancelled, job.id)
 
-        // 落库草稿
-        val updatedJob = job.copy(
-            draftJson = draft.toJson(),
-            status = NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW,
-            updatedAt = System.currentTimeMillis()
+        // 落库草稿：用 DAO 部分更新避免 read-modify-write 竞态
+        // （job 是入口快照，全量 updateJob 会覆盖并发写入的 errorMessage 等字段）
+        appDb.novelVideoDao.updateJobDraft(
+            job.id,
+            draft.toJson(),
+            NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW,
+            System.currentTimeMillis()
         )
-        appDb.novelVideoDao.updateJob(updatedJob)
 
         if (params.enableReview) {
             // Stage 3: 请求审阅
@@ -284,18 +290,28 @@ object NovelVideoGenerator {
         isCancelled: () -> Boolean
     ): List<NovelVideoCharacterSheet> {
         val existing = appDb.novelVideoDao.getCharacterSheetsByJob(job.id)
-        if (existing.isNotEmpty()) return existing
+        // 已有足够 COMPLETED 角色表时直接复用（断点续传）
+        val completed = existing.filter { it.isCompleted }
+        if (completed.size >= params.maxCharacters) {
+            return completed.take(params.maxCharacters)
+        }
 
         val candidates = NovelVideoPromptBuilder.extractMainCharacters(
             screenplay.scenes, params.maxCharacters
         )
         if (candidates.isEmpty()) return emptyList()
 
+        // 逐角色生成：COMPLETED 的保留，FAILED/不存在的重新生成
         val sheets = mutableListOf<NovelVideoCharacterSheet>()
         candidates.forEachIndexed { idx, candidate ->
-            checkCancelled(isCancelled, job.id)
-            val sheet = generateCharacterSheet(job, candidate, idx, params)
-            sheets.add(sheet)
+            val charId = "char_${idx}"
+            val existingSheet = existing.firstOrNull { it.characterId == charId }
+            if (existingSheet?.isCompleted == true) {
+                sheets.add(existingSheet)
+            } else {
+                checkCancelled(isCancelled, job.id)
+                sheets.add(generateCharacterSheet(job, candidate, idx, params))
+            }
         }
         if (sheets.isNotEmpty()) {
             appDb.novelVideoDao.insertCharacterSheets(sheets)
@@ -681,14 +697,17 @@ object NovelVideoGenerator {
             progress.isMajorityFailed -> NovelVideoJobStatus.PARTIAL_FAILED
             else -> NovelVideoJobStatus.COMPLETED
         }
+        // 用条件部分更新避免 TOCTOU 覆写终态：
+        // 若期间 markCancelledIfRunning 已把 status 写成 CANCELLED，此处不覆写
+        val updated = appDb.novelVideoDao.updateJobFinalStatusIfNotFinished(
+            job.id, finalStatus, System.currentTimeMillis()
+        )
+        if (updated == 0) {
+            AppLog.put("jobId=${job.id} 已被并发置为终态，finalizeJob 跳过")
+            return
+        }
         // 重新读取 job（Stage 7 可能已更新 outputPath/totalDurationMs）
         val latestJob = appDb.novelVideoDao.getJob(job.id) ?: job
-        appDb.novelVideoDao.updateJob(
-            latestJob.copy(
-                status = finalStatus,
-                updatedAt = System.currentTimeMillis()
-            )
-        )
         // 写回 BookChapter.resourceUrl，让阅读页能播放入口
         if (params.attachToBookChapter && finalStatus != NovelVideoJobStatus.FAILED) {
             runCatching { attachOutputToChapter(latestJob, job.chapterStartIndex) }

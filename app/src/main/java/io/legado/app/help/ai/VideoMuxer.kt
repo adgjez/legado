@@ -5,6 +5,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import io.legado.app.constant.AppLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -63,6 +64,8 @@ object VideoMuxer {
                     val duration = estimateDurationMs(single)
                     MergeResult.Success(outFile.absolutePath, duration, 1)
                 }.getOrElse { e ->
+                    // 协程取消必须向上传播，不能当作合并失败处理
+                    if (e is CancellationException) throw e
                     AppLog.put("单段视频复制失败: $single -> $outputPath", e)
                     MergeResult.Failed("单段视频复制失败：${e.message}")
                 }
@@ -159,6 +162,9 @@ object VideoMuxer {
                 val totalDurationMs = maxOf(videoTimeOffset, audioTimeOffset) / 1000
                 AppLog.put("VideoMuxer 合并完成: ${validInputs.size} 段, 时长 ${totalDurationMs}ms")
                 MergeResult.Success(outputFile.absolutePath, totalDurationMs, validInputs.size)
+            } catch (e: CancellationException) {
+                runCatching { outputFile.delete() }
+                throw e
             } catch (e: Exception) {
                 AppLog.put("VideoMuxer 合并失败", e)
                 runCatching { outputFile.delete() }

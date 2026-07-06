@@ -73,7 +73,8 @@ object AiVideoTaskPoller {
         val pollResult = try {
             AiVideoService.poll(taskId, provider, isCancelled)
         } catch (e: CancellationException) {
-            return@withContext Result.Failed("视频轮询被取消：${e.message}", taskId)
+            // 协程取消必须向上传播，不能降级为失败结果
+            throw e
         } catch (e: Throwable) {
             AppLog.put("视频轮询异常 taskId=$taskId", e)
             return@withContext Result.Failed("视频轮询异常：${e.message}", taskId)
@@ -85,6 +86,8 @@ object AiVideoTaskPoller {
                 try {
                     val localPath = AiVideoService.downloadToLocal(pollResult.videoUrl, jobId, segId)
                     Result.Success(localPath, pollResult.videoUrl, taskId)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     AppLog.put("视频下载失败 url=${pollResult.videoUrl}", e)
                     Result.Failed("视频下载失败：${e.message}", taskId)

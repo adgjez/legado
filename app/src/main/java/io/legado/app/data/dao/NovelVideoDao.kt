@@ -57,6 +57,13 @@ interface NovelVideoDao {
     @Query("UPDATE novel_video_jobs SET status = :status, errorMessage = :err, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobStatusWithError(jobId: String, status: String, err: String?, time: Long = System.currentTimeMillis())
 
+    /**
+     * 条件更新终态：仅当 job 尚未进入终态时才更新。
+     * @return 受影响行数（0 表示已被并发覆写为终态，调用方应跳过后续动作）
+     */
+    @Query("UPDATE novel_video_jobs SET status = :status, updatedAt = :time WHERE id = :jobId AND status NOT IN ('completed','failed','partial_failed','cancelled')")
+    suspend fun updateJobFinalStatusIfNotFinished(jobId: String, status: String, time: Long = System.currentTimeMillis()): Int
+
     @Query("UPDATE novel_video_jobs SET outputPath = :outputPath, coverPath = :coverPath, totalDurationMs = :durationMs, status = :status, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobOutput(jobId: String, outputPath: String?, coverPath: String?, durationMs: Long?, status: String, time: Long = System.currentTimeMillis())
 
