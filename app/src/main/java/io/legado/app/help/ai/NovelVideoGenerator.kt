@@ -125,7 +125,8 @@ object NovelVideoGenerator {
 
         // 落库草稿：用 DAO 部分更新避免 read-modify-write 竞态
         // （job 是入口快照，全量 updateJob 会覆盖并发写入的 errorMessage 等字段）
-        appDb.novelVideoDao.updateJobDraft(
+        // 用条件版本：若期间已取消（CANCELLED），不覆写
+        appDb.novelVideoDao.updateJobDraftIfNotFinished(
             job.id,
             draft.toJson(),
             NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW,
@@ -214,7 +215,8 @@ object NovelVideoGenerator {
     private suspend fun confirmScreenplayInternal(jobId: String, draft: ScreenplayDraft) {
         val screenplay = Screenplay.fromDraft(draft)
         // 用 DAO 部分更新避免 read-modify-write 竞态（之前用 !! 在 TOCTOU 窗口期会 NPE）
-        appDb.novelVideoDao.updateJobScreenplay(
+        // 用条件版本：若期间已取消（CANCELLED），不覆写
+        appDb.novelVideoDao.updateJobScreenplayIfNotFinished(
             jobId,
             io.legado.app.utils.GSON.toJson(screenplay),
             NovelVideoJobStatus.SCREENPLAY_CONFIRMED,
@@ -492,7 +494,8 @@ object NovelVideoGenerator {
         when (result) {
             is VideoMuxer.MergeResult.Success -> {
                 // 用 DAO 部分更新避免 job.copy 把陈旧 status 写回（之前 status 会被回退为 SCREENPLAY_CONFIRMED）
-                appDb.novelVideoDao.updateJobOutput(
+                // 用条件版本：若合并期间已取消（CANCELLED），不覆写状态，outputPath 也无需保存
+                appDb.novelVideoDao.updateJobOutputIfNotFinished(
                     job.id,
                     result.outputPath,
                     null,
@@ -506,7 +509,7 @@ object NovelVideoGenerator {
                 // 合并失败不阻塞 job 完成，fallback 到首段视频
                 AppLog.put("VideoMuxer 合并失败，回退首段视频：${result.message}")
                 val fallbackPath = inputPaths.first()
-                appDb.novelVideoDao.updateJobOutput(
+                appDb.novelVideoDao.updateJobOutputIfNotFinished(
                     job.id,
                     fallbackPath,
                     null,
@@ -793,10 +796,13 @@ object NovelVideoGenerator {
         } ?: AppConfig.aiSummaryModelConfig
 
     private suspend fun updateJobStatus(jobId: String, status: String, message: String? = null) {
+        // 系统性修复：中间态写入也用条件更新，避免覆写并发的终态（CANCELLED 等）。
+        // 若 markCancelledIfRunning 已写 CANCELLED，此处 no-op，保持取消态，
+        // 防止后续 finalizeJob 因 status 不在终态集合而误判为"可继续"并写 COMPLETED。
         if (message.isNullOrBlank()) {
-            appDb.novelVideoDao.updateJobStatus(jobId, status, System.currentTimeMillis())
+            appDb.novelVideoDao.updateJobFinalStatusIfNotFinished(jobId, status, System.currentTimeMillis())
         } else {
-            appDb.novelVideoDao.updateJobStatusWithError(jobId, status, message, System.currentTimeMillis())
+            appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(jobId, status, message, System.currentTimeMillis())
         }
     }
 

@@ -234,18 +234,18 @@ class NovelVideoService : BaseService() {
             }
         } catch (e: Throwable) {
             AppLog.put("小说→视频任务失败 jobId=$jobId", e)
-            // 若 job 已被并发写入终态（如用户已取消），不覆写，避免 CANCELLED 被改成 FAILED
-            val cur = appDb.novelVideoDao.getJob(jobId)
-            if (cur != null && cur.status in NovelVideoJobStatus.FINISHED_STATES) {
-                AppLog.put("jobId=$jobId 已处于终态 ${cur.status}，不覆写为 FAILED")
-            } else {
-                appDb.novelVideoDao.updateJobStatusWithError(
-                    jobId,
-                    NovelVideoJobStatus.FAILED,
-                    e.message,
-                    System.currentTimeMillis()
-                )
+            // 用条件更新：若 job 已被并发写入终态（如用户已取消），不覆写，
+            // 避免 CANCELLED 被改成 FAILED。取代旧的 getJob+check 两步（有 TOCTOU 窗口）
+            val affected = appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+                jobId,
+                NovelVideoJobStatus.FAILED,
+                e.message,
+                System.currentTimeMillis()
+            )
+            if (affected > 0) {
                 postEvent(EventBus.NOVEL_VIDEO_FAILED, jobId)
+            } else {
+                AppLog.put("jobId=$jobId 已处于终态，不覆写为 FAILED")
             }
         } finally {
             currentJobId = null

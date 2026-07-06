@@ -189,6 +189,83 @@ class NovelVideoDaoRobolectricTest {
     }
 
     // ============================================================
+    // 系统性修复：中间态条件部分更新不覆写终态
+    // ============================================================
+
+    @Test
+    fun updateJobDraftIfNotFinishedDoesNotOverwriteCancelled() = runTest {
+        // 取消已写 CANCELLED 后，draft 写入不应覆写状态
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.CANCELLED)
+        dao.insertJob(job)
+
+        dao.updateJobDraftIfNotFinished("job_1", """{"a":1}""", NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW)
+
+        val reloaded = dao.getJob("job_1")
+        assertEquals("CANCELLED 不应被中间态覆写", NovelVideoJobStatus.CANCELLED, reloaded?.status)
+    }
+
+    @Test
+    fun updateJobDraftIfNotFinishedWritesOnRunningJob() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING)
+        dao.insertJob(job)
+
+        dao.updateJobDraftIfNotFinished("job_1", """{"a":1}""", NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW)
+
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW, reloaded?.status)
+        assertEquals("""{"a":1}""", reloaded?.draftJson)
+    }
+
+    @Test
+    fun updateJobScreenplayIfNotFinishedDoesNotOverwriteCancelled() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.CANCELLED)
+        dao.insertJob(job)
+
+        dao.updateJobScreenplayIfNotFinished("job_1", """{"s":[]}""", NovelVideoJobStatus.SCREENPLAY_CONFIRMED)
+
+        assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob("job_1")?.status)
+    }
+
+    @Test
+    fun updateJobOutputIfNotFinishedDoesNotOverwriteCancelled() = runTest {
+        // 取消已写 CANCELLED 后，merge 输出写入不应覆写状态
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.CANCELLED)
+        dao.insertJob(job)
+
+        dao.updateJobOutputIfNotFinished("job_1", "/out.mp4", null, 60_000L, NovelVideoJobStatus.MERGING)
+
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.CANCELLED, reloaded?.status)
+        // outputPath 也不应被写入（条件更新整行 no-op）
+        assertNull(reloaded?.outputPath)
+    }
+
+    @Test
+    fun updateJobOutputIfNotFinishedWritesOnMergingJob() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.GENERATING)
+        dao.insertJob(job)
+
+        dao.updateJobOutputIfNotFinished("job_1", "/out.mp4", null, 60_000L, NovelVideoJobStatus.MERGING)
+
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.MERGING, reloaded?.status)
+        assertEquals("/out.mp4", reloaded?.outputPath)
+        assertEquals(60_000L, reloaded?.totalDurationMs)
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedDoesNotOverwriteCancelledForIntermediateStatus() = runTest {
+        // 系统性修复核心：中间态（如 GENERATING）写入也不应覆写 CANCELLED
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.CANCELLED)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusIfNotFinished("job_1", NovelVideoJobStatus.GENERATING)
+
+        assertEquals(0, affected)
+        assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob("job_1")?.status)
+    }
+
+    // ============================================================
     // markSegmentFailed vs updateSegmentStatus —— P2 retryCount 行为
     // ============================================================
 

@@ -94,7 +94,8 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
         if (job.id == NovelVideoService.currentJobId) {
             NovelVideoService.cancelCurrentJob()
         } else if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
-            appDb.novelVideoDao.updateJobStatusWithError(
+            // 用条件更新：若 getJob 与写入之间状态被并发改变为终态，不覆写
+            appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
                 jobId, NovelVideoJobStatus.CANCELLED, "用户手动取消", System.currentTimeMillis()
             )
         }

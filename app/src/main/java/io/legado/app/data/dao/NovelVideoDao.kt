@@ -77,11 +77,34 @@ interface NovelVideoDao {
     @Query("UPDATE novel_video_jobs SET outputPath = :outputPath, coverPath = :coverPath, totalDurationMs = :durationMs, status = :status, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobOutput(jobId: String, outputPath: String?, coverPath: String?, durationMs: Long?, status: String, time: Long = System.currentTimeMillis())
 
+    /**
+     * 条件部分更新 outputPath + 状态：仅当 job 尚未进入终态时才更新。
+     *
+     * 用于流水线中间态写入（如 MERGING），避免取消信号被覆写：
+     * 若 markCancelledIfRunning 已写 CANCELLED，此处为 no-op，保持取消态。
+     */
+    @Query("UPDATE novel_video_jobs SET outputPath = :outputPath, coverPath = :coverPath, totalDurationMs = :durationMs, status = :status, updatedAt = :time WHERE id = :jobId AND status NOT IN ('completed','failed','partial_failed','cancelled')")
+    suspend fun updateJobOutputIfNotFinished(jobId: String, outputPath: String?, coverPath: String?, durationMs: Long?, status: String, time: Long = System.currentTimeMillis())
+
     @Query("UPDATE novel_video_jobs SET draftJson = :draftJson, status = :status, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobDraft(jobId: String, draftJson: String?, status: String, time: Long = System.currentTimeMillis())
 
+    /**
+     * 条件部分更新 draftJson + 状态：仅当 job 尚未进入终态时才更新。
+     * 避免取消后中间态（SCREENPLAY_PENDING_REVIEW）覆写 CANCELLED。
+     */
+    @Query("UPDATE novel_video_jobs SET draftJson = :draftJson, status = :status, updatedAt = :time WHERE id = :jobId AND status NOT IN ('completed','failed','partial_failed','cancelled')")
+    suspend fun updateJobDraftIfNotFinished(jobId: String, draftJson: String?, status: String, time: Long = System.currentTimeMillis())
+
     @Query("UPDATE novel_video_jobs SET screenplayJson = :screenplayJson, status = :status, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobScreenplay(jobId: String, screenplayJson: String?, status: String, time: Long = System.currentTimeMillis())
+
+    /**
+     * 条件部分更新 screenplayJson + 状态：仅当 job 尚未进入终态时才更新。
+     * 避免取消后中间态（SCREENPLAY_CONFIRMED）覆写 CANCELLED。
+     */
+    @Query("UPDATE novel_video_jobs SET screenplayJson = :screenplayJson, status = :status, updatedAt = :time WHERE id = :jobId AND status NOT IN ('completed','failed','partial_failed','cancelled')")
+    suspend fun updateJobScreenplayIfNotFinished(jobId: String, screenplayJson: String?, status: String, time: Long = System.currentTimeMillis())
 
     @Query("DELETE FROM novel_video_jobs WHERE id = :jobId")
     suspend fun deleteJob(jobId: String)
