@@ -23,7 +23,13 @@ object AiVideoTaskPoller {
     /** 匹配错误消息中的 HTTP 4xx 状态码（如 " 400 "、" 401 "、" 429 "），用于判断不重试的鉴权/参数错误。 */
     private val HTTP_4XX_REGEX = Regex("\\b4\\d{2}\\b")
 
-    /** 状态机：调用方可在 [onStatus] 收到这些字符串用于 UI 展示。 */
+    /**
+     * 状态机：调用方可在 [onStatus] 收到这些字符串用于 UI 展示。
+     *
+     * 注意：这里的常量是「单段视频生成的轮询阶段」标识，与
+     * [io.legado.app.data.entities.NovelVideoJobStatus.GENERATING]（任务级状态）
+     * 字符串值恰好相同但语义不同，不应混用。
+     */
     object Stage {
         const val SUBMITTING = "submitting"
         const val QUEUED = "queued"

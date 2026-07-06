@@ -46,7 +46,7 @@ data class NovelVideoCharacterSheet(
     val combinedViewUrl: String? = null,
     @ColumnInfo
     val localPath: String? = null,
-    @ColumnInfo(defaultValue = "pending")
+    @ColumnInfo(defaultValue = NovelVideoCharacterSheetStatus.PENDING)
     val status: String = NovelVideoCharacterSheetStatus.PENDING,
     @ColumnInfo
     val errorMessage: String? = null,

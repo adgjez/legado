@@ -58,7 +58,7 @@ data class NovelVideoSegment(
     val localVideoPath: String? = null,
     @ColumnInfo
     val durationMs: Long? = null,
-    @ColumnInfo(defaultValue = "pending")
+    @ColumnInfo(defaultValue = NovelVideoSegmentStatus.PENDING)
     val status: String = NovelVideoSegmentStatus.PENDING,
     @ColumnInfo(defaultValue = "0")
     val retryCount: Int = 0,

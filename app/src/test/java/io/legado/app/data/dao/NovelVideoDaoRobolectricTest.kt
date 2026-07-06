@@ -454,6 +454,95 @@ class NovelVideoDaoRobolectricTest {
     }
 
     // ============================================================
+    // L1: SQL 状态字面量与 Kotlin 常量集合一致性
+    // DAO 中的 SQL IN('...') 字面量无法引用 Kotlin 常量，需靠测试守住一致性，
+    // 防止常量字符串值修改后 SQL 静默失效。
+    // ============================================================
+
+    @Test
+    fun getRunningJobsReturnsExactlyRunningStates() = runTest {
+        // SQL 分组应与 NovelVideoJobStatus.RUNNING_STATES 完全对应
+        NovelVideoJobStatus.RUNNING_STATES.forEachIndexed { idx, status ->
+            dao.insertJob(NovelVideoJob(id = "running_$idx", status = status))
+        }
+        // 终态不应出现在 running 列表
+        NovelVideoJobStatus.FINISHED_STATES.forEachIndexed { idx, status ->
+            dao.insertJob(NovelVideoJob(id = "finished_$idx", status = status))
+        }
+
+        val running = dao.getRunningJobs()
+        assertEquals("SQL IN 列表应与 RUNNING_STATES 一致", NovelVideoJobStatus.RUNNING_STATES.size, running.size)
+        assertTrue(running.all { it.status in NovelVideoJobStatus.RUNNING_STATES })
+    }
+
+    @Test
+    fun getCompletedJobsReturnsCompletedAndPartialFailed() = runTest {
+        dao.insertJob(NovelVideoJob(id = "c1", status = NovelVideoJobStatus.COMPLETED))
+        dao.insertJob(NovelVideoJob(id = "p1", status = NovelVideoJobStatus.PARTIAL_FAILED))
+        // 这些不应出现
+        dao.insertJob(NovelVideoJob(id = "f1", status = NovelVideoJobStatus.FAILED))
+        dao.insertJob(NovelVideoJob(id = "x1", status = NovelVideoJobStatus.CANCELLED))
+        dao.insertJob(NovelVideoJob(id = "r1", status = NovelVideoJobStatus.GENERATING))
+
+        val completed = dao.getCompletedJobs()
+        assertEquals(2, completed.size)
+        assertTrue(completed.all { it.status in setOf(NovelVideoJobStatus.COMPLETED, NovelVideoJobStatus.PARTIAL_FAILED) })
+    }
+
+    @Test
+    fun getFailedJobsReturnsFailedAndCancelled() = runTest {
+        dao.insertJob(NovelVideoJob(id = "f1", status = NovelVideoJobStatus.FAILED))
+        dao.insertJob(NovelVideoJob(id = "x1", status = NovelVideoJobStatus.CANCELLED))
+        // 这些不应出现
+        dao.insertJob(NovelVideoJob(id = "c1", status = NovelVideoJobStatus.COMPLETED))
+        dao.insertJob(NovelVideoJob(id = "p1", status = NovelVideoJobStatus.PARTIAL_FAILED))
+        dao.insertJob(NovelVideoJob(id = "r1", status = NovelVideoJobStatus.GENERATING))
+
+        val failed = dao.getFailedJobs()
+        assertEquals(2, failed.size)
+        assertTrue(failed.all { it.status in setOf(NovelVideoJobStatus.FAILED, NovelVideoJobStatus.CANCELLED) })
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedExcludesExactlyFinishedStates() = runTest {
+        // 条件更新的 WHERE NOT IN 列表应与 FINISHED_STATES 完全对应：
+        // 已终态的 job 不应被更新
+        NovelVideoJobStatus.FINISHED_STATES.forEachIndexed { idx, status ->
+            dao.insertJob(NovelVideoJob(id = "fin_$idx", status = status))
+            val affected = dao.updateJobFinalStatusIfNotFinished("fin_$idx", NovelVideoJobStatus.COMPLETED)
+            assertEquals("终态 $status 不应被条件更新覆写", 0, affected)
+        }
+        // 运行态应能被更新
+        NovelVideoJobStatus.RUNNING_STATES.forEachIndexed { idx, status ->
+            dao.insertJob(NovelVideoJob(id = "run_$idx", status = status))
+            val affected = dao.updateJobFinalStatusIfNotFinished("run_$idx", NovelVideoJobStatus.COMPLETED)
+            assertEquals("运行态 $status 应能被条件更新", 1, affected)
+        }
+    }
+
+    @Test
+    fun getNextResumableSegmentExcludesVideoCompleted() = runTest {
+        // SQL IN 列表应包含 IN_PROGRESS + FAILED，排除 VIDEO_COMPLETED
+        val jobId = insertJob()
+        // VIDEO_COMPLETED 不应被返回
+        dao.insertSegment(NovelVideoSegment(id = "done", jobId = jobId, sceneId = 0, status = NovelVideoSegmentStatus.VIDEO_COMPLETED))
+        // 这些应可被返回（注意 (jobId, chapterIndex, sceneId) 唯一索引，需分配不同 sceneId）
+        val resumableStatuses = NovelVideoSegmentStatus.IN_PROGRESS.plus(NovelVideoSegmentStatus.FAILED)
+        resumableStatuses.forEachIndexed { idx, status ->
+            dao.insertSegment(NovelVideoSegment(id = "s_$idx", jobId = jobId, sceneId = idx + 1, status = status))
+        }
+
+        val resumableIds = dao.getSegmentsByJob(jobId)
+            .filter { it.status != NovelVideoSegmentStatus.VIDEO_COMPLETED }
+            .map { it.id }
+            .toSet()
+        // getNextResumableSegment 返回的应是这些可恢复状态之一
+        val next = dao.getNextResumableSegment(jobId)
+        assertNotNull(next)
+        assertTrue(next!!.id in resumableIds)
+    }
+
+    // ============================================================
     // helpers
     // ============================================================
 

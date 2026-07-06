@@ -37,7 +37,7 @@ data class NovelVideoJob(
     val chapterEndIndex: Int = -1,
     @ColumnInfo(defaultValue = "[]")
     val chapterTitlesJson: String = "[]",
-    @ColumnInfo(defaultValue = "drafting")
+    @ColumnInfo(defaultValue = NovelVideoJobStatus.DRAFTING)
     val status: String = NovelVideoJobStatus.DRAFTING,
     @ColumnInfo(defaultValue = "{}")
     val paramsJson: String = "{}",
