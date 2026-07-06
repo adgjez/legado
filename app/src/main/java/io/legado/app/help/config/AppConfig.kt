@@ -1937,7 +1937,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 null
             } else {
                 val type = safeString { provider.type }.trim()
-                    .takeIf { it == AiVideoProviderConfig.TYPE_JS || it == AiVideoProviderConfig.TYPE_OPENAI }
+                    .takeIf { it == AiVideoProviderConfig.TYPE_JS || it == AiVideoProviderConfig.TYPE_OPENAI || it == AiVideoProviderConfig.TYPE_AGNES }
                     ?: AiVideoProviderConfig.TYPE_OPENAI
                 AiVideoProviderConfig(
                     id = id,

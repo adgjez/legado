@@ -85,7 +85,8 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                val isOpenAi = providerType == AiVideoProviderConfig.TYPE_OPENAI
+                val isOpenAi = providerType == AiVideoProviderConfig.TYPE_OPENAI ||
+                    providerType == AiVideoProviderConfig.TYPE_AGNES
                 AiVideoProviderEditScreen(
                     name = nameText,
                     onNameChange = { nameText = it },
@@ -147,6 +148,11 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun bind(provider: AiVideoProviderConfig?) {
+        if (provider == null && providerType == AiVideoProviderConfig.TYPE_AGNES) {
+            // 新建 Agnes Provider 时预填配置
+            applyAgnesPreset()
+            return
+        }
         nameText = provider?.name.orEmpty()
         submitUrlText = provider?.submitUrl.orEmpty()
         pollUrlTemplateText = provider?.pollUrlTemplate.orEmpty()
@@ -168,18 +174,45 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         jsLibText = provider?.jsLib.orEmpty()
     }
 
+    /**
+     * Agnes Video V2.0 预置配置：填好 submitUrl/pollUrlTemplate/JSONPath/状态值，
+     * 用户只需填入 apiKey 即可使用。
+     */
+    private fun applyAgnesPreset() {
+        nameText = "Agnes Video V2.0"
+        modelText = "agnes-video-v2.0"
+        submitUrlText = "https://apihub.agnes-ai.com/v1/videos"
+        pollUrlTemplateText = "https://apihub.agnes-ai.com/agnesapi?video_id={taskId}"
+        taskIdJsonPathText = "\$.video_id"
+        videoUrlJsonPathText = "\$.remixed_from_video_id"
+        statusJsonPathText = "\$.status"
+        doneStatusValueText = "completed"
+        failedStatusValueText = "failed"
+        maxReferenceImagesText = "4"
+        submitTimeoutText = "60000"
+        pollTimeoutText = "600000"
+        pollIntervalText = "3000"
+        enabledState = true
+        paramsText = ""
+        scriptText = ""
+        jsLibText = ""
+        headersText = ""
+        apiKeyText = ""
+    }
+
     private fun selectType() {
         showComposeActionListDialog(
             title = getString(R.string.ai_video_provider_type),
             labels = listOf(
                 getString(R.string.ai_video_provider_openai),
+                getString(R.string.ai_video_provider_agnes),
                 getString(R.string.ai_video_provider_js)
             )
         ) { index ->
-            providerType = if (index == 0) {
-                AiVideoProviderConfig.TYPE_OPENAI
-            } else {
-                AiVideoProviderConfig.TYPE_JS
+            providerType = when (index) {
+                0 -> AiVideoProviderConfig.TYPE_OPENAI
+                1 -> AiVideoProviderConfig.TYPE_AGNES
+                else -> AiVideoProviderConfig.TYPE_JS
             }
         }
     }
@@ -203,7 +236,10 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             toastOnUi(R.string.ai_provider_name_required)
             return
         }
-        if (providerType == AiVideoProviderConfig.TYPE_OPENAI && submitUrlText.isBlank()) {
+        if ((providerType == AiVideoProviderConfig.TYPE_OPENAI ||
+                providerType == AiVideoProviderConfig.TYPE_AGNES) &&
+            submitUrlText.isBlank()
+        ) {
             toastOnUi(R.string.ai_provider_url_required)
             return
         }

@@ -56,23 +56,12 @@ object AiVideoService {
         val maxRefs = target.maxReferenceImages.coerceAtLeast(1)
         val refs = referenceImages.filter { it.isNotBlank() }.take(maxRefs)
 
-        val formMap = linkedMapOf<String, Any>(
-            "model" to target.model.ifBlank { "veo3.1-components" },
-            "prompt" to prompt,
-            "seconds" to seconds.toString(),
-            "size" to size,
-            "watermark" to "false"
-        )
-        // 参考图作为重复的 input_reference 字段（multipart 同名多值）
-        // postMultipart 的 Map 不支持重复 key，这里手动构建 MultipartBody
-        val response = target.httpClient(target.validSubmitTimeout()).newCallResponse {
-            url(requestUrl)
-            buildMultipartBody(target, formMap, refs)
-            addHeader("Accept", "application/json")
-            target.apiKey.takeIf { it.isNotBlank() }?.let {
-                addHeader("Authorization", "Bearer $it")
-            }
-            addHeaders(AiChatService.parseCustomHeaders(target.headers))
+        val response = if (target.type == AiVideoProviderConfig.TYPE_AGNES) {
+            // Agnes Video V2.0：JSON body，字段为 width/height/num_frames/frame_rate
+            submitAgnesJson(target, requestUrl, prompt, seconds, size, refs)
+        } else {
+            // 默认（veo3.1 风格）：multipart/form-data
+            submitMultipart(target, requestUrl, prompt, seconds, size, refs)
         }
         response.use { resp ->
             val text = resp.body?.string().orEmpty()
@@ -89,6 +78,99 @@ object AiVideoService {
             taskId
         }
     }
+
+    /**
+     * veo3.1 风格的 multipart/form-data 提交。
+     * 参考图作为重复的 input_reference 字段（multipart 同名多值）。
+     */
+    private fun submitMultipart(
+        target: AiVideoProviderConfig,
+        requestUrl: String,
+        prompt: String,
+        seconds: Int,
+        size: String,
+        refs: List<String>
+    ): okhttp3.Response {
+        val formMap = linkedMapOf<String, Any>(
+            "model" to target.model.ifBlank { "veo3.1-components" },
+            "prompt" to prompt,
+            "seconds" to seconds.toString(),
+            "size" to size,
+            "watermark" to "false"
+        )
+        return target.httpClient(target.validSubmitTimeout()).newCallResponse {
+            url(requestUrl)
+            buildMultipartBody(target, formMap, refs)
+            addHeader("Accept", "application/json")
+            target.apiKey.takeIf { it.isNotBlank() }?.let {
+                addHeader("Authorization", "Bearer $it")
+            }
+            addHeaders(AiChatService.parseCustomHeaders(target.headers))
+        }
+    }
+
+    /**
+     * Agnes Video V2.0 的 JSON body 提交。
+     *
+     * 字段映射：
+     * - size "1280x720" → width=1280, height=720
+     * - seconds 5 → num_frames=121, frame_rate=24（满足 8n+1 规则）
+     * - 参考图 → extra_body.image 数组
+     *
+     * @see <a href="https://agnes-ai.com/zh-Hans/docs/agnes-video-v20">Agnes Video V2.0 文档</a>
+     */
+    private fun submitAgnesJson(
+        target: AiVideoProviderConfig,
+        requestUrl: String,
+        prompt: String,
+        seconds: Int,
+        size: String,
+        refs: List<String>
+    ): okhttp3.Response {
+        val (width, height) = parseSize(size)
+        val frameRate = 24
+        // num_frames 需满足 8n+1 规则且 ≤ 441
+        val numFrames = computeAgnesNumFrames(seconds, frameRate)
+        val jsonBody = JSONObject().apply {
+            put("model", target.model.ifBlank { "agnes-video-v2.0" })
+            put("prompt", prompt)
+            put("width", width)
+            put("height", height)
+            put("num_frames", numFrames)
+            put("frame_rate", frameRate)
+            if (refs.isNotEmpty()) {
+                val extraBody = JSONObject()
+                extraBody.put("image", org.json.JSONArray(refs))
+                put("extra_body", extraBody)
+            }
+        }
+        val body = okhttp3.RequestBody.create(
+            okhttp3.MediaType.get("application/json; charset=utf-8"),
+            jsonBody.toString()
+        )
+        return target.httpClient(target.validSubmitTimeout()).newCallResponse {
+            url(requestUrl)
+            post(body)
+            addHeader("Accept", "application/json")
+            target.apiKey.takeIf { it.isNotBlank() }?.let {
+                addHeader("Authorization", "Bearer $it")
+            }
+            addHeaders(AiChatService.parseCustomHeaders(target.headers))
+        }
+    }
+
+    /** 从 "1280x720" 解析出 (width, height)，失败用默认 1152x768。 */
+    private fun parseSize(size: String): Pair<Int, Int> = parseSizeStatic(size)
+
+    /**
+     * 根据 seconds 计算 num_frames，需满足 8n+1 规则且 ≤ 441。
+     * - 3s → 81 (8*10+1, 81/24≈3.4s)
+     * - 5s → 121 (8*15+1, 121/24≈5.0s)
+     * - 10s → 241 (8*30+1, 241/24≈10.0s)
+     * - 18s → 441 (8*55+1, 441/24≈18.4s)
+     */
+    private fun computeAgnesNumFrames(seconds: Int, frameRate: Int): Int =
+        computeAgnesNumFramesStatic(seconds, frameRate)
 
     /**
      * 轮询视频任务直到完成或失败。
@@ -266,5 +348,37 @@ object AiVideoService {
             .readTimeout(timeoutMs.coerceAtLeast(10_000L), TimeUnit.MILLISECONDS)
             .callTimeout(timeoutMs.coerceAtLeast(10_000L), TimeUnit.MILLISECONDS)
             .build()
+    }
+
+    companion object {
+        /** 从 "1280x720" 解析出 (width, height)，失败用默认 1152x768。 */
+        fun parseSizeStatic(size: String): Pair<Int, Int> {
+            val parts = size.trim().lowercase().split("x")
+            if (parts.size == 2) {
+                val w = parts[0].trim().toIntOrNull()
+                val h = parts[1].trim().toIntOrNull()
+                if (w != null && h != null && w > 0 && h > 0) return w to h
+            }
+            return 1152 to 768
+        }
+
+        /**
+         * 根据 seconds 计算 num_frames，需满足 8n+1 规则且 ≤ 441。
+         * - 3s → 81 (8*10+1, 81/24≈3.4s)
+         * - 5s → 121 (8*15+1, 121/24≈5.0s)
+         * - 10s → 241 (8*30+1, 241/24≈10.0s)
+         * - 18s → 441 (8*55+1, 441/24≈18.4s)
+         */
+        fun computeAgnesNumFramesStatic(seconds: Int, frameRate: Int): Int {
+            val raw = seconds * frameRate
+            // 找到 >= raw 的最小 8n+1 值
+            var n = (raw - 1) / 8
+            var candidate = 8 * n + 1
+            while (candidate < raw) {
+                n++
+                candidate = 8 * n + 1
+            }
+            return candidate.coerceAtMost(441).coerceAtLeast(1)
+        }
     }
 }

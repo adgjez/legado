@@ -56,13 +56,18 @@ class AiVideoProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     private fun showAddSelector() {
         val labels = listOf(
             getString(R.string.ai_video_provider_openai),
+            getString(R.string.ai_video_provider_agnes),
             getString(R.string.ai_video_provider_js)
         )
         showComposeActionListDialog(
             title = getString(R.string.add),
             labels = labels
         ) { index ->
-            val type = if (index == 0) AiVideoProviderConfig.TYPE_OPENAI else AiVideoProviderConfig.TYPE_JS
+            val type = when (index) {
+                0 -> AiVideoProviderConfig.TYPE_OPENAI
+                1 -> AiVideoProviderConfig.TYPE_AGNES
+                else -> AiVideoProviderConfig.TYPE_JS
+            }
             openEdit(AiVideoProviderEditActivity.newIntent(this, null, type))
         }
     }

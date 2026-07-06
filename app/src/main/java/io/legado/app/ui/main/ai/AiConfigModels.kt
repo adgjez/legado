@@ -267,5 +267,6 @@ data class AiVideoProviderConfig(
     companion object {
         const val TYPE_OPENAI = "openai"
         const val TYPE_JS = "js"
+        const val TYPE_AGNES = "agnes"
     }
 }
