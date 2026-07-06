@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -163,6 +165,6 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         /** R6：对同一 job 的 retry/cancel/delete 操作串行化，避免并发覆写状态。 */
-        private val jobOpMutex = kotlinx.coroutines.sync.Mutex()
+        private val jobOpMutex = Mutex()
     }
 }
