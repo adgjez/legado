@@ -1,6 +1,10 @@
 **2026/07/06**
 
-* 小说转视频：完成两轮代码审查，共 65 项修复 + 57 个测试用例，CI 全绿
+* 小说转视频：完成三轮代码审查，共 86 项修复 + 60 个测试用例，CI 全绿
+* 第三轮高风险（R1-R10）：合并失败不再误标 COMPLETED；retryCount 熔断防 API 配额浪费；PAUSED 死状态防护；start() 短路窗口修复；retry/cancel 加 Mutex 串行化；ConfigSheet 旋转保留输入；WakeLock 防 Doze 停滞；shouldStopOnTaskRemoved/onTimeout 重写
+* 第三轮中风险（M1-M13）：deleteJob 清理磁盘文件；50% 失败阈值改 >=；retry 智能重置保留 imageUrl；pickNextJob 跳过 PENDING_REVIEW；bind() 幂等；通知刷新 try/catch；startForegroundServiceCompat
+* 第三轮低风险：JobCard 改 combinedClickable；formatChapterRange 缓存 GSON 解析
+* 详见 spec Section 13「实施完成摘要」
 * 高风险修复（D1-D6）：NovelVideo 终态写入全部改用条件 UPDATE（`WHERE status NOT IN ('completed','failed','partial_failed','cancelled')`），消除 TOCTOU 窗口，避免并发的 CANCELLED 被覆写为 COMPLETED/FAILED
 * 高风险修复（H1-H4）：`AiToolExecutor` / `AiChatService` / `AiReadAloudRoleService` / `AiReadAloudBgmService` 在所有 `catch(Throwable)` / `runCatching{}.getOrElse{}` 入口显式重抛 `CancellationException`，恢复协程取消语义
 * 中风险修复（M1-M4）：`sceneDurationSeconds` 与 `maxCharacters` 边界 coerceIn 统一；`ScreenplayDraft` 两套 fromJson 合一；`markSegmentFailed` 默认参数改用常量

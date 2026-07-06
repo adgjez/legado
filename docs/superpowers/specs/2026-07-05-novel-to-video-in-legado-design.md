@@ -920,7 +920,7 @@ interface VideoClient {
 
 ## 13. 实施完成摘要
 
-> 本节登记两轮代码审查与修复的最终状态。spec 第 10 节的 18 步 MVP 路径已全部完成。
+> 本节登记三轮代码审查与修复的最终状态。spec 第 10 节的 18 步 MVP 路径已全部完成。
 
 ### 13.1 完成状态总览
 
@@ -930,7 +930,9 @@ interface VideoClient {
 | 第二轮 | 高+中风险（D1-D6 + H1-H4 + M1-M4） | 10 | 3 | ✓ |
 | 第二轮 | 低风险（L1-L3） | 3 | 5 | ✓ |
 | 第二轮 | 系统性风险（中间态写入覆写取消信号） | 1 | 6 | ✓ |
-| **合计** | | **65 修复** | **57 测试** | **全部通过** |
+| 第三轮 | 高风险（R1-R10） | 10 | 3 | ✓ |
+| 第三轮 | 中风险（M1-M13）+ 低风险 | 11 | 0 | ✓ |
+| **合计** | | **86 修复** | **60 测试** | **全部通过** |
 
 ### 13.2 第二轮深度审查修复清单
 
@@ -1039,6 +1041,56 @@ L1 SQL-常量集合一致性验证（5 项）：
 - `test/java/io/legado/app/data/dao/NovelVideoDaoRobolectricTest.kt`（D1-D6 + L1 + 系统性修复）
 - `test/java/io/legado/app/help/ai/NovelVideoParamsTest.kt`（M2）
 - `test/java/io/legado/app/help/ai/NovelVideoScreenplayParserTest.kt`（M3）
+
+---
+
+### 13.5 第三轮深度审查修复清单
+
+第三轮聚焦前两轮未覆盖的盲区：错误恢复路径、Android 平台特性、UI 状态一致性、资源泄漏。
+
+#### 高风险 R1-R10
+
+**错误恢复**
+- R1 合并失败不再静默 fallback 首段视频，outputPath 留空让 finalizeJob 标 FAILED（原误标 COMPLETED，用户得到残缺视频无提示）
+- R2 TaskCenterViewModel.retryJob 补 PARTIAL_FAILED 状态（原仅允许 FAILED/CANCELLED，与 JobDetailViewModel 不一致）
+- R3 增 retryCount 上限熔断 MAX_SEGMENT_JOB_RETRY=3，超限段标 FAILED"重试次数超限"，避免无限重试消耗 API 配额
+- R4 generate 加 PAUSED 分支直接 return，避免 pickNextJob 取到 PAUSED 的 job 落入 else 分支被标 FAILED
+
+**服务调度**
+- R5 start() 不再仅靠 isRun 短路，避免 pipeline stopSelf 后 onDestroy 前的窗口内新建/重试任务永不执行
+
+**UI 竞态**
+- R6 retryJob/cancelJob/deleteJob 加 Mutex 串行化，retryJob 的 GENERATING 写入改用条件更新，避免覆写并发的 CANCELLED
+
+**UI 状态**
+- R7 NovelVideoJobConfigSheet 表单状态改 rememberSaveable，旋转屏幕后保留用户输入（书/章节/参数）
+
+**Android 平台**
+- R8 NovelVideoService 加 PARTIAL_WAKE_LOCK，避免 Doze 下 CPU 休眠导致流水线停滞
+- R9 重写 shouldStopOnTaskRemoved，有 job 在跑时不停止服务
+- R10 重写 onTimeout，保留中间态不写 FAILED，让用户下次打开 App 时断点续传
+
+#### 中风险 M1-M13
+
+- M1 deleteJob 清理磁盘文件（filesDir/novel_video/<jobId>/），避免孤儿视频累积
+- M3 50% 失败阈值从 `>` 改为 `>=`，避免半数段失败时误标 COMPLETED
+- M4+M5 retryJob 智能重置 segment——imageUrl 非空则重置为 IMAGE_COMPLETED 跳过 Stage 5，避免重复生图；覆盖 FAILED 和中间态段
+- M8 pickNextJob 跳过 SCREENPLAY_PENDING_REVIEW，避免阻塞新 job 调度
+- M9 bind() 幂等——同一 jobId 不重复订阅 Flow，避免旋转后收集器累积
+- M11 job==null 显示"任务不存在或已删除"而非"暂无分镜段"
+- M12 upNotification 加 try/catch，POST_NOTIFICATIONS 被拒时不崩溃
+- M13 start/stop/cancelCurrentJob 改用 startForegroundServiceCompat
+
+#### 低风险
+
+- JobCard 双 clickable 改 combinedClickable
+- formatChapterRange 用 remember 缓存 GSON 解析结果
+
+#### 第三轮新增测试
+
+- `r1MergeFailedLeavesOutputPathBlankAndJobCanBeMarkedFailed`
+- `r3MarkSegmentFailedIncrementsRetryCount`
+- `r6RetryJobConditionalUpdateDoesNotOverwriteCancelled`
 
 ---
 
