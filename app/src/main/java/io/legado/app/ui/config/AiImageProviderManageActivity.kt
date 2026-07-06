@@ -106,18 +106,18 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     private fun showAddSelector() {
         val labels = listOf(
             getString(R.string.ai_image_provider_openai),
-            getString(R.string.ai_image_provider_js),
-            "导入 JS 生图规则"
+            getString(R.string.ai_image_provider_agnes),
+            getString(R.string.ai_image_provider_js)
         )
         showComposeActionListDialog(
             title = getString(R.string.add),
             labels = labels
         ) { index ->
-            if (index == 2) {
-                showImportActions()
-                return@showComposeActionListDialog
+            val type = when (index) {
+                0 -> AiImageProviderConfig.TYPE_OPENAI
+                1 -> AiImageProviderConfig.TYPE_AGNES
+                else -> AiImageProviderConfig.TYPE_JS
             }
-            val type = if (index == 0) AiImageProviderConfig.TYPE_OPENAI else AiImageProviderConfig.TYPE_JS
             openEdit(AiImageProviderEditActivity.newIntent(this, null, type))
         }
     }

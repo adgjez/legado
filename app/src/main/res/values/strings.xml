@@ -681,6 +681,7 @@
     <string name="ai_image_provider_summary">已启用 %1$d 个，共 %2$d 个</string>
     <string name="ai_image_provider_manage_summary">配置 OpenAI 生图接口或 JS 生图规则。AI 对话可通过工具调用或独立生图入口生成图片。</string>
     <string name="ai_image_provider_openai">OpenAI 生图</string>
+    <string name="ai_image_provider_agnes">Agnes Image 2.1 Flash（预置）</string>
     <string name="ai_image_provider_js">JS 生图规则</string>
     <string name="ai_image_provider_type">供应商类型</string>
     <string name="ai_image_params">请求参数 JSON</string>

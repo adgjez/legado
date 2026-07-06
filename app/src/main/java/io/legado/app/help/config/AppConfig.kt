@@ -1900,7 +1900,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 null
             } else {
                 val type = safeString { provider.type }.trim()
-                    .takeIf { it == AiImageProviderConfig.TYPE_JS || it == AiImageProviderConfig.TYPE_OPENAI }
+                    .takeIf { it == AiImageProviderConfig.TYPE_JS || it == AiImageProviderConfig.TYPE_OPENAI || it == AiImageProviderConfig.TYPE_AGNES }
                     ?: AiImageProviderConfig.TYPE_OPENAI
                 AiImageProviderConfig(
                     id = id,

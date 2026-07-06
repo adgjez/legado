@@ -62,6 +62,9 @@ object AiImageService {
         val effective = effectivePrompt(prompt, target)
         return when (target.type) {
             AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target).source
+            // Agnes Image 2.1 Flash 原生支持 extra_body.image 参考图（图生图），保持人物一致性
+            AiImageProviderConfig.TYPE_AGNES ->
+                generateByAgnesImagesApi(effective, target, referenceImages).source
             // 仅 chat vision model（如 gpt-4o-image-vip）支持 image_url 参考图；
             // images API 类 model（gpt-image-1 / dall-e-3）走 /images/generations 不支持参考图，
             // 退化为纯文生图（人物一致性靠 prompt 描述），避免端点/model 不匹配。
@@ -98,6 +101,8 @@ object AiImageService {
         val effective = effectivePrompt(prompt, target)
         val image = when (target.type) {
             AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target)
+            AiImageProviderConfig.TYPE_AGNES ->
+                generateByAgnesImagesApi(effective, target, referenceImages)
             else -> if (isChatVisionModel(target)) {
                 generateByChatWithImages(effective, referenceImages, target)
             } else {
@@ -157,7 +162,83 @@ object AiImageService {
     private suspend fun generateRaw(prompt: String, target: AiImageProviderConfig): ImageGenerationResult {
         return when (target.type) {
             AiImageProviderConfig.TYPE_JS -> generateByJs(prompt, target)
+            AiImageProviderConfig.TYPE_AGNES -> generateByAgnesImagesApi(prompt, target)
             else -> generateByOpenAi(prompt, target)
+        }
+    }
+
+    /**
+     * Agnes Image 2.1 Flash 的图生图实现。
+     *
+     * 端点：`POST ${baseUrl}/images/generations`（baseUrl 需含 /v1）
+     * - 文生图（referenceImages 为空）：body 含 model/prompt/size/extra_body.response_format
+     * - 图生图（referenceImages 非空）：extra_body.image 数组传参考图，原生支持人物一致性
+     * - 返回路径：data[0].url 或 data[0].b64_json
+     *
+     * 与 OpenAI images API 区别：Agnes 通过 extra_body.image 传参考图（而非顶层 image 字段），
+     * response_format 也放在 extra_body 内。size 必填。
+     *
+     * @see <a href="https://agnes-ai.com/zh-Hans/docs/agnes-image-21-flash">Agnes Image 2.1 Flash 文档</a>
+     */
+    private suspend fun generateByAgnesImagesApi(
+        prompt: String,
+        provider: AiImageProviderConfig,
+        referenceImages: List<String> = emptyList()
+    ): ImageGenerationResult {
+        val baseUrl = normalizeBaseUrl(provider.baseUrl)
+        require(baseUrl.isNotBlank()) { "Base URL is empty" }
+        val params = runCatching { JSONObject(provider.defaultParamsJson.ifBlank { "{}" }) }
+            .getOrDefault(JSONObject())
+        val effectiveModel = provider.model
+            .ifBlank { params.optString("model").ifBlank { "agnes-image-2.1-flash" } }
+        val size = params.optString("size").ifBlank { "1024x1024" }
+        val refs = referenceImages.filter { it.isNotBlank() }
+
+        val payload = JSONObject().apply {
+            put("model", effectiveModel)
+            put("prompt", prompt)
+            put("size", size)
+            // extra_body：参考图 + response_format（Agnes 风格，全部放 extra_body 内）
+            val extraBody = JSONObject().apply {
+                put("response_format", params.optString("response_format", "url"))
+                if (refs.isNotEmpty()) {
+                    put("image", JSONArray().apply { refs.forEach { put(it) } })
+                }
+            }
+            put("extra_body", extraBody)
+            // return_base64 可选（顶层字段）
+            if (params.has("return_base64")) {
+                put("return_base64", params.getBoolean("return_base64"))
+            }
+        }
+        val requestUrl = "${baseUrl.trimEnd('/')}/images/generations"
+        val startedAt = System.currentTimeMillis()
+        var status = ""
+        try {
+            val response = provider.httpClient().newCallResponse {
+                url(requestUrl)
+                postJson(payload.toString())
+                addHeader("Accept", "application/json")
+                addHeader("Content-Type", "application/json")
+                provider.apiKey.takeIf { it.isNotBlank() }?.let {
+                    addHeader("Authorization", "Bearer $it")
+                }
+                addHeaders(AiChatService.parseCustomHeaders(provider.headers))
+            }
+            response.use {
+                status = "${it.code} ${it.message}"
+                val text = it.body.stringLimited(MAX_IMAGE_RESPONSE_BYTES)
+                if (!it.isSuccessful) error(text.ifBlank { status })
+                val root = JSONObject(text)
+                imageFromOpenAiResponse(root)?.let { source ->
+                    logRequest(provider, requestUrl, status, startedAt, true, effectiveModel)
+                    return ImageGenerationResult(source, effectiveModel)
+                }
+                error("Agnes 响应未包含图片字段: ${jsonShape(root)}")
+            }
+        } catch (e: Throwable) {
+            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, effectiveModel, e)
+            throw e
         }
     }
 

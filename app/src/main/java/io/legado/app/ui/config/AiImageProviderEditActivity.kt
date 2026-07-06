@@ -80,7 +80,8 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                val isOpenAi = providerType == AiImageProviderConfig.TYPE_OPENAI
+                val isOpenAi = providerType == AiImageProviderConfig.TYPE_OPENAI ||
+                    providerType == AiImageProviderConfig.TYPE_AGNES
                 AiImageProviderEditScreen(
                     name = nameText,
                     onNameChange = { nameText = it },
@@ -133,6 +134,11 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun bind(provider: AiImageProviderConfig?) {
+        if (provider == null && providerType == AiImageProviderConfig.TYPE_AGNES) {
+            // 新建 Agnes Image 2.1 Flash Provider 时预填配置
+            applyAgnesPreset()
+            return
+        }
         nameText = provider?.name.orEmpty()
         baseUrlText = provider?.baseUrl.orEmpty()
         apiKeyText = provider?.apiKey.orEmpty()
@@ -146,18 +152,39 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         jsLibText = provider?.jsLib.orEmpty()
     }
 
+    /**
+     * Agnes Image 2.1 Flash 预置配置：填好 baseUrl/model/默认参数，
+     * 用户只需填入 apiKey 即可使用。
+     *
+     * 端点：POST https://apihub.agnes-ai.com/v1/images/generations
+     * 原生支持 extra_body.image 参考图（图生图），用于 Stage 5 场景图保持人物一致性。
+     */
+    private fun applyAgnesPreset() {
+        nameText = "Agnes Image 2.1 Flash"
+        modelText = "agnes-image-2.1-flash"
+        baseUrlText = "https://apihub.agnes-ai.com/v1"
+        paramsText = ""
+        stylePrompt = ""
+        scriptText = ""
+        jsLibText = ""
+        headersText = ""
+        apiKeyText = ""
+        enabledState = true
+    }
+
     private fun selectType() {
         showComposeActionListDialog(
             title = getString(R.string.ai_image_provider_type),
             labels = listOf(
                 getString(R.string.ai_image_provider_openai),
+                getString(R.string.ai_image_provider_agnes),
                 getString(R.string.ai_image_provider_js)
             )
         ) { index ->
-            providerType = if (index == 0) {
-                AiImageProviderConfig.TYPE_OPENAI
-            } else {
-                AiImageProviderConfig.TYPE_JS
+            providerType = when (index) {
+                0 -> AiImageProviderConfig.TYPE_OPENAI
+                1 -> AiImageProviderConfig.TYPE_AGNES
+                else -> AiImageProviderConfig.TYPE_JS
             }
         }
     }
@@ -181,7 +208,10 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             toastOnUi(R.string.ai_provider_name_required)
             return
         }
-        if (providerType == AiImageProviderConfig.TYPE_OPENAI && baseUrlText.isBlank()) {
+        if ((providerType == AiImageProviderConfig.TYPE_OPENAI ||
+                providerType == AiImageProviderConfig.TYPE_AGNES) &&
+            baseUrlText.isBlank()
+        ) {
             toastOnUi(R.string.ai_provider_url_required)
             return
         }
@@ -216,10 +246,15 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun defaultParams(): String {
-        return if (providerType == AiImageProviderConfig.TYPE_OPENAI) {
-            "{\n  \"size\": \"1024x1024\"\n}"
-        } else {
-            ""
+        return when (providerType) {
+            AiImageProviderConfig.TYPE_OPENAI -> {
+                "{\n  \"size\": \"1024x1024\"\n}"
+            }
+            AiImageProviderConfig.TYPE_AGNES -> {
+                // Agnes Image 2.1 Flash：size 必填，response_format 放 extra_body
+                "{\n  \"size\": \"1024x768\",\n  \"response_format\": \"url\"\n}"
+            }
+            else -> ""
         }
     }
 
