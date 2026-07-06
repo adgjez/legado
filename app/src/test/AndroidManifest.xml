@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  单元测试专用 AndroidManifest.xml。
+
+  启用 testOptions.unitTests.includeAndroidResources = true 后，AGP 会为单元测试
+  单独执行 manifest merge。主 manifest 中的 tools:overrideLibrary 不会自动继承到
+  测试 manifest 的 merge 流程，因此这里需要重复声明，否则 miuix-android:0.8.8
+  (minSdk 23) 会与 app minSdk 21 冲突导致 processAppDebugUnitTestManifest 失败。
+
+  列表与 src/main/AndroidManifest.xml 的 <uses-sdk tools:overrideLibrary> 保持一致。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-sdk tools:overrideLibrary="androidx.compose.animation,androidx.compose.animation.core,androidx.compose.foundation,androidx.compose.foundation.layout,androidx.compose.material.ripple,androidx.compose.material3,androidx.compose.runtime,androidx.compose.runtime.annotation,androidx.compose.runtime.retain,androidx.compose.runtime.saveable,androidx.compose.ui,androidx.compose.ui.geometry,androidx.compose.ui.graphics,androidx.compose.ui.text,androidx.compose.ui.tooling,androidx.compose.ui.tooling.data,androidx.compose.ui.tooling.preview,androidx.compose.ui.unit,androidx.compose.ui.util,androidx.window,androidx.window.core,androidx.navigationevent,androidx.navigationevent.compose,com.qmdeve.liquidglass,top.yukonga.miuix.kmp" />
+
+</manifest>
