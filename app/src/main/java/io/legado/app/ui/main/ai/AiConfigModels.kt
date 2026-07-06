@@ -200,6 +200,14 @@ data class AiImageProviderConfig(
         const val TYPE_OPENAI = "openai"
         const val TYPE_JS = "js"
         const val TYPE_AGNES = "agnes"
+        // ArcReel image backends（P3 注册）
+        const val TYPE_ARK = "ark"
+        const val TYPE_DASHSCOPE = "dashscope"
+        const val TYPE_GEMINI = "gemini"
+        const val TYPE_GROK = "grok"
+        const val TYPE_KLING = "kling"
+        const val TYPE_MINIMAX = "minimax"
+        const val TYPE_VIDU = "vidu"
     }
 }
 
@@ -270,5 +278,16 @@ data class AiVideoProviderConfig(
         const val TYPE_JS = "js"
         const val TYPE_AGNES = "agnes"
         const val TYPE_DOUBAO = "doubao"
+        // ArcReel video backends（P2 注册）
+        const val TYPE_ARK = "ark"
+        const val TYPE_SORA = "sora"
+        const val TYPE_VEO = "veo"
+        const val TYPE_KLING = "kling"
+        const val TYPE_NEWAPI = "newapi"
+        const val TYPE_V2 = "v2"
+        const val TYPE_DASHSCOPE = "dashscope"
+        const val TYPE_MINIMAX = "minimax"
+        const val TYPE_VIDU = "vidu"
+        const val TYPE_GROK = "grok"
     }
 }
