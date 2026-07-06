@@ -620,6 +620,71 @@ class NovelVideoDaoRobolectricTest {
     }
 
     // ============================================================
+    // 第三轮深度审查 — R1/R3/R6 验证
+    // ============================================================
+
+    /**
+     * R1 验证：合并失败时 outputPath 留空，finalizeJob 的"outputPath 为空 + completed>0"
+     * 条件更新能把 GENERATING job 标记为 FAILED（而非误标 COMPLETED）。
+     */
+    @Test
+    fun r1MergeFailedLeavesOutputPathBlankAndJobCanBeMarkedFailed() = runTest {
+        val jobId = insertJob(status = NovelVideoJobStatus.GENERATING)
+        // 模拟合并失败：outputPath 保持 null
+        val reloaded = dao.getJob(jobId)
+        assertNull("合并失败后 outputPath 应为 null", reloaded?.outputPath)
+        // finalizeJob 的条件更新应能把 GENERATING 标记为 FAILED
+        val affected = dao.updateJobFinalStatusWithErrorIfNotFinished(
+            jobId, NovelVideoJobStatus.FAILED, "视频合并未产出文件", System.currentTimeMillis()
+        )
+        assertEquals(1, affected)
+        assertEquals(NovelVideoJobStatus.FAILED, dao.getJob(jobId)?.status)
+    }
+
+    /**
+     * R3 验证：retryCount 字段存在且 markSegmentFailed 递增它。
+     * 熔断逻辑在 NovelVideoGenerator（非 DAO），这里只验证 retryCount 计数正确。
+     */
+    @Test
+    fun r3MarkSegmentFailedIncrementsRetryCount() = runTest {
+        val jobId = insertJob()
+        dao.insertSegment(NovelVideoSegment(id = "seg_1", jobId = jobId, sceneId = 0, status = NovelVideoSegmentStatus.PENDING))
+
+        // 第一次失败
+        dao.markSegmentFailed("seg_1", NovelVideoSegmentStatus.FAILED, "err1", System.currentTimeMillis())
+        assertEquals(1, dao.getSegmentsByJob(jobId).first().retryCount)
+
+        // 模拟 retryJob 重置 + 第二次失败
+        dao.updateSegmentStatus("seg_1", NovelVideoSegmentStatus.PENDING, null)
+        dao.markSegmentFailed("seg_1", NovelVideoSegmentStatus.FAILED, "err2", System.currentTimeMillis())
+        assertEquals(2, dao.getSegmentsByJob(jobId).first().retryCount)
+
+        // 第三次失败 → retryCount=3，应触发熔断（NovelVideoGenerator 的 MAX_SEGMENT_JOB_RETRY=3）
+        dao.updateSegmentStatus("seg_1", NovelVideoSegmentStatus.PENDING, null)
+        dao.markSegmentFailed("seg_1", NovelVideoSegmentStatus.FAILED, "err3", System.currentTimeMillis())
+        assertEquals(3, dao.getSegmentsByJob(jobId).first().retryCount)
+    }
+
+    /**
+     * R6 验证：retryJob 的 GENERATING 写入用条件更新，若 job 已被并发置为 CANCELLED，
+     * GENERATING 写入应 no-op，保持 CANCELLED 不被覆写。
+     */
+    @Test
+    fun r6RetryJobConditionalUpdateDoesNotOverwriteCancelled() = runTest {
+        val jobId = insertJob(status = NovelVideoJobStatus.FAILED)
+        // 模拟 retry 与 cancel 并发：cancel 先写 CANCELLED
+        dao.updateJobFinalStatusWithErrorIfNotFinished(
+            jobId, NovelVideoJobStatus.CANCELLED, "用户取消", System.currentTimeMillis()
+        )
+        // retry 的条件更新试图写 GENERATING
+        val affected = dao.updateJobFinalStatusWithErrorIfNotFinished(
+            jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
+        )
+        assertEquals("CANCELLED 不应被 GENERATING 覆写", 0, affected)
+        assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob(jobId)?.status)
+    }
+
+    // ============================================================
     // helpers
     // ============================================================
 

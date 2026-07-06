@@ -2,6 +2,7 @@ package io.legado.app.service
 
 import android.content.Context
 import android.content.Intent
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -29,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
+import splitties.systemservices.powerManager
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -62,12 +64,14 @@ class NovelVideoService : BaseService() {
         /**
          * 启动服务并尝试拉起下一个待处理 job。
          * 调用方无需关心当前是否已有 job 在跑——服务内部会去 DB 找下一个可推进的 job。
+         *
+         * R5 修复：不再仅靠 [isRun] 短路。原实现在 isRun=true 时直接 return 不调 startService，
+         * 但 pipeline 可能在 stopSelf() 后、onDestroy() 前的窗口内 isRun 仍为 true，
+         * 此时新建/重试任务会因短路而永不触发 ensurePipelineRunning，导致任务卡死。
+         * 现在无论 isRun 状态都发 start Intent，由 [ensurePipelineRunning] 的
+         * `pipelineJob?.isActive == true` 判断保证幂等。
          */
         fun start(@Suppress("UNUSED_PARAMETER") context: Context) {
-            if (isRun) {
-                postEvent(EventBus.NOVEL_VIDEO_PROGRESS, "")
-                return
-            }
             appCtx.startService<NovelVideoService> {
                 action = IntentAction.start
             }
@@ -97,6 +101,15 @@ class NovelVideoService : BaseService() {
     // 跨线程读写（IO 协程写、主线程 startForegroundNotification 读），需 @Volatile 保证可见性
     @Volatile
     private var notificationContent: String = appCtx.getString(R.string.service_starting)
+
+    /**
+     * R8：PARTIAL_WAKE_LOCK 保证息屏后 CPU 不休眠，避免 Doze 推迟 delay 导致流水线停滞。
+     * 在 [runOneJob] 开始时 acquire，finally 中 release。参考 [AiTaskKeepAliveService]。
+     */
+    private val wakeLock: PowerManager.WakeLock by lazy {
+        powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "legado:NovelVideoService")
+            .apply { setReferenceCounted(false) }
+    }
 
     private val notificationBuilder by lazy {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdAiTask)
@@ -164,8 +177,37 @@ class NovelVideoService : BaseService() {
         cancelFlag.set(true)
         pipelineJob?.cancel()
         pipelineJob = null
+        // R8：释放 WakeLock
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+        }
         super.onDestroy()
         postEvent(EventBus.NOVEL_VIDEO_PROGRESS, "")
+    }
+
+    /**
+     * R9：用户在 Recents 划掉 App 时不停止服务（若有 job 在跑）。
+     * 原默认 true 会立即 stopSelf，当前 job 卡在 GENERATING。
+     * 参考 [WebDavTaskService] 的同名重写。
+     */
+    override fun shouldStopOnTaskRemoved(): Boolean {
+        // 有 job 在跑或 pipeline 活跃时保留服务；否则正常退出
+        return pipelineJob?.isActive != true && currentJobId == null
+    }
+
+    /**
+     * R10：Android 15+ dataSync 类型前台服务有 6 小时累计超时。
+     * 原 [BaseService.onTimeout] 直接 stopSelf，当前 job 卡在中间态（GENERATING/MERGING）。
+     * 这里不写 FAILED（保留中间态，让用户下次打开 App 时断点续传），仅记日志并 stopSelf。
+     * 中间态已由 NovelVideoGenerator 的条件更新落库，重启后从 DB 恢复。
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        AppLog.put("NovelVideoService onTimeout startId=$startId fgsType=$fgsType，保留中间态后退出")
+        // 不调 markCancelledIfRunning —— 保留 GENERATING/MERGING 等中间态，
+        // 用户下次打开 App 触发 NovelVideoService.start 时会从 DB 恢复断点续传
+        cancelFlag.set(true)
+        pipelineJob?.cancel()
+        stopSelf()
     }
 
     // ============================================================
@@ -211,10 +253,15 @@ class NovelVideoService : BaseService() {
 
     /**
      * 跑单个 job：重置 cancelFlag、调 Generator、捕获异常落库失败状态。
+     * R8：在 job 执行期间持有 WakeLock，避免 Doze 下 CPU 休眠导致流水线停滞。
      */
     private suspend fun runOneJob(jobId: String) {
         currentJobId = jobId
         cancelFlag.set(false)
+        // R8：获取 WakeLock，保证 job 执行期间 CPU 不休眠
+        if (!wakeLock.isHeld) {
+            wakeLock.acquire()
+        }
         postEvent(EventBus.NOVEL_VIDEO_PROGRESS, jobId)
 
         try {
@@ -249,6 +296,10 @@ class NovelVideoService : BaseService() {
             }
         } finally {
             currentJobId = null
+            // R8：job 结束后释放 WakeLock（下一个 job 会重新获取）
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+            }
             postEvent(EventBus.NOVEL_VIDEO_PROGRESS, "")
         }
     }

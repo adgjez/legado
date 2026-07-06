@@ -34,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,16 +79,45 @@ fun NovelVideoJobConfigSheet(
     val videoProviders = remember { AppConfig.aiVideoProviderList.filter { it.enabled } }
     val llmModels = remember { AppConfig.aiModelConfigList }
 
-    // 表单状态
-    var selectedBook by remember {
-        mutableStateOf<Book?>(allBooks.firstOrNull { it.bookUrl == presetBookUrl }
-            ?: allBooks.firstOrNull())
+    // R7：表单状态用 rememberSaveable，旋转屏幕后保留用户输入
+    // selectedBook 只保存 bookUrl（String），旋转后从 allBooks 回填，避免 Parcelable 依赖
+    var selectedBookUrl by rememberSaveable {
+        mutableStateOf(presetBookUrl ?: allBooks.firstOrNull()?.bookUrl ?: "")
     }
-    var chapters by remember { mutableStateOf<List<BookChapter>>(emptyList()) }
-    var chapterStart by remember { mutableStateOf(0) }
-    var chapterEnd by remember { mutableStateOf(0) }
-    var params by remember { mutableStateOf(NovelVideoParams()) }
-    var submitting by remember { mutableStateOf(false) }
+    val selectedBook = remember(allBooks, selectedBookUrl) {
+        allBooks.firstOrNull { it.bookUrl == selectedBookUrl } ?: allBooks.firstOrNull()
+    }
+    // List<BookChapter> 用 listSaver 持久化（Parcelize 类型不能直接 Saveable）
+    val chapterListSaver = remember {
+        Saver<List<BookChapter>, List<Map<String, Any?>>>(
+            save = { list ->
+                list.map { ch ->
+                    mapOf(
+                        "url" to ch.bookUrl,
+                        "index" to ch.index,
+                        "title" to ch.title
+                    )
+                }
+            },
+            restore = { saved ->
+                // 仅恢复最小信息用于 UI 显示；实际章节正文在提交时由 loadChapters 重新拉取
+                saved.map { map ->
+                    BookChapter(
+                        bookUrl = map["url"] as? String ?: "",
+                        index = (map["index"] as? Int) ?: 0,
+                        title = map["title"] as? String ?: ""
+                    )
+                }
+            }
+        )
+    }
+    var chapters by rememberSaveable(chapterListSaver) {
+        mutableStateOf<List<BookChapter>>(emptyList())
+    }
+    var chapterStart by rememberSaveable { mutableStateOf(0) }
+    var chapterEnd by rememberSaveable { mutableStateOf(0) }
+    var params by rememberSaveable { mutableStateOf(NovelVideoParams()) }
+    var submitting by rememberSaveable { mutableStateOf(false) }
 
     // 拉取章节
     LaunchedEffect(selectedBook?.bookUrl) {
@@ -106,8 +137,8 @@ fun NovelVideoJobConfigSheet(
 
     // 第一次拉到 books 后回填 preset
     LaunchedEffect(allBooks) {
-        if (selectedBook == null && allBooks.isNotEmpty()) {
-            selectedBook = allBooks.firstOrNull { it.bookUrl == presetBookUrl } ?: allBooks.first()
+        if (selectedBookUrl.isBlank() && allBooks.isNotEmpty()) {
+            selectedBookUrl = presetBookUrl ?: allBooks.first().bookUrl
         }
     }
 
@@ -136,7 +167,7 @@ fun NovelVideoJobConfigSheet(
                 allBooks = allBooks,
                 selected = selectedBook,
                 enabled = presetBookUrl.isNullOrEmpty(),
-                onSelect = { selectedBook = it }
+                onSelect = { selectedBookUrl = it.bookUrl }
             )
 
             // 章节范围

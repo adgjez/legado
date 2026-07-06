@@ -46,6 +46,15 @@ object NovelVideoGenerator {
 
     private const val MAX_LLM_RETRY = 3
 
+    /**
+     * R3：单个 segment 的 job 级重试上限（用户点「重试」触发的整段重跑次数）。
+     *
+     * 与 [MAX_LLM_RETRY]（单次 processSegment 内部对 API 的即时重试）不同，这是跨 job 重试的熔断：
+     * 超过此次数后该 segment 不再被 runScenePipeline 拾取，避免用户无限重试持续消耗 API 配额。
+     * 用户仍可在 UI 看到 segment 的 FAILED 状态和 errorMessage，需删除任务重建才能重置。
+     */
+    private const val MAX_SEGMENT_JOB_RETRY = 3
+
     // ============================================================
     // 对外入口
     // ============================================================
@@ -91,6 +100,12 @@ object NovelVideoGenerator {
                 // 断点续传：Stage 7 合并中断（如进程崩溃），重走 Stage 4-8
                 // 已 VIDEO_COMPLETED 的 segment 会被跳过，mergeCompletedSegments 重新合并
                 runGenerationStages(jobId, book, params, isCancelled)
+            }
+            NovelVideoJobStatus.PAUSED -> {
+                // R4：PAUSED 是预留的暂停状态，目前无设置入口。
+                // 不推进、不报错，直接 return 让 pipeline loop 取下一个 job。
+                // 避免落入 else 分支被标 FAILED（原 bug：pickNextJob 会取到 PAUSED 的 job）。
+                return
             }
             else -> throw IllegalStateException("任务状态不支持启动：${job.status}")
         }
@@ -396,8 +411,31 @@ object NovelVideoGenerator {
         ensureSegments(job, screenplay)
 
         val allSegments = appDb.novelVideoDao.getSegmentsByJob(job.id)
+
+        // R3：retryCount 超限的段（通常因 retryJob 把 FAILED→PENDING 但未重置 retryCount）
+        // 先标记为 FAILED，避免它们停留在 PENDING 状态导致 finalizeJob 误判 COMPLETED。
+        // 这样 getSegmentProgress 的 failed 计数正确，用户能在 UI 看到明确的失败原因。
+        allSegments
+            .filter {
+                it.status != NovelVideoSegmentStatus.VIDEO_COMPLETED &&
+                    it.status != NovelVideoSegmentStatus.FAILED &&
+                    it.retryCount >= MAX_SEGMENT_JOB_RETRY
+            }
+            .forEach { seg ->
+                appDb.novelVideoDao.markSegmentFailed(
+                    seg.id,
+                    NovelVideoSegmentStatus.FAILED,
+                    "重试次数超限（$MAX_SEGMENT_JOB_RETRY 次），请删除任务重建",
+                    System.currentTimeMillis()
+                )
+            }
+        // 重新读取以反映上面的 FAILED 标记
+        val effectiveSegments = if (allSegments.any { it.retryCount >= MAX_SEGMENT_JOB_RETRY && it.status != NovelVideoSegmentStatus.VIDEO_COMPLETED && it.status != NovelVideoSegmentStatus.FAILED }) {
+            appDb.novelVideoDao.getSegmentsByJob(job.id)
+        } else allSegments
+
         // 仅处理未完成且未失败的 segment（FAILED 段需用户显式重试）
-        val pendingSegments = allSegments.filter {
+        val pendingSegments = effectiveSegments.filter {
             it.status != NovelVideoSegmentStatus.VIDEO_COMPLETED &&
                 it.status != NovelVideoSegmentStatus.FAILED
         }
@@ -506,17 +544,11 @@ object NovelVideoGenerator {
                 AppLog.put("VideoMuxer 合并成功：${result.segmentCount} 段 → ${result.outputPath}")
             }
             is VideoMuxer.MergeResult.Failed -> {
-                // 合并失败不阻塞 job 完成，fallback 到首段视频
-                AppLog.put("VideoMuxer 合并失败，回退首段视频：${result.message}")
-                val fallbackPath = inputPaths.first()
-                appDb.novelVideoDao.updateJobOutputIfNotFinished(
-                    job.id,
-                    fallbackPath,
-                    null,
-                    null,
-                    NovelVideoJobStatus.MERGING,
-                    System.currentTimeMillis()
-                )
+                // R1 修复：合并失败不再静默 fallback 首段视频，否则 finalizeJob 会因 outputPath 非空
+                // 而跳过 FAILED 分支，最终标 COMPLETED，用户得到残缺视频且无提示。
+                // 现在显式标 PARTIAL_FAILED（若有成功段）或 FAILED（无成功段），由 finalizeJob 收尾。
+                AppLog.put("VideoMuxer 合并失败，不回退首段：${result.message}，jobId=${job.id}")
+                // outputPath 留空，让 finalizeJob 走"outputPath 为空 + completed>0 → FAILED"分支
             }
         }
     }
@@ -699,7 +731,7 @@ object NovelVideoGenerator {
      *
      * Stage 7 已在 [mergeCompletedSegments] 中完成合并并写入 outputPath。
      * 这里只更新最终状态（COMPLETED/PARTIAL_FAILED/FAILED）。
-     * 若 Stage 7 合并失败，outputPath 已 fallback 到首段视频。
+     * 若 Stage 7 合并失败，outputPath 留空 → 走"合并未产出文件"分支标 FAILED。
      */
     private suspend fun finalizeJob(
         job: NovelVideoJob,

@@ -109,39 +109,60 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 删除任务：FK CASCADE 会清理 segments 和 character sheets。 */
     suspend fun deleteJob(jobId: String) = withContext(Dispatchers.IO) {
-        appDb.novelVideoDao.deleteJob(jobId)
+        jobOpMutex.withLock {
+            appDb.novelVideoDao.deleteJob(jobId)
+        }
     }
 
     /**
      * 重试任务：把失败的 segments 重置为 pending（已完成的保留），
      * job 状态置为 GENERATING，然后启动服务断点续传。
+     *
+     * R2 修复：补 PARTIAL_FAILED 状态（原仅允许 FAILED/CANCELLED，与 JobDetailViewModel 不一致）。
+     * R6 修复：用 Mutex 串行化对同一 job 的操作，避免 retry 与 cancel 并发覆写；
+     *        状态推进改用条件更新，避免覆写并发的 CANCELLED。
      */
     suspend fun retryJob(jobId: String) = withContext(Dispatchers.IO) {
-        val job = appDb.novelVideoDao.getJob(jobId) ?: return@withContext
-        if (job.status == NovelVideoJobStatus.FAILED || job.status == NovelVideoJobStatus.CANCELLED) {
-            val segments = appDb.novelVideoDao.getSegmentsByJob(jobId)
-            segments.filter { it.status == NovelVideoSegmentStatus.FAILED }.forEach { seg ->
-                appDb.novelVideoDao.updateSegmentStatus(seg.id, NovelVideoSegmentStatus.PENDING, null)
+        jobOpMutex.withLock {
+            val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
+            if (job.status == NovelVideoJobStatus.FAILED ||
+                job.status == NovelVideoJobStatus.PARTIAL_FAILED ||
+                job.status == NovelVideoJobStatus.CANCELLED
+            ) {
+                val segments = appDb.novelVideoDao.getSegmentsByJob(jobId)
+                segments.filter { it.status == NovelVideoSegmentStatus.FAILED }.forEach { seg ->
+                    appDb.novelVideoDao.updateSegmentStatus(seg.id, NovelVideoSegmentStatus.PENDING, null)
+                }
+                // R6：用条件更新推进 GENERATING，若期间已被并发置为终态（如 CANCELLED），不覆写
+                appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+                    jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
+                )
             }
-            appDb.novelVideoDao.updateJobStatusWithError(
-                jobId, NovelVideoJobStatus.GENERATING, null
-            )
         }
         NovelVideoService.start(getApplication())
     }
 
     /**
      * 取消任务：当前正在跑的 job 通过 Service 取消；其他 RUNNING_STATES 直接标记 CANCELLED。
+     *
+     * R6 修复：用 Mutex 与 retryJob 串行化，避免并发覆写。
      */
     suspend fun cancelJob(jobId: String) = withContext(Dispatchers.IO) {
-        val job = appDb.novelVideoDao.getJob(jobId) ?: return@withContext
-        if (job.id == NovelVideoService.currentJobId) {
-            NovelVideoService.cancelCurrentJob()
-        } else if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
-            // 用条件更新：若 getJob 与写入之间状态被并发改变为终态，不覆写
-            appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
-                jobId, NovelVideoJobStatus.CANCELLED, "用户手动取消", System.currentTimeMillis()
-            )
+        jobOpMutex.withLock {
+            val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
+            if (job.id == NovelVideoService.currentJobId) {
+                NovelVideoService.cancelCurrentJob()
+            } else if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
+                // 用条件更新：若 getJob 与写入之间状态被并发改变为终态，不覆写
+                appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+                    jobId, NovelVideoJobStatus.CANCELLED, "用户手动取消", System.currentTimeMillis()
+                )
+            }
         }
+    }
+
+    companion object {
+        /** R6：对同一 job 的 retry/cancel/delete 操作串行化，避免并发覆写状态。 */
+        private val jobOpMutex = kotlinx.coroutines.sync.Mutex()
     }
 }
