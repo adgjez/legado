@@ -538,7 +538,7 @@ object NovelVideoGenerator {
                 }
                 lastErr = result.exceptionOrNull()
                 // 协程取消必须向上传播，不进入重试循环
-                if (lastErr is CancellationException) throw lastErr!!
+                if (lastErr is CancellationException) throw lastErr
                 AppLog.put("场景生图失败 attempt=$attempt ${segment.id}", lastErr)
                 if (attempt < maxRetry) delay(1_000L * attempt)
             }
@@ -550,7 +550,7 @@ object NovelVideoGenerator {
                 postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
                 return
             }
-            imageUrl = savedImage!!.localPath
+            imageUrl = savedImage.localPath
             currentStatus = NovelVideoSegmentStatus.IMAGE_COMPLETED
             appDb.novelVideoDao.updateSegmentImage(
                 segment.id, imageUrl, NovelVideoSegmentStatus.IMAGE_COMPLETED, System.currentTimeMillis()
@@ -611,8 +611,8 @@ object NovelVideoGenerator {
                 else -> {
                     appDb.novelVideoDao.updateSegmentVideo(
                         segment.id,
-                        success!!.remoteUrl,
-                        success!!.localPath,
+                        success.remoteUrl,
+                        success.localPath,
                         params.sceneDurationSeconds * 1000L,
                         NovelVideoSegmentStatus.VIDEO_COMPLETED,
                         System.currentTimeMillis()

@@ -2,7 +2,6 @@ package io.legado.app.help.ai
 
 import com.google.gson.JsonSyntaxException
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -98,10 +97,13 @@ class NovelVideoModelsTest {
 
     @Test
     fun screenplayDraftFromJsonReturnsEmptyOnInvalidJson() {
-        val draft = ScreenplayDraft.fromJson("not a json")
-        assertNotNull(draft)
-        assertEquals("", draft.taskId)
-        assertTrue(draft.scenes.isEmpty())
+        // 解析失败或场景为空时抛 JsonSyntaxException，避免空剧本被静默确认完成
+        try {
+            ScreenplayDraft.fromJson("not a json")
+            fail("应抛 JsonSyntaxException")
+        } catch (e: JsonSyntaxException) {
+            // 预期
+        }
     }
 
     @Test
