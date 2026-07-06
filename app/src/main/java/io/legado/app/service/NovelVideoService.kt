@@ -122,9 +122,12 @@ class NovelVideoService : BaseService() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(1000)
-                refreshNotificationContent()
-                upNotification()
-                postEvent(EventBus.NOVEL_VIDEO_PROGRESS, currentJobId.orEmpty())
+                // 空闲时（无当前任务）跳过 DB 查询和通知刷新，降低耗电
+                if (currentJobId != null) {
+                    refreshNotificationContent()
+                    upNotification()
+                    postEvent(EventBus.NOVEL_VIDEO_PROGRESS, currentJobId.orEmpty())
+                }
             }
         }
     }

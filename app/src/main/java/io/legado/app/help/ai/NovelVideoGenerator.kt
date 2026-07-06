@@ -111,6 +111,9 @@ object NovelVideoGenerator {
         // 并因 screenplayJson 为 null 抛异常，导致任务不可恢复
         updateJobStatus(job.id, NovelVideoJobStatus.DRAFTING, "加载章节正文")
         val chapters = loadChapters(book, job)
+        if (chapters.isEmpty()) {
+            throw IllegalStateException("未找到章节正文：${book.name}（章节范围 ${job.chapterStartIndex}..${job.chapterEndIndex}）")
+        }
         val firstChapter = chapters.first()
         val chapterText = NovelVideoChapterLoader.loadChapterText(book, firstChapter)
         checkCancelled(isCancelled, job.id)
@@ -299,7 +302,7 @@ object NovelVideoGenerator {
         val candidates = NovelVideoPromptBuilder.extractMainCharacters(
             screenplay.scenes, params.maxCharacters
         )
-        if (candidates.isEmpty()) return emptyList()
+        if (candidates.isEmpty()) return completed
 
         // 逐角色生成：COMPLETED 的保留，FAILED/不存在的重新生成
         val sheets = mutableListOf<NovelVideoCharacterSheet>()
@@ -412,7 +415,8 @@ object NovelVideoGenerator {
         val videoProvider = AiVideoService.providerByIdOrNull(params.videoProviderId)
 
         // 2. 分批并发处理
-        val concurrency = params.concurrency.coerceIn(1, 4)
+        // concurrency 已在 NovelVideoParams.coerced() 中 coerceIn(1, 4)，此处无需重复
+        val concurrency = params.concurrency
         pendingSegments.chunked(concurrency).forEach { batch ->
             checkCancelled(isCancelled, job.id)
             coroutineScope {
@@ -424,13 +428,18 @@ object NovelVideoGenerator {
                             // 协程取消必须向上传播，不能当作 segment 失败处理
                             if (e is CancellationException) throw e
                             AppLog.put("Segment 处理异常 ${segment.id}", e)
-                            appDb.novelVideoDao.markSegmentFailed(
-                                segment.id,
-                                NovelVideoSegmentStatus.FAILED,
-                                e.message,
-                                System.currentTimeMillis()
-                            )
-                            postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
+                            // DB 写入和事件发射用 try 包裹，避免二次异常传播到 awaitAll 中断整批
+                            try {
+                                appDb.novelVideoDao.markSegmentFailed(
+                                    segment.id,
+                                    NovelVideoSegmentStatus.FAILED,
+                                    e.message,
+                                    System.currentTimeMillis()
+                                )
+                                postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
+                            } catch (dbErr: Throwable) {
+                                AppLog.put("markSegmentFailed/postEvent 二次异常 ${segment.id}", dbErr)
+                            }
                         }
                     }
                 }.awaitAll()
@@ -463,6 +472,10 @@ object NovelVideoGenerator {
         val inputPaths = completedSegs
             .sortedBy { it.sceneId }
             .mapNotNull { it.localVideoPath?.takeIf { p -> File(p).isFile } }
+        if (inputPaths.size < completedSegs.size) {
+            // 部分段文件缺失：合并可用段，但记录警告便于排查
+            AppLog.put("警告：${completedSegs.size - inputPaths.size} 段视频文件缺失，仅合并 ${inputPaths.size} 段，jobId=${job.id}")
+        }
         if (inputPaths.isEmpty()) {
             // segment 标记 VIDEO_COMPLETED 但本地 mp4 缺失：不应静默跳过，
             // 否则 finalizeJob 会因 completed>0 误判 COMPLETED，得到无视频可播的"已完成"任务
@@ -652,14 +665,16 @@ object NovelVideoGenerator {
         // 对 screenplay.scenes 按 sceneId 去重，防止 LLM 误返回重复 sceneId 时
         // insertSegments 的 REPLACE 策略静默覆写先插入的段
         val uniqueScenes = screenplay.scenes.distinctBy { it.sceneId }
+        // chapterTitlesJson 对所有 segment 相同，提到 map 外只解析一次（原 N 次解析）
+        val firstChapterTitle = io.legado.app.utils.GSON
+            .fromJsonArray<String>(job.chapterTitlesJson)
+            .getOrNull()?.firstOrNull().orEmpty()
         val toInsert = uniqueScenes.filter { it.sceneId !in existingSceneIds }.map { scene ->
             NovelVideoSegment(
                 id = "seg_${job.id}_${scene.sceneId}",
                 jobId = job.id,
                 chapterIndex = job.chapterStartIndex.takeIf { it >= 0 } ?: 0,
-                chapterTitle = io.legado.app.utils.GSON
-                    .fromJsonArray<String>(job.chapterTitlesJson)
-                    .getOrNull()?.firstOrNull().orEmpty(),
+                chapterTitle = firstChapterTitle,
                 sceneId = scene.sceneId,
                 narration = scene.narration,
                 imagePrompt = scene.imagePrompt,
@@ -800,7 +815,8 @@ object NovelVideoGenerator {
     private fun resolveImageRef(source: String?): String? {
         val raw = source?.trim().orEmpty()
         if (raw.isBlank()) return null
-        if (raw.startsWith("http", true) || raw.startsWith("data:", true)) return raw
+        // 精确匹配 http:// / https:// / data:，避免 "httpfoo" 等被误判为 URL
+        if (raw.startsWith("http://", true) || raw.startsWith("https://", true) || raw.startsWith("data:", true)) return raw
         val file = File(raw)
         if (!file.isFile) return null
         return runCatching {
@@ -818,10 +834,11 @@ object NovelVideoGenerator {
             bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
         ) return "image/png"
         if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) return "image/jpeg"
-        if (bytes.size >= 12 && bytes.copyOfRange(0, 4).toString(Charsets.ISO_8859_1) == "RIFF" &&
-            bytes.copyOfRange(8, 12).toString(Charsets.ISO_8859_1) == "WEBP"
+        // 用 String(bytes, offset, length, charset) 代替 copyOfRange，避免分配临时数组
+        if (bytes.size >= 12 && String(bytes, 0, 4, Charsets.ISO_8859_1) == "RIFF" &&
+            String(bytes, 8, 4, Charsets.ISO_8859_1) == "WEBP"
         ) return "image/webp"
-        if (bytes.size >= 3 && bytes.copyOfRange(0, 3).toString(Charsets.ISO_8859_1) == "GIF") return "image/gif"
+        if (bytes.size >= 3 && String(bytes, 0, 3, Charsets.ISO_8859_1) == "GIF") return "image/gif"
         return "image/png"
     }
 }

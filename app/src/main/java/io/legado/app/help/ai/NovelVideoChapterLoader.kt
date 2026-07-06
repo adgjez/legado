@@ -31,12 +31,18 @@ object NovelVideoChapterLoader {
         var lastError: Throwable? = null
         repeat(MAX_RETRY) { attempt ->
             try {
-                return WebBook.getContentAwait(
+                val content = WebBook.getContentAwait(
                     bookSource = source,
                     book = book,
                     bookChapter = chapter,
                     needSave = false
                 )
+                // 书源返回空内容（解析规则失效或章节本身为空）视为失败，触发重试
+                // 避免空内容传给 LLM 生成垃圾剧本
+                if (content.isBlank()) {
+                    throw IllegalStateException("章节正文为空：${chapter.title}")
+                }
+                return content
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -54,7 +60,9 @@ object NovelVideoChapterLoader {
      */
     fun splitByParagraph(content: String, maxChars: Int = CHUNK_MAX_CHARS): List<String> {
         if (content.length <= maxChars) return listOf(content)
-        val paragraphs = content.split("\n+", "。", "！", "？").map { it.trim() }.filter { it.isNotBlank() }
+        // 注意：split(String) 把 "\n+" 当字面量而非正则，多个连续换行不会被合并。
+        // 用 Regex 切分：一个或多个换行、或中文句末标点
+        val paragraphs = content.split(Regex("\n+|。|！|？")).map { it.trim() }.filter { it.isNotBlank() }
         val chunks = mutableListOf<String>()
         val current = StringBuilder()
         for (para in paragraphs) {

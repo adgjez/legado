@@ -102,8 +102,13 @@ interface NovelVideoDao {
     @Query("SELECT * FROM novel_video_segments WHERE jobId = :jobId AND status = :status ORDER BY chapterIndex ASC, sceneId ASC")
     suspend fun getSegmentsByStatus(jobId: String, status: String): List<NovelVideoSegment>
 
+    /**
+     * 取下一个可恢复的 segment（含 failed 状态用于重试）。
+     * 状态包含 pending/image_generating/image_completed/video_generating/failed，
+     * 排除 video_completed（已完成）。
+     */
     @Query("SELECT * FROM novel_video_segments WHERE jobId = :jobId AND status IN ('pending','image_generating','image_completed','video_generating','failed') ORDER BY chapterIndex ASC, sceneId ASC LIMIT 1")
-    suspend fun getNextPendingSegment(jobId: String): NovelVideoSegment?
+    suspend fun getNextResumableSegment(jobId: String): NovelVideoSegment?
 
     @Query("UPDATE novel_video_segments SET status = :status, errorMessage = :err, updatedAt = :time WHERE id = :segmentId")
     suspend fun updateSegmentStatus(segmentId: String, status: String, err: String?, time: Long = System.currentTimeMillis())

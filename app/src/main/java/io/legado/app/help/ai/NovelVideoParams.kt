@@ -62,11 +62,18 @@ data class NovelVideoParams(
     /**
      * 对反序列化后的字段做边界兜底，防止旧 job 的 paramsJson 损坏
      * （如 sceneDurationSeconds=0 导致 0 秒视频、concurrency=0 除零）。
+     *
+     * sceneCountPerChapter 范围与 [NovelVideoPromptBuilder.buildDramaSystemPrompt] 的
+     * coerceIn(3, 12) 对齐，避免配置与实际生成的场景数不一致。
      */
     private fun coerced(): NovelVideoParams = copy(
-        sceneCountPerChapter = sceneCountPerChapter.coerceIn(1, 20),
+        sceneCountPerChapter = sceneCountPerChapter.coerceIn(3, 12),
         sceneDurationSeconds = sceneDurationSeconds.coerceIn(1, 30),
         maxCharacters = maxCharacters.coerceIn(0, 3),
-        concurrency = concurrency.coerceIn(1, 4)
+        concurrency = concurrency.coerceIn(1, 4),
+        // pollIntervalMs=0 会导致轮询 spin-loop 空转耗电；至少 500ms
+        pollIntervalMs = pollIntervalMs.coerceIn(500L, 60_000L),
+        // pollTimeoutMs 太短会导致视频还没生成就超时失败
+        pollTimeoutMs = pollTimeoutMs.coerceAtLeast(10_000L)
     )
 }

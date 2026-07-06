@@ -17,6 +17,12 @@ import io.legado.app.help.config.AppConfig
  */
 object NovelVideoPromptBuilder {
 
+    /** 默认画风前缀，与 [NovelVideoParams.stylePrompt] 默认值保持一致。 */
+    private const val DEFAULT_STYLE_PROMPT = "anime style, manga art, 2D animation"
+
+    /** 章节正文截断长度（约 8000 字符，对应常见 LLM 上下文窗口的安全阈值）。 */
+    private const val MAX_CHAPTER_CHARS = 8000
+
     /**
      * 剧本生成系统提示词，移植自 director_ai `_dramaSystemPrompt`。
      * 动态注入 [params] 的 sceneCount、stylePrompt 等。
@@ -30,7 +36,7 @@ object NovelVideoPromptBuilder {
 1. 场景数：严格输出 $sceneCount 个场景（不多不少）。
 2. 情绪：每个场景都要有正向的情绪钩子，避免悲剧、暴力、恐怖、犯罪、复仇。
 3. 题材：校园 / 友情 / 青春 / 治愈 / 日常 / 甜系恋爱 优先；避免打斗、武器、血腥。
-4. 风格：所有 image_prompt 必须以 "${params.stylePrompt.ifBlank { "anime style, manga art, 2D animation" }}" 开头。
+4. 风格：所有 image_prompt 必须以 "${params.stylePrompt.ifBlank { DEFAULT_STYLE_PROMPT }}" 开头。
 5. 视频提示词：video_prompt 必须是 "镜头类型 + 镜头运动 + 动作" 的英文短语，避免 lightning/attack/explosion 等敏感词，可用 gentle/soft/calm/peaceful 替代。
 6. 旁白 narration 用中文，富有感染力，每段不超过 60 字。
 7. character_description 用英文，保持人物在多场景间的一致性（发型、衣着、肤色等关键特征）。
@@ -75,8 +81,8 @@ object NovelVideoPromptBuilder {
         chapterContent: String,
         previousFeedback: String? = null
     ): String {
-        val contentPreview = if (chapterContent.length > 8000) {
-            chapterContent.substring(0, 8000) + "\n...（章节过长，已截断）"
+        val contentPreview = if (chapterContent.length > MAX_CHAPTER_CHARS) {
+            chapterContent.substring(0, MAX_CHAPTER_CHARS) + "\n...（章节过长，已截断）"
         } else {
             chapterContent
         }
@@ -120,8 +126,10 @@ Composition: all three views same size, equal spacing, full body visible, neutra
      * 场景图片生成提示词，自动加上画风前缀。
      */
     fun buildSceneImagePrompt(segment: NovelVideoSegment, stylePrompt: String): String {
-        val prefix = stylePrompt.ifBlank { "anime style, manga art, 2D animation" }
+        val prefix = stylePrompt.ifBlank { DEFAULT_STYLE_PROMPT }
         val prompt = segment.imagePrompt.trim()
+        // 空 prompt 时直接返回 prefix，避免拼接出带尾逗号的 "anime style..., "
+        if (prompt.isEmpty()) return prefix
         return if (prompt.startsWith(prefix, ignoreCase = true)) {
             prompt
         } else {
@@ -175,17 +183,19 @@ Composition: all three views same size, equal spacing, full body visible, neutra
         "gripping" to "holding"
     )
 
+    // 预编译敏感词正则，避免每次调用 sanitizeVideoPrompt 都重新编译 18 个 Regex
+    private val COMPILED_VIDEO_RULES: List<Pair<Regex, String>> = VIDEO_SENSITIVE_WORDS.mapNotNull { w ->
+        val replacement = VIDEO_SAFE_REPLACEMENTS[w] ?: return@mapNotNull null
+        Regex("(?i)\\b${Regex.escape(w)}\\b") to replacement
+    }
+
     /**
      * 替换敏感词为安全替代词，大小写不敏感。
      */
     fun sanitizeVideoPrompt(prompt: String): String {
         var sanitized = prompt
-        VIDEO_SENSITIVE_WORDS.forEach { w ->
-            val replacement = VIDEO_SAFE_REPLACEMENTS[w] ?: return@forEach
-            sanitized = sanitized.replace(
-                Regex("(?i)\\b${Regex.escape(w)}\\b"),
-                replacement
-            )
+        COMPILED_VIDEO_RULES.forEach { (regex, replacement) ->
+            sanitized = sanitized.replace(regex, replacement)
         }
         return sanitized
     }
@@ -271,7 +281,11 @@ Composition: all three views same size, equal spacing, full body visible, neutra
 
         return descriptions.take(limit).mapIndexed { idx, desc ->
             val (name, _) = extractNameAndBody(desc, idx)
-            val role = if (idx == 0) "主角" else "第二主角"
+            val role = when (idx) {
+                0 -> "主角"
+                1 -> "第二主角"
+                else -> "配角"
+            }
             CharacterCandidate(name = name, description = desc, role = role)
         }
     }

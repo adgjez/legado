@@ -20,6 +20,9 @@ object AiVideoTaskPoller {
 
     private const val MAX_SUBMIT_RETRY = 2
 
+    /** 匹配错误消息中的 HTTP 4xx 状态码（如 " 400 "、" 401 "、" 429 "），用于判断不重试的鉴权/参数错误。 */
+    private val HTTP_4XX_REGEX = Regex("\\b4\\d{2}\\b")
+
     /** 状态机：调用方可在 [onStatus] 收到这些字符串用于 UI 展示。 */
     object Stage {
         const val SUBMITTING = "submitting"
@@ -124,8 +127,9 @@ object AiVideoTaskPoller {
                 throw e
             } catch (e: Throwable) {
                 val msg = e.message.orEmpty()
-                // 4xx 类错误（鉴权/参数）不重试
-                if (msg.contains(" 40") || msg.contains(" 41") || msg.contains(" 42") || msg.contains(" 45")) {
+                // 4xx 类错误（鉴权/参数）不重试：用正则匹配 " 4xx " 形态的状态码
+                // 避免旧的 contains(" 40") 误匹配 "page 40" 或漏判 43x
+                if (HTTP_4XX_REGEX.containsMatchIn(msg)) {
                     AppLog.put("视频提交 ${attempt + 1}/$maxAttempts 失败（4xx，不重试）", e)
                     return null
                 }
