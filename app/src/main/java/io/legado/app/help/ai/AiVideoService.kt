@@ -1,5 +1,6 @@
 package io.legado.app.help.ai
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
@@ -274,16 +275,21 @@ object AiVideoService {
             request.numInferenceSteps?.let { put("num_inference_steps", it) }
 
             // 参考图分支：单图走顶层 image，多图走 extra_body.image 数组
+            // Agnes image 字段仅接受 http URL，data URI 会报错；data URI 参考图跳过。
+            val urlRefs = refs.filterNot { it.startsWith("data:", true) }
+            if (urlRefs.size < refs.size) {
+                AppLog.put("Agnes 视频提交跳过 ${refs.size - urlRefs.size} 张 data URI 参考图（Agnes 仅支持 http URL）")
+            }
             when {
-                refs.isEmpty() -> { /* 纯文生视频，无参考图字段 */ }
-                refs.size == 1 && mode.isNullOrBlank() -> {
+                urlRefs.isEmpty() -> { /* 无可用 http URL 参考图，纯文生视频 */ }
+                urlRefs.size == 1 && mode.isNullOrBlank() -> {
                     // 单图图生视频：顶层 image 字段
-                    put("image", refs[0])
+                    put("image", urlRefs[0])
                 }
                 else -> {
                     // 多图视频 / 关键帧模式：extra_body.image 数组
                     val extraBody = JSONObject().apply {
-                        put("image", org.json.JSONArray(refs))
+                        put("image", org.json.JSONArray(urlRefs))
                         // keyframes 模式需显式设置 mode
                         mode?.takeIf { it.isNotBlank() }?.let { put("mode", it) }
                     }
@@ -354,7 +360,14 @@ object AiVideoService {
                 put("text", request.prompt)
             })
             // 参考图作为 image_url 项追加
+            // 豆包 Seedance image_url.url 仅接受 http(s) URL，不支持 data URI
+            // （传 data URI 会报 Invalid image: Incorrect padding）。
+            // data URI 参考图（本地文件转的）跳过并日志提示，避免提交失败。
             request.referenceImages.forEach { url ->
+                if (url.startsWith("data:", true)) {
+                    AppLog.put("豆包视频提交跳过 data URI 参考图（豆包仅支持 http URL，参考图被忽略）")
+                    return@forEach
+                }
                 put(JSONObject().apply {
                     put("type", "image_url")
                     put("image_url", JSONObject().apply { put("url", url) })
