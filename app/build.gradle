@@ -179,6 +179,12 @@ android {
     lint { //忽略string翻译缺失，后面需要翻译时去掉，todo
         disable 'MissingTranslation'
     }
+    testOptions {
+        // Robolectric 需要访问 merged assets / resources 才能初始化 Application
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -187,6 +193,13 @@ dependencies {
     //coreLibraryDesugaring('com.android.tools:desugar_jdk_libs_nio:2.0.4')
     coreLibraryDesugaring(libs.desugar)
     testImplementation(libs.junit)
+    // Robolectric + Room 集成测试依赖（仅在 JVM 上运行的 Android 组件测试）
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.core.ktx)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.room.testing)
     androidTestImplementation(libs.bundles.androidTest)
     //kotlin
     //noinspection GradleDependency,DifferentStdlibGradleVersion
@@ -264,6 +277,9 @@ dependencies {
     implementation(libs.room.ktx)
     //kapt("androidx.room:room-compiler:$room_version")
     ksp(libs.room.compiler)
+    // Robolectric 测试中声明了独立的 @Database（TestNovelVideoDatabase），
+    // 需让 KSP 处理 test 源集才能生成 _Impl
+    kspTest(libs.room.compiler)
     androidTestImplementation(libs.room.testing)
 
     //liveEventBus

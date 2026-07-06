@@ -1,0 +1,462 @@
+package io.legado.app.data.dao
+
+import android.app.Application
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.legado.app.data.entities.NovelVideoCharacterSheet
+import io.legado.app.data.entities.NovelVideoJob
+import io.legado.app.data.entities.NovelVideoJobStatus
+import io.legado.app.data.entities.NovelVideoSegment
+import io.legado.app.data.entities.NovelVideoSegmentStatus
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+
+/**
+ * [NovelVideoDao] 的 Robolectric 集成测试。
+ *
+ * 用途：验证 P2 修复引入的条件更新 / 部分更新 DAO 方法在真实 SQLite 上行为正确，
+ * 防止 TOCTOU 竞态覆写终态、retryCount 误递增等回归。
+ *
+ * 不使用生产 [io.legado.app.data.AppDatabase] —— 它含 50+ 张表与 onOpen 回调，
+ * 初始化重且与 NovelVideo 无关。这里用 [TestNovelVideoDatabase] 只声明 3 张表，
+ * Room 会基于同样的 @Entity 注解生成等价 schema。
+ *
+ * 注：用 `@Config(application = Application::class)` 覆盖 manifest 中的 App 类，
+ * 避免 App.onCreate 触发 AppConfig / Cronet / LiveEventBus 等重初始化。
+ */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [33], application = Application::class)
+class NovelVideoDaoRobolectricTest {
+
+    private lateinit var db: TestNovelVideoDatabase
+    private lateinit var dao: NovelVideoDao
+
+    @Before
+    fun setUp() = runTest {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        db = Room.inMemoryDatabaseBuilder(ctx, TestNovelVideoDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        dao = db.novelVideoDao
+    }
+
+    @After
+    fun tearDown() {
+        db.close()
+    }
+
+    // ============================================================
+    // updateJobFinalStatusIfNotFinished —— P2 TOCTOU 防护
+    // ============================================================
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedDoesNotOverwriteCompleted() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.COMPLETED)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusIfNotFinished("job_1", NovelVideoJobStatus.FAILED)
+
+        assertEquals("终态不应被覆写", 0, affected)
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.COMPLETED, reloaded?.status)
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedDoesNotOverwriteFailed() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.FAILED, errorMessage = "orig")
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusIfNotFinished("job_1", NovelVideoJobStatus.COMPLETED)
+
+        assertEquals(0, affected)
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.FAILED, reloaded?.status)
+        assertEquals("orig", reloaded?.errorMessage)
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedDoesNotOverwritePartialFailed() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.PARTIAL_FAILED)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusIfNotFinished("job_1", NovelVideoJobStatus.COMPLETED)
+
+        assertEquals(0, affected)
+        assertEquals(NovelVideoJobStatus.PARTIAL_FAILED, dao.getJob("job_1")?.status)
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedDoesNotOverwriteCancelled() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.CANCELLED)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusIfNotFinished("job_1", NovelVideoJobStatus.COMPLETED)
+
+        assertEquals(0, affected)
+        assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob("job_1")?.status)
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedUpdatesRunningStatus() = runTest {
+        // 运行态应被更新为终态（典型场景：流水线完成后置 COMPLETED）
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.GENERATING)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusIfNotFinished("job_1", NovelVideoJobStatus.COMPLETED)
+
+        assertEquals(1, affected)
+        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_1")?.status)
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedUpdatesMergingToCompleted() = runTest {
+        // P2-1: MERGING 状态分支被显式加入 RUNNING_STATES，应能被终态更新
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.MERGING)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusIfNotFinished("job_1", NovelVideoJobStatus.COMPLETED)
+
+        assertEquals(1, affected)
+        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_1")?.status)
+    }
+
+    @Test
+    fun updateJobFinalStatusIfNotFinishedReturnsZeroForMissingJob() = runTest {
+        val affected = dao.updateJobFinalStatusIfNotFinished("nonexistent", NovelVideoJobStatus.COMPLETED)
+        assertEquals(0, affected)
+    }
+
+    // ============================================================
+    // markSegmentFailed vs updateSegmentStatus —— P2 retryCount 行为
+    // ============================================================
+
+    @Test
+    fun markSegmentFailedIncrementsRetryCountFromZero() = runTest {
+        val jobId = insertJob()
+        val seg = NovelVideoSegment(id = "seg_1", jobId = jobId, retryCount = 0)
+        dao.insertSegment(seg)
+
+        dao.markSegmentFailed("seg_1", err = "boom")
+
+        val reloaded = dao.getSegmentsByJob(jobId).first()
+        assertEquals(NovelVideoSegmentStatus.FAILED, reloaded.status)
+        assertEquals("失败应递增 retryCount", 1, reloaded.retryCount)
+        assertEquals("boom", reloaded.errorMessage)
+    }
+
+    @Test
+    fun markSegmentFailedIncrementsRetryCountFromTwo() = runTest {
+        val jobId = insertJob()
+        val seg = NovelVideoSegment(id = "seg_1", jobId = jobId, retryCount = 2)
+        dao.insertSegment(seg)
+
+        dao.markSegmentFailed("seg_1", err = "again")
+
+        val reloaded = dao.getSegmentsByJob(jobId).first()
+        assertEquals(3, reloaded.retryCount)
+    }
+
+    @Test
+    fun markSegmentFailedWithCustomStatusStillIncrementsRetryCount() = runTest {
+        // P2: markSegmentFailed 允许传自定义 status（如 image_generating），仍应递增
+        val jobId = insertJob()
+        val seg = NovelVideoSegment(id = "seg_1", jobId = jobId, retryCount = 1)
+        dao.insertSegment(seg)
+
+        dao.markSegmentFailed("seg_1", status = NovelVideoSegmentStatus.IMAGE_GENERATING, err = "img fail")
+
+        val reloaded = dao.getSegmentsByJob(jobId).first()
+        assertEquals(NovelVideoSegmentStatus.IMAGE_GENERATING, reloaded.status)
+        assertEquals(2, reloaded.retryCount)
+    }
+
+    @Test
+    fun updateSegmentStatusDoesNotIncrementRetryCount() = runTest {
+        // P2: 正常状态流转用 updateSegmentStatus，不应误递增 retryCount
+        val jobId = insertJob()
+        val seg = NovelVideoSegment(id = "seg_1", jobId = jobId, retryCount = 0)
+        dao.insertSegment(seg)
+
+        dao.updateSegmentStatus("seg_1", NovelVideoSegmentStatus.IMAGE_COMPLETED, err = null)
+
+        val reloaded = dao.getSegmentsByJob(jobId).first()
+        assertEquals(NovelVideoSegmentStatus.IMAGE_COMPLETED, reloaded.status)
+        assertEquals("状态流转不应递增 retryCount", 0, reloaded.retryCount)
+    }
+
+    @Test
+    fun updateSegmentStatusPreservesErrorMessage() = runTest {
+        val jobId = insertJob()
+        val seg = NovelVideoSegment(id = "seg_1", jobId = jobId)
+        dao.insertSegment(seg)
+
+        dao.updateSegmentStatus("seg_1", NovelVideoSegmentStatus.VIDEO_COMPLETED, err = null)
+
+        val reloaded = dao.getSegmentsByJob(jobId).first()
+        assertNull(reloaded.errorMessage)
+    }
+
+    // ============================================================
+    // getNextResumableSegment —— P2 含 failed 用于重试
+    // ============================================================
+
+    @Test
+    fun getNextResumableSegmentReturnsPendingSegment() = runTest {
+        val jobId = insertJob()
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId, chapterIndex = 0, sceneId = 1, status = NovelVideoSegmentStatus.PENDING))
+
+        val next = dao.getNextResumableSegment(jobId)
+        assertNotNull(next)
+        assertEquals("s1", next?.id)
+    }
+
+    @Test
+    fun getNextResumableSegmentReturnsFailedSegmentForRetry() = runTest {
+        // P2: failed 状态被包含在可恢复集合中，用于断点续传重试
+        val jobId = insertJob()
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId, chapterIndex = 0, sceneId = 1, status = NovelVideoSegmentStatus.FAILED))
+
+        val next = dao.getNextResumableSegment(jobId)
+        assertNotNull(next)
+        assertEquals("s1", next?.id)
+    }
+
+    @Test
+    fun getNextResumableSegmentSkipsVideoCompleted() = runTest {
+        val jobId = insertJob()
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId, chapterIndex = 0, sceneId = 1, status = NovelVideoSegmentStatus.VIDEO_COMPLETED))
+        dao.insertSegment(NovelVideoSegment(id = "s2", jobId = jobId, chapterIndex = 0, sceneId = 2, status = NovelVideoSegmentStatus.PENDING))
+
+        val next = dao.getNextResumableSegment(jobId)
+        assertNotNull(next)
+        assertEquals("应跳过 video_completed，返回 pending", "s2", next?.id)
+    }
+
+    @Test
+    fun getNextResumableSegmentReturnsNullWhenAllCompleted() = runTest {
+        val jobId = insertJob()
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId, status = NovelVideoSegmentStatus.VIDEO_COMPLETED))
+        dao.insertSegment(NovelVideoSegment(id = "s2", jobId = jobId, status = NovelVideoSegmentStatus.VIDEO_COMPLETED))
+
+        val next = dao.getNextResumableSegment(jobId)
+        assertNull(next)
+    }
+
+    @Test
+    fun getNextResumableSegmentOrdersByChapterThenScene() = runTest {
+        // 多个可恢复段时，应按 chapterIndex ASC, sceneId ASC 返回最早的
+        val jobId = insertJob()
+        dao.insertSegment(NovelVideoSegment(id = "s_late", jobId = jobId, chapterIndex = 1, sceneId = 1, status = NovelVideoSegmentStatus.PENDING))
+        dao.insertSegment(NovelVideoSegment(id = "s_early", jobId = jobId, chapterIndex = 0, sceneId = 2, status = NovelVideoSegmentStatus.PENDING))
+        dao.insertSegment(NovelVideoSegment(id = "s_first", jobId = jobId, chapterIndex = 0, sceneId = 1, status = NovelVideoSegmentStatus.PENDING))
+
+        val next = dao.getNextResumableSegment(jobId)
+        assertEquals("应返回 chapterIndex=0, sceneId=1 的段", "s_first", next?.id)
+    }
+
+    // ============================================================
+    // getSegmentProgress —— P2 进度统计
+    // ============================================================
+
+    @Test
+    fun getSegmentProgressCountsTotalCompletedFailedCorrectly() = runTest {
+        val jobId = insertJob()
+        insertSegments(
+            jobId,
+            "v1" to NovelVideoSegmentStatus.VIDEO_COMPLETED,
+            "v2" to NovelVideoSegmentStatus.VIDEO_COMPLETED,
+            "f1" to NovelVideoSegmentStatus.FAILED,
+            "p1" to NovelVideoSegmentStatus.PENDING
+        )
+
+        val progress = dao.getSegmentProgress(jobId)
+        assertEquals(4, progress.total)
+        assertEquals(2, progress.completed)
+        assertEquals(1, progress.failed)
+    }
+
+    @Test
+    fun getSegmentProgressReturnsZerosForEmptyJob() = runTest {
+        val jobId = insertJob()
+        val progress = dao.getSegmentProgress(jobId)
+        assertEquals(0, progress.total)
+        assertEquals(0, progress.completed)
+        assertEquals(0, progress.failed)
+        assertEquals(0, progress.progressPercent)
+    }
+
+    @Test
+    fun getSegmentProgressProgressPercentIsRoughlyCorrect() = runTest {
+        val jobId = insertJob()
+        // 4 段：2 完成 + 1 失败 = 3/4 = 75%
+        insertSegments(
+            jobId,
+            "v1" to NovelVideoSegmentStatus.VIDEO_COMPLETED,
+            "v2" to NovelVideoSegmentStatus.VIDEO_COMPLETED,
+            "f1" to NovelVideoSegmentStatus.FAILED,
+            "p1" to NovelVideoSegmentStatus.PENDING
+        )
+
+        val progress = dao.getSegmentProgress(jobId)
+        assertEquals(75, progress.progressPercent)
+        assertFalse(progress.isMajorityFailed)
+    }
+
+    @Test
+    fun getSegmentProgressFlagsMajorityFailedWhenMoreThanHalfFailed() = runTest {
+        val jobId = insertJob()
+        // 4 段：1 完成 + 3 失败 → 失败 > 50%
+        insertSegments(
+            jobId,
+            "v1" to NovelVideoSegmentStatus.VIDEO_COMPLETED,
+            "f1" to NovelVideoSegmentStatus.FAILED,
+            "f2" to NovelVideoSegmentStatus.FAILED,
+            "f3" to NovelVideoSegmentStatus.FAILED
+        )
+
+        val progress = dao.getSegmentProgress(jobId)
+        assertTrue("失败段超过半数应触发 isMajorityFailed", progress.isMajorityFailed)
+    }
+
+    // ============================================================
+    // ForeignKey CASCADE 删除 —— P2 数据完整性
+    // ============================================================
+
+    @Test
+    fun deleteJobCascadesToSegmentsAndCharacterSheets() = runTest {
+        // P2: NovelVideoSegment/NovelVideoCharacterSheet 的 ForeignKey(onDelete = CASCADE)
+        // 删除 job 后子表应一并清理，避免孤儿数据
+        val jobId = insertJob()
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId))
+        dao.insertCharacterSheet(NovelVideoCharacterSheet(id = "c1", jobId = jobId))
+
+        dao.deleteJob(jobId)
+
+        assertTrue(dao.getSegmentsByJob(jobId).isEmpty())
+        assertTrue(dao.getCharacterSheetsByJob(jobId).isEmpty())
+    }
+
+    // ============================================================
+    // updateJobDraft / updateJobOutput —— P2 部分更新
+    // ============================================================
+
+    @Test
+    fun updateJobDraftOnlyUpdatesDraftJsonAndStatus() = runTest {
+        // P2: updateJobDraft 部分更新避免 read-modify-write 竞态
+        val jobId = insertJob(status = NovelVideoJobStatus.DRAFTING, outputPath = "/orig/path")
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId))
+
+        dao.updateJobDraft(jobId, draftJson = """{"a":1}""", status = NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW)
+
+        val reloaded = dao.getJob(jobId)
+        assertEquals(NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW, reloaded?.status)
+        assertEquals("""{"a":1}""", reloaded?.draftJson)
+        // outputPath 不应被清空
+        assertEquals("/orig/path", reloaded?.outputPath)
+    }
+
+    @Test
+    fun updateJobOutputOnlyUpdatesOutputFieldsAndStatus() = runTest {
+        val jobId = insertJob(status = NovelVideoJobStatus.MERGING, draftJson = """{"keep":true}""")
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId))
+
+        dao.updateJobOutput(
+            jobId = jobId,
+            outputPath = "/out/video.mp4",
+            coverPath = "/out/cover.jpg",
+            durationMs = 60_000L,
+            status = NovelVideoJobStatus.COMPLETED
+        )
+
+        val reloaded = dao.getJob(jobId)
+        assertEquals(NovelVideoJobStatus.COMPLETED, reloaded?.status)
+        assertEquals("/out/video.mp4", reloaded?.outputPath)
+        assertEquals("/out/cover.jpg", reloaded?.coverPath)
+        assertEquals(60_000L, reloaded?.totalDurationMs)
+        // draftJson 不应被清空
+        assertEquals("""{"keep":true}""", reloaded?.draftJson)
+    }
+
+    @Test
+    fun updateJobStatusWithErrorPreservesOutputPath() = runTest {
+        // P2: 失败标记不应清空已生成的 outputPath（用于诊断 / 部分产物保留）
+        val jobId = insertJob(status = NovelVideoJobStatus.GENERATING, outputPath = "/partial.mp4")
+        dao.insertSegment(NovelVideoSegment(id = "s1", jobId = jobId))
+
+        dao.updateJobStatusWithError(jobId, NovelVideoJobStatus.FAILED, err = "merge failed")
+
+        val reloaded = dao.getJob(jobId)
+        assertEquals(NovelVideoJobStatus.FAILED, reloaded?.status)
+        assertEquals("merge failed", reloaded?.errorMessage)
+        assertEquals("/partial.mp4", reloaded?.outputPath)
+    }
+
+    // ============================================================
+    // helpers
+    // ============================================================
+
+    private suspend fun insertJob(
+        id: String = "job_test",
+        status: String = NovelVideoJobStatus.DRAFTING,
+        outputPath: String? = null,
+        draftJson: String? = null
+    ): String {
+        dao.insertJob(
+            NovelVideoJob(
+                id = id,
+                status = status,
+                outputPath = outputPath,
+                draftJson = draftJson
+            )
+        )
+        return id
+    }
+
+    private suspend fun insertSegments(
+        jobId: String,
+        vararg specs: Pair<String, String>
+    ) {
+        specs.forEachIndexed { idx, (id, status) ->
+            dao.insertSegment(
+                NovelVideoSegment(
+                    id = id,
+                    jobId = jobId,
+                    chapterIndex = idx / 10,
+                    sceneId = idx % 10 + 1,
+                    status = status
+                )
+            )
+        }
+    }
+}
+
+/**
+ * 仅含 NovelVideo 三张表的测试用 RoomDatabase。
+ * 不复用 [io.legado.app.data.AppDatabase] —— 那个含 50+ 张表与 onOpen 回调，
+ * 在 Robolectric 下初始化过重。Room 基于同样的 @Entity 注解生成等价 schema。
+ */
+@Database(
+    entities = [
+        NovelVideoJob::class,
+        NovelVideoSegment::class,
+        NovelVideoCharacterSheet::class
+    ],
+    version = 1,
+    exportSchema = false
+)
+abstract class TestNovelVideoDatabase : RoomDatabase() {
+    abstract val novelVideoDao: NovelVideoDao
+}
