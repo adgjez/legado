@@ -3471,12 +3471,23 @@ class ReadBookActivity : BaseReadBookActivity(),
                 toastOnUi("视频文件不存在")
                 return@launch
             }
+            // FileProvider.getUriForFile 在路径不在 file_paths.xml 声明范围内时会抛
+            // IllegalArgumentException，必须 try-catch 避免 crash（参考 NovelVideoJobDetailViewModel.openOutputVideo）
             val uri = if (resourceUrl.startsWith("content://")) {
                 android.net.Uri.parse(resourceUrl)
             } else {
-                FileProvider.getUriForFile(this@ReadBookActivity, AppConst.authority, file)
+                runCatching {
+                    FileProvider.getUriForFile(this@ReadBookActivity, AppConst.authority, file)
+                }.getOrElse {
+                    toastOnUi("无法打开视频：文件路径不在允许范围内")
+                    return@launch
+                }
             }
-            openFileUri(uri, "video/*")
+            runCatching {
+                openFileUri(uri, "video/*")
+            }.onFailure {
+                toastOnUi("无法打开视频：未找到可用播放器")
+            }
         }
     }
 

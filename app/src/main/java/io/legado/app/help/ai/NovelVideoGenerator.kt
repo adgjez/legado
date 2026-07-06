@@ -355,8 +355,10 @@ object NovelVideoGenerator {
                 it.status != NovelVideoSegmentStatus.FAILED
         }
         if (pendingSegments.isEmpty()) {
-            // 全部已完成或失败，直接进 Stage 7
+            // 全部已完成或失败，断点续传场景下仍需走 Stage 7 合并
+            // （之前直接 return 会跳过 mergeCompletedSegments，导致 outputPath 永不设置）
             updateJobStatus(job.id, NovelVideoJobStatus.MERGING, "等待合并")
+            mergeCompletedSegments(job, isCancelled)
             return
         }
 

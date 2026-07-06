@@ -102,7 +102,8 @@ object DatabaseMigrations {
                 """.trimIndent()
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_segments_jobId` ON `novel_video_segments` (`jobId`)")
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_segments_jobId_chapterIndex_sceneId` ON `novel_video_segments` (`jobId`, `chapterIndex`, `sceneId`)")
+            // 实体声明 unique = true，迁移必须用 UNIQUE INDEX，否则 Room schema 校验失败
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_novel_video_segments_jobId_chapterIndex_sceneId` ON `novel_video_segments` (`jobId`, `chapterIndex`, `sceneId`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_segments_status` ON `novel_video_segments` (`status`)")
 
             db.execSQL(
@@ -125,7 +126,8 @@ object DatabaseMigrations {
                 """.trimIndent()
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_character_sheets_jobId` ON `novel_video_character_sheets` (`jobId`)")
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_character_sheets_jobId_characterId` ON `novel_video_character_sheets` (`jobId`, `characterId`)")
+            // 实体声明 unique = true，迁移必须用 UNIQUE INDEX，否则 Room schema 校验失败
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_novel_video_character_sheets_jobId_characterId` ON `novel_video_character_sheets` (`jobId`, `characterId`)")
         }
     }
 
