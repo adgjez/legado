@@ -117,7 +117,15 @@ object AiVideoService {
      * 字段映射：
      * - size "1280x720" → width=1280, height=720
      * - seconds 5 → num_frames=121, frame_rate=24（满足 8n+1 规则）
-     * - 参考图 → extra_body.image 数组
+     * - 参考图：
+     *   - 1 张 → 顶层 image 字段（图生视频模式）
+     *   - 2+ 张 → extra_body.image 数组
+     *   - 若 defaultParamsJson 含 mode=keyframes → extra_body.mode=keyframes（关键帧过渡）
+     * - 高级参数（来自 defaultParamsJson，可选）：
+     *   - negative_prompt：反向提示词
+     *   - seed：随机种子
+     *   - num_inference_steps：推理步数
+     *   - mode：ti2vid / keyframes
      *
      * @see <a href="https://agnes-ai.com/zh-Hans/docs/agnes-video-v20">Agnes Video V2.0 文档</a>
      */
@@ -133,6 +141,10 @@ object AiVideoService {
         val frameRate = 24
         // num_frames 需满足 8n+1 规则且 ≤ 441
         val numFrames = computeAgnesNumFramesStatic(seconds, frameRate)
+        // 从 defaultParamsJson 读取可选高级参数
+        val params = parseAgnesExtraParams(target.defaultParamsJson)
+        val mode = params.mode
+
         val jsonBody = JSONObject().apply {
             put("model", target.model.ifBlank { "agnes-video-v2.0" })
             put("prompt", prompt)
@@ -140,10 +152,27 @@ object AiVideoService {
             put("height", height)
             put("num_frames", numFrames)
             put("frame_rate", frameRate)
-            if (refs.isNotEmpty()) {
-                val extraBody = JSONObject()
-                extraBody.put("image", org.json.JSONArray(refs))
-                put("extra_body", extraBody)
+            // 可选高级字段
+            params.negativePrompt?.takeIf { it.isNotBlank() }?.let { put("negative_prompt", it) }
+            params.seed?.let { put("seed", it) }
+            params.numInferenceSteps?.let { put("num_inference_steps", it) }
+
+            // 参考图分支：单图走顶层 image，多图走 extra_body.image 数组
+            when {
+                refs.isEmpty() -> { /* 纯文生视频，无参考图字段 */ }
+                refs.size == 1 && mode.isNullOrBlank() -> {
+                    // 单图图生视频：顶层 image 字段
+                    put("image", refs[0])
+                }
+                else -> {
+                    // 多图视频 / 关键帧模式：extra_body.image 数组
+                    val extraBody = JSONObject().apply {
+                        put("image", org.json.JSONArray(refs))
+                        // keyframes 模式需显式设置 mode
+                        mode?.takeIf { it.isNotBlank() }?.let { put("mode", it) }
+                    }
+                    put("extra_body", extraBody)
+                }
             }
         }
         val body = jsonBody.toString()
@@ -158,6 +187,38 @@ object AiVideoService {
             addHeaders(AiChatService.parseCustomHeaders(target.headers))
         }
     }
+
+    /**
+     * 解析 Agnes Provider 的 defaultParamsJson，提取高级可选参数。
+     *
+     * 支持的字段（全部可选）：
+     * - mode: "ti2vid" 或 "keyframes"（关键帧模式需 ≥2 张参考图）
+     * - negative_prompt: 反向提示词
+     * - seed: 随机种子（Int）
+     * - num_inference_steps: 推理步数（Int）
+     *
+     * 解析失败返回全 null 的对象，不影响默认文生视频流程。
+     */
+    private fun parseAgnesExtraParams(paramsJson: String): AgnesExtraParams {
+        if (paramsJson.isBlank()) return AgnesExtraParams()
+        return runCatching {
+            val root = JSONObject(paramsJson)
+            AgnesExtraParams(
+                mode = root.optString("mode").ifBlank { null },
+                negativePrompt = root.optString("negative_prompt").ifBlank { null },
+                seed = root.opt("seed") as? Int,
+                numInferenceSteps = root.opt("num_inference_steps") as? Int
+            )
+        }.getOrDefault(AgnesExtraParams())
+    }
+
+    /** Agnes 高级参数容器。 */
+    private data class AgnesExtraParams(
+        val mode: String? = null,
+        val negativePrompt: String? = null,
+        val seed: Int? = null,
+        val numInferenceSteps: Int? = null
+    )
 
     /**
      * 轮询视频任务直到完成或失败。

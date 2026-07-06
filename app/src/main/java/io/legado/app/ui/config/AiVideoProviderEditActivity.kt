@@ -283,10 +283,22 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun defaultParams(): String {
-        return if (providerType == AiVideoProviderConfig.TYPE_OPENAI) {
-            "{\n  \"duration_seconds\": 8,\n  \"resolution\": \"1080p\",\n  \"aspect_ratio\": \"16:9\"\n}"
-        } else {
-            ""
+        return when (providerType) {
+            AiVideoProviderConfig.TYPE_OPENAI -> {
+                "{\n  \"duration_seconds\": 8,\n  \"resolution\": \"1080p\",\n  \"aspect_ratio\": \"16:9\"\n}"
+            }
+            AiVideoProviderConfig.TYPE_AGNES -> {
+                // Agnes 高级参数模板：mode/negative_prompt/seed/num_inference_steps
+                "// 留空使用默认文生视频模式\n" +
+                    "// 启用关键帧模式（需 ≥2 张参考图）：\n" +
+                    "{\n" +
+                    "  \"mode\": \"keyframes\",\n" +
+                    "  \"negative_prompt\": \"blurry, low quality, distorted\",\n" +
+                    "  \"seed\": 42,\n" +
+                    "  \"num_inference_steps\": 30\n" +
+                    "}"
+            }
+            else -> ""
         }
     }
 
