@@ -54,3 +54,16 @@
 2. 验证无编译错误
 3. 提交代码
 4. 可选：打包 debug APK 验证
+
+---
+
+## 附：小说转视频（Novel-to-Video）Compose UI
+
+小说转视频功能的 Compose 屏幕遵循上述同一套设计规范（`LegadoMiuixCard` / `AppDialogFrame` / `palette` 配色 / `panelRadius` 圆角等），位于 `app/src/main/java/io/legado/app/ui/novelvideo/`：
+
+- `NovelVideoTaskCenterScreen` — 任务中心（`PrimaryTabRow` + LazyColumn 分组卡片）
+- `NovelVideoJobDetailScreen` / `NovelVideoJobConfigSheet` — 任务详情 + 参数配置 BottomSheet
+- `NovelVideoScreenplayReviewScreen` — 剧本审阅（可编辑/重新生成/确认）
+- `NovelVideoComponents` — 共享 Compose 组件
+
+视频 Provider 管理 UI（`ui/config/AiVideoProviderManageActivity` + `AiVideoProviderManageScreen` + `AiVideoProviderEditScreen`）仿 `AiImageProviderManageActivity` 形态。完整设计规格见 `docs/superpowers/specs/2026-07-05-novel-to-video-in-legado-design.md`。
