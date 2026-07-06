@@ -69,7 +69,8 @@ data class NovelVideoParams(
     private fun coerced(): NovelVideoParams = copy(
         sceneCountPerChapter = sceneCountPerChapter.coerceIn(3, 12),
         sceneDurationSeconds = sceneDurationSeconds.coerceIn(1, 30),
-        maxCharacters = maxCharacters.coerceIn(0, 3),
+        // 下界 1 与 NovelVideoPromptBuilder.extractMainCharacters 的 coerceIn(1, 3) 对齐
+        maxCharacters = maxCharacters.coerceIn(1, 3),
         concurrency = concurrency.coerceIn(1, 4),
         // pollIntervalMs=0 会导致轮询 spin-loop 空转耗电；至少 500ms
         pollIntervalMs = pollIntervalMs.coerceIn(500L, 60_000L),

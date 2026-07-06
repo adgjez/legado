@@ -1,6 +1,7 @@
 package io.legado.app.help.ai
 
 import io.legado.app.help.config.AppConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -77,6 +78,8 @@ internal object AiToolExecutor {
                         resolvedTool.execute(arguments)
                     }
                 } catch (throwable: Throwable) {
+                    // 协程取消必须向上传播，不能降级为错误 JSON 或触发重试
+                    if (throwable is CancellationException) throw throwable
                     lastError = throwable
                     if (attempt >= NETWORK_ABORT_RETRY_COUNT ||
                         toolCall.name !in retryableToolNames ||
@@ -88,6 +91,8 @@ internal object AiToolExecutor {
             }
             throw lastError ?: IllegalStateException("Tool failed")
         }.getOrElse { throwable ->
+            // runCatching 会吞掉 CancellationException，这里显式重抛以恢复取消语义
+            if (throwable is CancellationException) throw throwable
             JSONObject().apply {
                 put("ok", false)
                 put(

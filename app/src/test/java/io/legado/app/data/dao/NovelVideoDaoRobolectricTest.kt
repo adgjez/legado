@@ -140,6 +140,55 @@ class NovelVideoDaoRobolectricTest {
     }
 
     // ============================================================
+    // updateJobFinalStatusWithErrorIfNotFinished —— 第二轮 D1-D6 修复
+    // ============================================================
+
+    @Test
+    fun updateJobFinalStatusWithErrorIfNotFinishedWritesErrorOnRunningJob() = runTest {
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.GENERATING)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusWithErrorIfNotFinished(
+            "job_1", NovelVideoJobStatus.FAILED, "boom"
+        )
+
+        assertEquals(1, affected)
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.FAILED, reloaded?.status)
+        assertEquals("boom", reloaded?.errorMessage)
+    }
+
+    @Test
+    fun updateJobFinalStatusWithErrorIfNotFinishedDoesNotOverwriteCancelled() = runTest {
+        // D6: markCancelledIfRunning 改用条件更新后，已终态不应被覆写
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.CANCELLED, errorMessage = "orig cancel")
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusWithErrorIfNotFinished(
+            "job_1", NovelVideoJobStatus.FAILED, "late failure"
+        )
+
+        assertEquals(0, affected)
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.CANCELLED, reloaded?.status)
+        assertEquals("orig cancel", reloaded?.errorMessage)
+    }
+
+    @Test
+    fun updateJobFinalStatusWithErrorIfNotFinishedDoesNotOverwriteCompleted() = runTest {
+        // D1: cancelFromReview 改用条件更新后，已 COMPLETED 不应被覆写为 CANCELLED
+        val job = NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.COMPLETED)
+        dao.insertJob(job)
+
+        val affected = dao.updateJobFinalStatusWithErrorIfNotFinished(
+            "job_1", NovelVideoJobStatus.CANCELLED, "user cancel"
+        )
+
+        assertEquals(0, affected)
+        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_1")?.status)
+    }
+
+    // ============================================================
     // markSegmentFailed vs updateSegmentStatus —— P2 retryCount 行为
     // ============================================================
 

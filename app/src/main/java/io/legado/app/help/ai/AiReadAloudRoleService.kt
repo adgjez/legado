@@ -21,6 +21,7 @@ import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -815,6 +816,8 @@ object AiReadAloudRoleService {
                 cacheKey = cacheKey
             )
         } catch (throwable: Throwable) {
+            // 协程取消必须向上传播，不能降级为 STATUS_FAILED
+            if (throwable is CancellationException) throw throwable
             val failedAt = System.currentTimeMillis()
             val fallback = resolveSegmentCharacters(
                 buildDefaultSegments(cleanParagraphs),

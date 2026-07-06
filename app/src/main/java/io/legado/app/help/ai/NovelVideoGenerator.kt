@@ -203,9 +203,11 @@ object NovelVideoGenerator {
 
     /**
      * 审阅页 UI 调用：用户取消任务。
+     *
+     * 用条件更新：若 job 已被并发置为 COMPLETED/FAILED 等终态，不覆写。
      */
     suspend fun cancelFromReview(jobId: String) {
-        updateJobStatus(jobId, NovelVideoJobStatus.CANCELLED, "用户在审阅页取消")
+        updateJobFinalStatus(jobId, NovelVideoJobStatus.CANCELLED, "用户在审阅页取消")
         ReviewConfirmationStore.resolve(jobId, confirmed = false)
     }
 
@@ -264,7 +266,7 @@ object NovelVideoGenerator {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            updateJobStatus(jobId, NovelVideoJobStatus.FAILED, "剧本数据损坏：${e.message}")
+            updateJobFinalStatus(jobId, NovelVideoJobStatus.FAILED, "剧本数据损坏：${e.message}")
             postEvent(EventBus.NOVEL_VIDEO_FAILED, jobId)
             return
         }
@@ -480,7 +482,7 @@ object NovelVideoGenerator {
             // segment 标记 VIDEO_COMPLETED 但本地 mp4 缺失：不应静默跳过，
             // 否则 finalizeJob 会因 completed>0 误判 COMPLETED，得到无视频可播的"已完成"任务
             AppLog.put("VideoMuxer 失败：${completedSegs.size} 段标记完成但本地视频文件缺失，jobId=${job.id}")
-            updateJobStatus(job.id, NovelVideoJobStatus.FAILED, "已完成段的视频文件缺失")
+            updateJobFinalStatus(job.id, NovelVideoJobStatus.FAILED, "已完成段的视频文件缺失")
             postEvent(EventBus.NOVEL_VIDEO_FAILED, job.id)
             return
         }
@@ -710,7 +712,7 @@ object NovelVideoGenerator {
         val finalStatus = when {
             progress.completed == 0 && progress.total > 0 -> {
                 // 所有 segment 都失败了
-                updateJobStatus(
+                updateJobFinalStatus(
                     job.id,
                     NovelVideoJobStatus.FAILED,
                     "全部 ${progress.total} 个场景生成失败"
@@ -720,7 +722,7 @@ object NovelVideoGenerator {
             }
             // outputPath 为空说明 Stage 7 合并未产出可播放文件，不应标记 COMPLETED
             latestJob.outputPath.isNullOrBlank() && progress.completed > 0 -> {
-                updateJobStatus(
+                updateJobFinalStatus(
                     job.id,
                     NovelVideoJobStatus.FAILED,
                     "视频合并未产出文件"
@@ -796,6 +798,24 @@ object NovelVideoGenerator {
         } else {
             appDb.novelVideoDao.updateJobStatusWithError(jobId, status, message, System.currentTimeMillis())
         }
+    }
+
+    /**
+     * 条件写入终态（COMPLETED/FAILED/CANCELLED/PARTIAL_FAILED）：仅当 job 尚未终结时才更新。
+     *
+     * 与 [updateJobStatus] 的区别：用 SQL WHERE 子句保证不覆写已存在的终态，
+     * 避免 TOCTOU 竞态（如取消已写 CANCELLED 后，失败路径不应再覆写为 FAILED）。
+     * @return true 表示成功写入；false 表示已被并发置为终态，调用方应跳过后续动作
+     */
+    private suspend fun updateJobFinalStatus(
+        jobId: String,
+        status: String,
+        message: String? = null
+    ): Boolean {
+        val affected = appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+            jobId, status, message, System.currentTimeMillis()
+        )
+        return affected > 0
     }
 
     private fun checkCancelled(isCancelled: () -> Boolean, jobId: String) {

@@ -29,8 +29,10 @@ object NovelVideoPromptBuilder {
      */
     fun buildDramaSystemPrompt(params: NovelVideoParams): String {
         val sceneCount = params.sceneCountPerChapter.coerceIn(3, 12)
+        // 与 NovelVideoParams.coerced() 的边界对齐，防止外部直接调用时 sceneDurationSeconds=0/负数
+        val sceneDuration = params.sceneDurationSeconds.coerceIn(1, 30)
         return """
-你是一位专业的漫画风格短视频剧本编剧。你的任务是把小说章节改写成一个 ${sceneCount} 场景、每场 5-${params.sceneDurationSeconds} 秒、总长约 ${sceneCount * params.sceneDurationSeconds} 秒的剧本。
+你是一位专业的漫画风格短视频剧本编剧。你的任务是把小说章节改写成一个 ${sceneCount} 场景、每场 5-$sceneDuration 秒、总长约 ${sceneCount * sceneDuration} 秒的剧本。
 
 【创作准则】
 1. 场景数：严格输出 $sceneCount 个场景（不多不少）。
@@ -46,7 +48,7 @@ object NovelVideoPromptBuilder {
   "task_id": "唯一ID",
   "title": "剧本标题（中文）",
   "genre": "题材类型",
-  "estimated_duration_seconds": ${sceneCount * params.sceneDurationSeconds},
+  "estimated_duration_seconds": ${sceneCount * sceneDuration},
   "emotional_arc": ["情绪1", "情绪2", "..."],
   "scenes": [
     {

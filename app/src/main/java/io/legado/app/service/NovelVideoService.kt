@@ -253,16 +253,22 @@ class NovelVideoService : BaseService() {
         }
     }
 
-    /** 若 job 仍处于 RUNNING_STATES，标记为 CANCELLED。 */
+    /**
+     * 若 job 仍处于运行态，标记为 CANCELLED。
+     *
+     * 用条件更新（WHERE status NOT IN FINISHED_STATES）替代先查后写，
+     * 把"检查 + 写入"合并为原子 SQL，消除 TOCTOU 窗口：
+     * 旧实现在 getJob 与 updateJobStatusWithError 之间，finalizeJob 可能已写 COMPLETED，
+     * 随后本方法会覆写为 CANCELLED。
+     */
     private suspend fun markCancelledIfRunning(jobId: String, reason: String?) {
-        val job = appDb.novelVideoDao.getJob(jobId) ?: return
-        if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
-            appDb.novelVideoDao.updateJobStatusWithError(
-                jobId,
-                NovelVideoJobStatus.CANCELLED,
-                reason ?: "用户取消",
-                System.currentTimeMillis()
-            )
+        val affected = appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+            jobId,
+            NovelVideoJobStatus.CANCELLED,
+            reason ?: "用户取消",
+            System.currentTimeMillis()
+        )
+        if (affected > 0) {
             // 用户主动取消不应弹"失败"通知；发 PROGRESS 让 UI 刷新列表看到 CANCELLED 状态
             postEvent(EventBus.NOVEL_VIDEO_PROGRESS, jobId)
         }

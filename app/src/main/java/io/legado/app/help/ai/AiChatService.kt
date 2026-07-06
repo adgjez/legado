@@ -23,6 +23,7 @@ import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
 import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
 
@@ -189,6 +190,8 @@ object AiChatService {
                     modelConfig = endpoint.modelConfig
                 )
             } catch (throwable: Throwable) {
+                // 协程取消必须向上传播，不能被包装成 AiChatException 导致取消语义丢失
+                if (throwable is CancellationException) throw throwable
                 lastThrowable = throwable
                 val canTryFallback = endpointIndex < endpoints.lastIndex && throwable.isAiFastFallbackCandidate()
                 if (!canTryFallback) {

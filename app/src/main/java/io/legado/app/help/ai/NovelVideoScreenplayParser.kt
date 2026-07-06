@@ -173,8 +173,9 @@ object NovelVideoScreenplayParser {
     }
 
     private fun parseDraft(json: String): ScreenplayDraft =
-        runCatching { GSON.fromJson(json, ScreenplayDraft::class.java) }.getOrNull()
-            ?: throw JsonSyntaxException("ScreenplayDraft 反序列化失败")
+        // 复用 ScreenplayDraft.fromJson 统一校验逻辑（含 scenes 非空检查），
+        // 避免两套解析路径行为不一致
+        ScreenplayDraft.fromJson(json)
 
     /**
      * 字段校验，移植自 director_ai `_validateScreenplay`。

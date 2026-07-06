@@ -8,6 +8,7 @@ import androidx.room.Update
 import io.legado.app.data.entities.NovelVideoCharacterSheet
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoSegment
+import io.legado.app.data.entities.NovelVideoSegmentStatus
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -64,6 +65,15 @@ interface NovelVideoDao {
     @Query("UPDATE novel_video_jobs SET status = :status, updatedAt = :time WHERE id = :jobId AND status NOT IN ('completed','failed','partial_failed','cancelled')")
     suspend fun updateJobFinalStatusIfNotFinished(jobId: String, status: String, time: Long = System.currentTimeMillis()): Int
 
+    /**
+     * 条件更新终态（带 errorMessage）：仅当 job 尚未进入终态时才更新。
+     *
+     * 用于 FAILED/CANCELLED 写入：避免覆写并发的终态（如取消已写 CANCELLED，失败路径不应覆写）。
+     * @return 受影响行数（0 表示已被并发覆写为终态，调用方应跳过后续动作）
+     */
+    @Query("UPDATE novel_video_jobs SET status = :status, errorMessage = :err, updatedAt = :time WHERE id = :jobId AND status NOT IN ('completed','failed','partial_failed','cancelled')")
+    suspend fun updateJobFinalStatusWithErrorIfNotFinished(jobId: String, status: String, err: String?, time: Long = System.currentTimeMillis()): Int
+
     @Query("UPDATE novel_video_jobs SET outputPath = :outputPath, coverPath = :coverPath, totalDurationMs = :durationMs, status = :status, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobOutput(jobId: String, outputPath: String?, coverPath: String?, durationMs: Long?, status: String, time: Long = System.currentTimeMillis())
 
@@ -115,7 +125,7 @@ interface NovelVideoDao {
 
     /** 标记 segment 失败并递增 retryCount；正常状态流转用 [updateSegmentStatus] 不递增。 */
     @Query("UPDATE novel_video_segments SET status = :status, errorMessage = :err, retryCount = retryCount + 1, updatedAt = :time WHERE id = :segmentId")
-    suspend fun markSegmentFailed(segmentId: String, status: String = "failed", err: String?, time: Long = System.currentTimeMillis())
+    suspend fun markSegmentFailed(segmentId: String, status: String = NovelVideoSegmentStatus.FAILED, err: String?, time: Long = System.currentTimeMillis())
 
     @Query("UPDATE novel_video_segments SET imageUrl = :imageUrl, status = :status, updatedAt = :time WHERE id = :segmentId")
     suspend fun updateSegmentImage(segmentId: String, imageUrl: String?, status: String, time: Long = System.currentTimeMillis())

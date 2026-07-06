@@ -13,6 +13,7 @@ import io.legado.app.ui.book.read.page.entities.ReadAloudCue
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.utils.MD5Utils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -231,6 +232,8 @@ object AiReadAloudBgmService {
                 cacheKey = key.cacheKey
             )
         } catch (throwable: Throwable) {
+            // 协程取消必须向上传播，不能降级为 STATUS_FAILED
+            if (throwable is CancellationException) throw throwable
             val error = throwable.localizedMessage ?: throwable.javaClass.simpleName
             appDb.readAloudBgmDao.upsertAssignmentCache(
                 ReadAloudBgmAssignmentCache(

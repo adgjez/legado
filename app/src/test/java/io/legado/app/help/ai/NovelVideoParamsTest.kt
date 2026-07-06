@@ -156,10 +156,13 @@ class NovelVideoParamsTest {
     }
 
     @Test
-    fun fromJsonClampsMaxCharactersToRange0To3() {
-        val json = """{"maxCharacters": 99}"""
-        val params = NovelVideoParams.fromJson(json)
-        assertEquals(3, params.maxCharacters)
+    fun fromJsonClampsMaxCharactersToRange1To3() {
+        // M2: 下界与 extractMainCharacters 的 coerceIn(1, 3) 对齐
+        val tooLow = NovelVideoParams.fromJson("""{"maxCharacters": 0}""")
+        assertEquals(1, tooLow.maxCharacters)
+
+        val tooHigh = NovelVideoParams.fromJson("""{"maxCharacters": 99}""")
+        assertEquals(3, tooHigh.maxCharacters)
     }
 
     @Test
@@ -197,13 +200,13 @@ class NovelVideoParamsTest {
 
     @Test
     fun fromJsonPreservesValidExtremeValuesWithoutClamping() {
-        // 合法边界值不应被修改
-        val json = """{"sceneCountPerChapter": 3, "sceneDurationSeconds": 1, "concurrency": 1, "maxCharacters": 0, "pollIntervalMs": 500, "pollTimeoutMs": 10000}"""
+        // 合法边界值不应被修改（maxCharacters 下界为 1，与 extractMainCharacters 对齐）
+        val json = """{"sceneCountPerChapter": 3, "sceneDurationSeconds": 1, "concurrency": 1, "maxCharacters": 1, "pollIntervalMs": 500, "pollTimeoutMs": 10000}"""
         val params = NovelVideoParams.fromJson(json)
         assertEquals(3, params.sceneCountPerChapter)
         assertEquals(1, params.sceneDurationSeconds)
         assertEquals(1, params.concurrency)
-        assertEquals(0, params.maxCharacters)
+        assertEquals(1, params.maxCharacters)
         assertEquals(500L, params.pollIntervalMs)
         assertEquals(10_000L, params.pollTimeoutMs)
     }
