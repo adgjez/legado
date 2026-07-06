@@ -671,12 +671,14 @@ class NovelVideoDaoRobolectricTest {
      */
     @Test
     fun r6RetryJobConditionalUpdateDoesNotOverwriteCancelled() = runTest {
-        val jobId = insertJob(status = NovelVideoJobStatus.FAILED)
-        // 模拟 retry 与 cancel 并发：cancel 先写 CANCELLED
-        dao.updateJobFinalStatusWithErrorIfNotFinished(
+        // 从运行态开始（模拟 retryJob 把 FAILED→GENERATING 后，cancel 并发写 CANCELLED）
+        val jobId = insertJob(status = NovelVideoJobStatus.GENERATING)
+        // cancel 先写 CANCELLED（从 GENERATING 可以写）
+        val cancelAffected = dao.updateJobFinalStatusWithErrorIfNotFinished(
             jobId, NovelVideoJobStatus.CANCELLED, "用户取消", System.currentTimeMillis()
         )
-        // retry 的条件更新试图写 GENERATING
+        assertEquals(1, cancelAffected)
+        // retry 的条件更新试图写 GENERATING（应被 CANCELLED 终态拦截）
         val affected = dao.updateJobFinalStatusWithErrorIfNotFinished(
             jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
         )
