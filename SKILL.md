@@ -67,3 +67,15 @@
 - `NovelVideoComponents` — 共享 Compose 组件
 
 视频 Provider 管理 UI（`ui/config/AiVideoProviderManageActivity` + `AiVideoProviderManageScreen` + `AiVideoProviderEditScreen`）仿 `AiImageProviderManageActivity` 形态。完整设计规格见 `docs/superpowers/specs/2026-07-05-novel-to-video-in-legado-design.md`。
+
+### 并发与取消语义约定（两轮代码审查后确立）
+
+Novel-to-Video 是长任务流水线，用户可在任意阶段取消。为避免「已取消的任务被标记为已完成」这类竞态，后续维护必须遵守以下约定：
+
+1. **终态写入用条件 UPDATE**：所有写 COMPLETED/FAILED/PARTIAL_FAILED/CANCELLED 的地方必须用 `updateJobFinalStatus(WithError)?IfNotFinished`（`WHERE status NOT IN ('completed','failed','partial_failed','cancelled')`），不得用无条件 `updateJobStatus`。返回 `affected == 0` 表示 job 已被并发终结，不应覆写。
+2. **中间态写入也用条件 UPDATE**：DRAFTING/GENERATING/MERGING 等中间态写入必须用 `updateJobDraftIfNotFinished` / `updateJobScreenplayIfNotFinished` / `updateJobOutputIfNotFinished`。否则并发的 CANCELLED 会被中间态覆写，随后 finalizeJob 的条件更新又"成功"写入 COMPLETED，形成取消信号丢失链。
+3. **`catch(Throwable)` 必须先重抛 `CancellationException`**：Kotlin 的 `CancellationException` 继承自 `Throwable`，宽泛 catch 会意外吞掉取消信号。所有 `catch(Throwable)` / `runCatching{}.getOrElse{}` 入口必须先 `if (throwable is CancellationException) throw throwable`。涉及文件：`AiToolExecutor` / `AiChatService` / `AiReadAloudRoleService` / `AiReadAloudBgmService` / 任何新增的 AI 子系统。
+4. **取消后写 DB 用 `NonCancellable`**：协程处于 cancelling 态时 suspend 调用会立即抛 `CancellationException`，必须用 `withContext(NonCancellable) { ... }` 包裹才能完成 CANCELLED 状态的 DB 写入（参考 `NovelVideoService.runOneJob`）。
+5. **SQL 字面量与 Kotlin 常量靠测试同步**：DAO 的 `IN('...')` 子句无法引用 Kotlin 常量，`NovelVideoDaoRobolectricTest` 中的 5 个集合一致性测试是常量值修改后的回归网。
+
+详见 spec Section 13.2「第二轮深度审查修复清单」。

@@ -1,3 +1,13 @@
+**2026/07/06**
+
+* 小说转视频：完成两轮代码审查，共 65 项修复 + 57 个测试用例，CI 全绿
+* 高风险修复（D1-D6）：NovelVideo 终态写入全部改用条件 UPDATE（`WHERE status NOT IN ('completed','failed','partial_failed','cancelled')`），消除 TOCTOU 窗口，避免并发的 CANCELLED 被覆写为 COMPLETED/FAILED
+* 高风险修复（H1-H4）：`AiToolExecutor` / `AiChatService` / `AiReadAloudRoleService` / `AiReadAloudBgmService` 在所有 `catch(Throwable)` / `runCatching{}.getOrElse{}` 入口显式重抛 `CancellationException`，恢复协程取消语义
+* 中风险修复（M1-M4）：`sceneDurationSeconds` 与 `maxCharacters` 边界 coerceIn 统一；`ScreenplayDraft` 两套 fromJson 合一；`markSegmentFailed` 默认参数改用常量
+* 系统性修复：中间态写入（DRAFTING/GENERATING/MERGING）改用条件部分更新，杜绝「用户已取消的任务被标记为已完成」的取消信号丢失链
+* 低风险修复（L1-L3）：DAO SQL 字面量与 Kotlin 常量一致性测试；`@ColumnInfo(defaultValue)` 改用 `const val`；`AiVideoTaskPoller.Stage` 常量撞名注释
+* 详见 spec Section 13「实施完成摘要」
+
 **2026/07/05**
 
 * 新增「小说转视频」功能：8 阶段流水线（章节正文 → LLM 分镜剧本 → 角色三视图 → 逐场景生图/生视频 → MediaMuxer 合并 → 产物入库），复刻 director_ai 方案，复用 Legado AI 基建（AiChatService / AiImageService）
