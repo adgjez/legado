@@ -21,6 +21,7 @@ import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
+import com.google.gson.JsonParser
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -61,7 +62,15 @@ object AiImageService {
         val effective = effectivePrompt(prompt, target)
         return when (target.type) {
             AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target).source
-            else -> generateByChatWithImages(effective, referenceImages, target).source
+            // 仅 chat vision model（如 gpt-4o-image-vip）支持 image_url 参考图；
+            // images API 类 model（gpt-image-1 / dall-e-3）走 /images/generations 不支持参考图，
+            // 退化为纯文生图（人物一致性靠 prompt 描述），避免端点/model 不匹配。
+            else -> if (isChatVisionModel(target)) {
+                generateByChatWithImages(effective, referenceImages, target).source
+            } else {
+                AppLog.put("imageProvider ${target.name} model=${target.model} 非 chat vision model，参考图被忽略，退化为纯文生图")
+                generateRaw(effective, target).source
+            }
         }
     }
 
@@ -89,7 +98,12 @@ object AiImageService {
         val effective = effectivePrompt(prompt, target)
         val image = when (target.type) {
             AiImageProviderConfig.TYPE_JS -> generateRaw(effective, target)
-            else -> generateByChatWithImages(effective, referenceImages, target)
+            else -> if (isChatVisionModel(target)) {
+                generateByChatWithImages(effective, referenceImages, target)
+            } else {
+                AppLog.put("imageProvider ${target.name} model=${target.model} 非 chat vision model，参考图被忽略，退化为纯文生图")
+                generateRaw(effective, target)
+            }
         }
         return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model, metadata)
     }
@@ -105,6 +119,29 @@ object AiImageService {
     private fun resolveProvider(provider: AiImageProviderConfig?): AiImageProviderConfig {
         return provider ?: currentProviderOrNull()
             ?: error("请选择可用生图模型")
+    }
+
+    /**
+     * 判断 provider 是否为 chat vision model（支持 /chat/completions + image_url 参考图）。
+     *
+     * 判断规则（按优先级）：
+     * 1. defaultParamsJson.endpoint 显式 "chat" → true
+     * 2. defaultParamsJson.endpoint 显式 "images" / "responses" → false
+     * 3. 未显式指定时按 model 名：含 gpt-4o / image-vip / vision → true，否则 false
+     *
+     * 用于 Stage 5 场景图生图：chat vision model 走 chat + 参考图保持人物一致性；
+     * images API 类 model（gpt-image-1 / dall-e-3）不支持参考图，退化为纯文生图。
+     */
+    internal fun isChatVisionModel(provider: AiImageProviderConfig): Boolean {
+        // 用 GSON 而非 org.json：避免 Android 单元测试 org.json stub 抛 RuntimeException
+        val endpoint = runCatching {
+            JsonParser.parseString(provider.defaultParamsJson.ifBlank { "{}" }).asJsonObject
+                .get("endpoint")?.asString.orEmpty()
+        }.getOrDefault("").lowercase()
+        if (endpoint == "chat") return true
+        if (endpoint == "images" || endpoint == "responses") return false
+        val model = provider.model.lowercase()
+        return model.contains("gpt-4o") || model.contains("image-vip") || model.contains("vision")
     }
 
     private fun effectivePrompt(prompt: String, provider: AiImageProviderConfig): String {
