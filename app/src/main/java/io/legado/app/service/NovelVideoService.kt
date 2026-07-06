@@ -129,7 +129,8 @@ class NovelVideoService : BaseService() {
             getString(R.string.cancel),
             servicePendingIntent<NovelVideoService>(IntentAction.stop)
         )
-        builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        // N2：改 PRIVATE，锁屏不显示书名和错误详情，保护用户阅读隐私
+        builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
         builder
     }
 
@@ -350,9 +351,7 @@ class NovelVideoService : BaseService() {
             val job = appDb.novelVideoDao.getJob(jobId)
             if (job != null) {
                 val statusText = describeStatus(job.status)
-                val err = job.errorMessage?.takeIf { it.isNotBlank() }
-                if (err != null) "${job.bookName} · $statusText · $err"
-                else "${job.bookName} · $statusText"
+                "${job.bookName} · $statusText"
             } else {
                 getString(R.string.novel_video_idle)
             }

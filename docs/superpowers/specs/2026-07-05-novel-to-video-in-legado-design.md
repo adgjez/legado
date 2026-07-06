@@ -920,7 +920,7 @@ interface VideoClient {
 
 ## 13. 实施完成摘要
 
-> 本节登记三轮代码审查与修复的最终状态。spec 第 10 节的 18 步 MVP 路径已全部完成。
+> 本节登记四轮代码审查与修复的最终状态。spec 第 10 节的 18 步 MVP 路径已全部完成。
 
 ### 13.1 完成状态总览
 
@@ -932,7 +932,8 @@ interface VideoClient {
 | 第二轮 | 系统性风险（中间态写入覆写取消信号） | 1 | 6 | ✓ |
 | 第三轮 | 高风险（R1-R10） | 10 | 3 | ✓ |
 | 第三轮 | 中风险（M1-M13）+ 低风险 | 11 | 0 | ✓ |
-| **合计** | | **86 修复** | **60 测试** | **全部通过** |
+| 第四轮 | 高+中风险（N1-N11）+ 隐私/安全 | 11 | 8 | ✓ |
+| **合计** | | **97 修复** | **68 测试** | **全部通过** |
 
 ### 13.2 第二轮深度审查修复清单
 
@@ -1091,6 +1092,61 @@ L1 SQL-常量集合一致性验证（5 项）：
 - `r1MergeFailedLeavesOutputPathBlankAndJobCanBeMarkedFailed`
 - `r3MarkSegmentFailedIncrementsRetryCount`
 - `r6RetryJobConditionalUpdateDoesNotOverwriteCancelled`
+
+---
+
+### 13.6 第四轮深度审查修复清单
+
+第四轮聚焦第三轮修复引入的回归、以及前三轮未覆盖的边界 / 安全 / 隐私盲区。
+
+#### 高风险 N1-N5
+
+**最严重回归**
+- N1 第三轮 R6 修复导致 retryJob 完全失效：retryJob 的前提是 job 已处于 FAILED/PARTIAL_FAILED/CANCELLED 终态，但 R6 让 retryJob 用 `updateJobFinalStatusWithErrorIfNotFinished`（WHERE NOT IN 终态）写 GENERATING，WHERE 不匹配，UPDATE 影响 0 行，retryJob 静默失效。修复：DAO 新增 `updateJobStatusForRetry`（WHERE IN 终态）反向守卫，仅允许从终态转换回 GENERATING。两个 ViewModel 改用此方法。
+
+**通知隐私**
+- N2 通知 `setVisibility(VISIBILITY_PUBLIC)` 改为 `VISIBILITY_PRIVATE`，锁屏不显示书名和状态，保护用户阅读隐私
+- N5 `refreshNotificationContent` 不再拼接 errorMessage 到通知文本——errorMessage 可能含 API 响应体等敏感信息，错误详情只在任务详情页展示
+
+**视频合并安全**
+- N4 VideoMuxer 多段合并前校验所有段的 video 轨道格式一致（mime + 分辨率）。原实现只用首个文件 MediaFormat 注册输出轨道，不同分辨率/编码的段会写入与轨道格式不匹配的样本，产生花屏/无法播放的损坏文件。
+
+**隐私合规**
+- N3 隐私声明（disclaimer.md）补充 AI 数据流声明：明确告知用户章节正文会发送给用户配置的第三方 AI Provider，阅读不中转不存储，需用户阅读 Provider 隐私条款。
+
+#### 中风险 N6-N11
+
+- N6 R3 熔断回归修复：熔断逻辑从 `markSegmentFailed`（递增 retryCount）改为 `updateSegmentStatus`（不递增）。原实现导致 retryCount 持续增长（3→4→5），UI 重试按钮点击后再次熔断，用户陷入死循环。
+- N7+N8+N9 API 错误消息脱敏：AiVideoService 的 submit/poll/downloadToLocal 错误消息不再包含完整响应体（可能含 Provider 内部错误堆栈、API 密钥片段、账户标识等），仅保留 HTTP 状态码 + 简短 message；Provider 返回的 error 字段截断到 200 字符。
+- N10 NovelVideoPromptBuilder 移除 8000 字符硬截断，章节正文原样传给 LLM（现代 LLM 可处理 12k+ 字符）。`splitByParagraph` 因有对应测试且可能未来使用，保留不动。
+- N11 `confirmScreenplay` 增加空场景校验：若 `draft.scenes.isEmpty()` 直接 return，避免用户编辑时清空场景创建 0 segment 的任务。
+
+#### 第四轮新增测试
+
+N1 retryJob 终态→GENERATING 转换（5 项）：
+- `n1RetryJobCanTransitionFromFailedToGenerating`
+- `n1RetryJobCanTransitionFromPartialFailedToGenerating`
+- `n1RetryJobCanTransitionFromCancelledToGenerating`
+- `n1RetryJobDoesNotTransitionFromRunningStatus`（反向守卫：运行态/COMPLETED 不应被 retry 覆写）
+- `n1RetryJobClearsErrorMessageWhenTransitioning`
+
+N6 熔断 retryCount 语义（2 项）：
+- `n6CircuitBreakerUsesUpdateSegmentStatusNotMarkSegmentFailed`
+- `n6MarkSegmentFailedVsUpdateSegmentStatusRetryCountSemantics`（对比 markSegmentFailed 递增 vs updateSegmentStatus 不递增）
+
+#### 第四轮受影响文件
+
+- `data/dao/NovelVideoDao.kt`（N1 新增 `updateJobStatusForRetry`）
+- `help/ai/NovelVideoGenerator.kt`（N1 retryJob 改用新方法、N6 熔断改 updateSegmentStatus、N11 confirmScreenplay 校验）
+- `help/ai/AiVideoService.kt`（N7/N8/N9 错误消息脱敏）
+- `help/ai/VideoMuxer.kt`（N4 格式一致性校验）
+- `help/ai/NovelVideoPromptBuilder.kt`（N10 移除硬截断）
+- `service/NovelVideoService.kt`（N2 通知 PRIVATE + N5 移除 errorMessage）
+- `ui/novelvideo/NovelVideoTaskCenterViewModel.kt`（N1 retryJob 改用新方法）
+- `ui/novelvideo/NovelVideoJobDetailViewModel.kt`（N1 retryJob 改用新方法）
+- `app/src/main/assets/disclaimer.md`（N3 AI 数据流声明）
+- `test/.../NovelVideoDaoRobolectricTest.kt`（N1 + N6 新增 7 测试）
+- `test/.../NovelVideoPromptBuilderTest.kt`（N10 截断测试改为不截断）
 
 ---
 

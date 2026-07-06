@@ -153,8 +153,9 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         appDb.novelVideoDao.updateSegmentStatus(seg.id, newStatus, null)
                     }
-                // R6：用条件更新推进 GENERATING，若期间已被并发置为终态（如 CANCELLED），不覆写
-                appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+                // N1 修复：用 updateJobStatusForRetry 从终态转换回 GENERATING。
+                // updateJobFinalStatusWithErrorIfNotFinished 的 WHERE 排除终态，无法 FAILED→GENERATING。
+                appDb.novelVideoDao.updateJobStatusForRetry(
                     jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
                 )
             }

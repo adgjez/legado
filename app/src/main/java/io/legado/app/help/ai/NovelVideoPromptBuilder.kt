@@ -20,9 +20,6 @@ object NovelVideoPromptBuilder {
     /** 默认画风前缀，与 [NovelVideoParams.stylePrompt] 默认值保持一致。 */
     private const val DEFAULT_STYLE_PROMPT = "anime style, manga art, 2D animation"
 
-    /** 章节正文截断长度（约 8000 字符，对应常见 LLM 上下文窗口的安全阈值）。 */
-    private const val MAX_CHAPTER_CHARS = 8000
-
     /**
      * 剧本生成系统提示词，移植自 director_ai `_dramaSystemPrompt`。
      * 动态注入 [params] 的 sceneCount、stylePrompt 等。
@@ -76,6 +73,9 @@ object NovelVideoPromptBuilder {
     /**
      * 构造剧本生成的 user prompt，注入书名、章节标题、章节正文摘要。
      * 支持 [previousFeedback] 用于"重新生成"。
+     *
+     * 章节正文不再硬截断：现代 LLM 上下文窗口足以容纳单章正文（通常 < 32k tokens），
+     * 截断会丢失剧情连贯性，导致生成的剧本覆盖不全。
      */
     fun buildDramaUserPrompt(
         book: Book,
@@ -83,11 +83,6 @@ object NovelVideoPromptBuilder {
         chapterContent: String,
         previousFeedback: String? = null
     ): String {
-        val contentPreview = if (chapterContent.length > MAX_CHAPTER_CHARS) {
-            chapterContent.substring(0, MAX_CHAPTER_CHARS) + "\n...（章节过长，已截断）"
-        } else {
-            chapterContent
-        }
         val sb = StringBuilder()
         sb.append("书名：").append(book.name).append('\n')
         sb.append("作者：").append(book.author).append('\n')
@@ -99,7 +94,7 @@ object NovelVideoPromptBuilder {
             sb.append("反馈：").append(previousFeedback).append("\n\n")
             sb.append("章节正文：\n")
         }
-        sb.append(contentPreview)
+        sb.append(chapterContent)
         return sb.toString()
     }
 

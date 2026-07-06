@@ -74,6 +74,17 @@ interface NovelVideoDao {
     @Query("UPDATE novel_video_jobs SET status = :status, errorMessage = :err, updatedAt = :time WHERE id = :jobId AND status NOT IN ('completed','failed','partial_failed','cancelled')")
     suspend fun updateJobFinalStatusWithErrorIfNotFinished(jobId: String, status: String, err: String?, time: Long = System.currentTimeMillis()): Int
 
+    /**
+     * 重试专用：仅从终态（failed/partial_failed/cancelled）转换回 GENERATING。
+     *
+     * N1 修复（第四轮审查）：[updateJobFinalStatusWithErrorIfNotFinished] 的 WHERE 排除终态，
+     * 无法把 FAILED→GENERATING（retryJob 场景）。本方法反向守卫：仅允许从终态转换，
+     * 避免误把运行中的 job 覆写。Mutex 已保证 retry/cancel 串行化，无需担心并发。
+     * @return 受影响行数（0 表示 job 不在终态，不应重试）
+     */
+    @Query("UPDATE novel_video_jobs SET status = :status, errorMessage = :err, updatedAt = :time WHERE id = :jobId AND status IN ('failed','partial_failed','cancelled')")
+    suspend fun updateJobStatusForRetry(jobId: String, status: String, err: String?, time: Long = System.currentTimeMillis()): Int
+
     @Query("UPDATE novel_video_jobs SET outputPath = :outputPath, coverPath = :coverPath, totalDurationMs = :durationMs, status = :status, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobOutput(jobId: String, outputPath: String?, coverPath: String?, durationMs: Long?, status: String, time: Long = System.currentTimeMillis())
 

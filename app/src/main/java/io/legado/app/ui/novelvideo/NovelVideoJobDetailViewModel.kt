@@ -112,8 +112,8 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         appDb.novelVideoDao.updateSegmentStatus(seg.id, newStatus, null)
                     }
-                // R6：用条件更新推进 GENERATING
-                appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+                // N1 修复：用 updateJobStatusForRetry 从终态转换回 GENERATING
+                appDb.novelVideoDao.updateJobStatusForRetry(
                     jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
                 )
             }

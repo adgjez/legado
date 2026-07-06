@@ -687,6 +687,163 @@ class NovelVideoDaoRobolectricTest {
     }
 
     // ============================================================
+    // 第四轮深度审查 — N1/N6 验证
+    // ============================================================
+
+    /**
+     * N1 验证：retryJob 专用的 [updateJobStatusForRetry] 仅从终态转换回 GENERATING。
+     *
+     * 关键回归场景：第三轮 R6 让 retryJob 用 [updateJobFinalStatusWithErrorIfNotFinished]
+     * （WHERE NOT IN 终态）写 GENERATING，但 retryJob 的前提是 job 已处于 FAILED/PARTIAL_FAILED/CANCELLED
+     * 终态，WHERE 不匹配，UPDATE 影响 0 行，retryJob 静默失效。
+     * 新方法 [updateJobStatusForRetry] 用反向守卫（WHERE IN 终态）解决此问题。
+     */
+    @Test
+    fun n1RetryJobCanTransitionFromFailedToGenerating() = runTest {
+        val jobId = insertJob(status = NovelVideoJobStatus.FAILED, draftJson = null)
+
+        val affected = dao.updateJobStatusForRetry(
+            jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
+        )
+
+        assertEquals("FAILED 应能被 retry 转换为 GENERATING", 1, affected)
+        assertEquals(NovelVideoJobStatus.GENERATING, dao.getJob(jobId)?.status)
+    }
+
+    @Test
+    fun n1RetryJobCanTransitionFromPartialFailedToGenerating() = runTest {
+        val jobId = insertJob(status = NovelVideoJobStatus.PARTIAL_FAILED)
+
+        val affected = dao.updateJobStatusForRetry(
+            jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
+        )
+
+        assertEquals(1, affected)
+        assertEquals(NovelVideoJobStatus.GENERATING, dao.getJob(jobId)?.status)
+    }
+
+    @Test
+    fun n1RetryJobCanTransitionFromCancelledToGenerating() = runTest {
+        val jobId = insertJob(status = NovelVideoJobStatus.CANCELLED)
+
+        val affected = dao.updateJobStatusForRetry(
+            jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
+        )
+
+        assertEquals(1, affected)
+        assertEquals(NovelVideoJobStatus.GENERATING, dao.getJob(jobId)?.status)
+    }
+
+    /**
+     * N1 反向守卫：retryJob 不应误把运行中的 job 覆写为 GENERATING。
+     *
+     * 若误把正在跑的 job（如 GENERATING/MERGING）写为 GENERATING，会丢失进度信息。
+     */
+    @Test
+    fun n1RetryJobDoesNotTransitionFromRunningStatus() = runTest {
+        // GENERATING 已在跑 → retry 不应介入
+        val jobId1 = insertJob(id = "running_gen", status = NovelVideoJobStatus.GENERATING)
+        val affected1 = dao.updateJobStatusForRetry(jobId1, NovelVideoJobStatus.GENERATING, null)
+        assertEquals("运行中 job 不应被 retry 覆写", 0, affected1)
+        assertEquals(NovelVideoJobStatus.GENERATING, dao.getJob(jobId1)?.status)
+
+        // DRAFTING 是运行态 → retry 不应介入
+        val jobId2 = insertJob(id = "drafting", status = NovelVideoJobStatus.DRAFTING)
+        val affected2 = dao.updateJobStatusForRetry(jobId2, NovelVideoJobStatus.GENERATING, null)
+        assertEquals(0, affected2)
+        assertEquals(NovelVideoJobStatus.DRAFTING, dao.getJob(jobId2)?.status)
+
+        // COMPLETED 是终态但不是可 retry 的终态 → retry 不应介入
+        val jobId3 = insertJob(id = "completed", status = NovelVideoJobStatus.COMPLETED)
+        val affected3 = dao.updateJobStatusForRetry(jobId3, NovelVideoJobStatus.GENERATING, null)
+        assertEquals("COMPLETED 不可 retry", 0, affected3)
+        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob(jobId3)?.status)
+    }
+
+    @Test
+    fun n1RetryJobClearsErrorMessageWhenTransitioning() = runTest {
+        // retry 应清掉旧的 errorMessage，避免新一次运行显示上次失败原因
+        val jobId = insertJob(status = NovelVideoJobStatus.FAILED)
+        dao.updateJobStatusWithError(jobId, NovelVideoJobStatus.FAILED, "old error")
+
+        dao.updateJobStatusForRetry(jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis())
+
+        val reloaded = dao.getJob(jobId)
+        assertEquals(NovelVideoJobStatus.GENERATING, reloaded?.status)
+        assertNull("retry 后 errorMessage 应被清空", reloaded?.errorMessage)
+    }
+
+    /**
+     * N6 验证：熔断场景下用 [updateSegmentStatus]（不递增 retryCount）替代 [markSegmentFailed]。
+     *
+     * 关键回归场景：第三轮 R3 的熔断逻辑用 markSegmentFailed 标记超限段，
+     * 但 markSegmentFailed 会递增 retryCount，导致 retryCount 持续增长（3→4→5），
+     * UI 上的"重试"按钮点击后再次熔断，用户陷入死循环。
+     * 改用 updateSegmentStatus 后 retryCount 保持在熔断时的值，便于诊断。
+     */
+    @Test
+    fun n6CircuitBreakerUsesUpdateSegmentStatusNotMarkSegmentFailed() = runTest {
+        val jobId = insertJob()
+        // segment 已失败 3 次（达到 MAX_SEGMENT_JOB_RETRY 阈值），被 retryJob 重置为 PENDING
+        dao.insertSegment(
+            NovelVideoSegment(
+                id = "seg_1", jobId = jobId, sceneId = 0,
+                status = NovelVideoSegmentStatus.PENDING,
+                retryCount = 3
+            )
+        )
+
+        // 熔断逻辑用 updateSegmentStatus（不递增 retryCount）
+        dao.updateSegmentStatus(
+            "seg_1",
+            NovelVideoSegmentStatus.FAILED,
+            "重试次数超限（3 次），请删除任务重建",
+            System.currentTimeMillis()
+        )
+
+        val reloaded = dao.getSegmentsByJob(jobId).first()
+        assertEquals(NovelVideoSegmentStatus.FAILED, reloaded.status)
+        assertEquals(
+            "熔断时 retryCount 不应继续递增，保持诊断信息",
+            3,
+            reloaded.retryCount
+        )
+        assertTrue(reloaded.errorMessage?.contains("超限") == true)
+    }
+
+    /**
+     * N6 对比测试：markSegmentFailed 会递增 retryCount（用于正常失败场景），
+     * updateSegmentStatus 不递增（用于状态转换场景）。
+     */
+    @Test
+    fun n6MarkSegmentFailedVsUpdateSegmentStatusRetryCountSemantics() = runTest {
+        val jobId = insertJob()
+        dao.insertSegment(
+            NovelVideoSegment(
+                id = "seg_mark", jobId = jobId, sceneId = 1,
+                status = NovelVideoSegmentStatus.VIDEO_GENERATING,
+                retryCount = 2
+            )
+        )
+        dao.insertSegment(
+            NovelVideoSegment(
+                id = "seg_update", jobId = jobId, sceneId = 2,
+                status = NovelVideoSegmentStatus.PENDING,
+                retryCount = 3
+            )
+        )
+
+        // markSegmentFailed：递增 retryCount（适用于"实际生成失败"的场景）
+        dao.markSegmentFailed("seg_mark", NovelVideoSegmentStatus.FAILED, "real failure")
+        // updateSegmentStatus：不递增 retryCount（适用于熔断等"状态转换"的场景）
+        dao.updateSegmentStatus("seg_update", NovelVideoSegmentStatus.FAILED, "circuit breaker")
+
+        val reloaded = dao.getSegmentsByJob(jobId).sortedBy { it.sceneId }
+        assertEquals("markSegmentFailed 应递增", 3, reloaded[0].retryCount)
+        assertEquals("updateSegmentStatus 不应递增", 3, reloaded[1].retryCount)
+    }
+
+    // ============================================================
     // helpers
     // ============================================================
 

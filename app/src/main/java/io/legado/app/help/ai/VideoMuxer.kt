@@ -55,6 +55,17 @@ object VideoMuxer {
             if (validInputs.isEmpty()) {
                 return@withContext MergeResult.Failed("无有效输入文件")
             }
+            // N4：多段合并前校验所有段的 video 轨道格式一致。
+            // MediaMuxer 只用首个文件的 MediaFormat 注册输出轨道（见下文 videoFormat 取值逻辑），
+            // 若后续段的分辨率/编码/profile 不同，写入的样本会与轨道格式不匹配，
+            // 产生可播但花屏、音画不同步、或无法播放的损坏文件。
+            if (validInputs.size > 1) {
+                val consistencyError = checkFormatConsistency(validInputs)
+                if (consistencyError != null) {
+                    AppLog.put("VideoMuxer 跳过合并：$consistencyError")
+                    return@withContext MergeResult.Failed(consistencyError)
+                }
+            }
             if (validInputs.size == 1) {
                 // 单段无需合并，直接复制
                 val single = validInputs[0]
@@ -230,6 +241,51 @@ object VideoMuxer {
         extractor.unselectTrack(trackIndex)
         extractor.selectTrack(trackIndex)
         return firstTime
+    }
+
+    /**
+     * N4：校验多个输入文件的视频轨道格式一致。
+     *
+     * MediaMuxer 的 [MediaMuxer.addTrack] 只接受一份 MediaFormat 来注册输出轨道，
+     * 后续 writeSampleData 不再校验样本是否与该格式匹配。若各段分辨率/编码/profile 不同，
+     * 合并产物会出现花屏、音画不同步、或无法播放等问题。
+     *
+     * 这里比对每个文件的 video track 的 mime、width、height 三个关键字段。
+     * 不比对 profile/level 等次级字段：同编码不同 profile 的样本通常仍可被同一解码器播放，
+     * 比对过严会导致原本可用的合并被误判失败。
+     *
+     * @return 不一致时返回错误描述；一致时返回 null
+     */
+    private fun checkFormatConsistency(inputPaths: List<String>): String? {
+        data class TrackKey(val mime: String?, val width: Int?, val height: Int?)
+        fun readKey(path: String): TrackKey? {
+            val ex = MediaExtractor()
+            return runCatching {
+                ex.setDataSource(path)
+                for (i in 0 until ex.trackCount) {
+                    val f = ex.getTrackFormat(i)
+                    val mime = f.getString(MediaFormat.KEY_MIME).orEmpty()
+                    if (mime.startsWith("video/")) {
+                        val w = if (f.containsKey(MediaFormat.KEY_WIDTH)) f.getInteger(MediaFormat.KEY_WIDTH) else null
+                        val h = if (f.containsKey(MediaFormat.KEY_HEIGHT)) f.getInteger(MediaFormat.KEY_HEIGHT) else null
+                        return@runCatching TrackKey(mime, w, h)
+                    }
+                }
+                null
+            }.getOrNull().also { runCatching { ex.release() } }
+        }
+
+        val first = readKey(inputPaths[0]) ?: return "首个文件无 video 轨道：${inputPaths[0]}"
+        for (i in 1 until inputPaths.size) {
+            val cur = readKey(inputPaths[i]) ?: return "第 ${i + 1} 段无 video 轨道：${inputPaths[i]}"
+            if (cur.mime != first.mime) {
+                return "第 ${i + 1} 段编码与首段不一致（${cur.mime} vs ${first.mime}），无法无损合并"
+            }
+            if (cur.width != first.width || cur.height != first.height) {
+                return "第 ${i + 1} 段分辨率 ${cur.width}x${cur.height} 与首段 ${first.width}x${first.height} 不一致，无法无损合并"
+            }
+        }
+        return null
     }
 
     /**

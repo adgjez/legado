@@ -94,18 +94,17 @@ class NovelVideoPromptBuilderTest {
     }
 
     @Test
-    fun buildDramaUserPromptTruncatesLongChapterContent() {
+    fun buildDramaUserPromptDoesNotTruncateLongChapterContent() {
         val longContent = "x".repeat(10_000)
         val prompt = NovelVideoPromptBuilder.buildDramaUserPrompt(
             book = Book(),
             chapter = BookChapter(),
             chapterContent = longContent
         )
-        assertTrue(prompt.contains("章节过长，已截断"))
-        // 截断后应保留前 8000 字符
-        assertTrue(prompt.contains("x".repeat(100)))
-        // 总长应小于原始 10000 字符
-        assertTrue(prompt.length < longContent.length + 200)
+        // 章节正文不再硬截断：现代 LLM 上下文窗口足以容纳单章正文
+        assertFalse(prompt.contains("章节过长，已截断"))
+        // 全部正文应原样进入 prompt
+        assertTrue(prompt.contains(longContent))
     }
 
     @Test

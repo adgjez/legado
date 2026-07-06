@@ -213,6 +213,10 @@ object NovelVideoGenerator {
     suspend fun confirmScreenplay(jobId: String, editedDraft: ScreenplayDraft? = null) {
         val job = appDb.novelVideoDao.getJob(jobId) ?: return
         val draft = editedDraft ?: job.draftJson?.let { ScreenplayDraft.fromJson(it) } ?: return
+        if (draft.scenes.isEmpty()) {
+            AppLog.put("confirmScreenplay: 场景为空，跳过确认 jobId=$jobId")
+            return
+        }
         confirmScreenplayInternal(jobId, draft)
         ReviewConfirmationStore.resolve(jobId, confirmed = true)
     }
@@ -422,7 +426,7 @@ object NovelVideoGenerator {
                     it.retryCount >= MAX_SEGMENT_JOB_RETRY
             }
             .forEach { seg ->
-                appDb.novelVideoDao.markSegmentFailed(
+                appDb.novelVideoDao.updateSegmentStatus(
                     seg.id,
                     NovelVideoSegmentStatus.FAILED,
                     "重试次数超限（$MAX_SEGMENT_JOB_RETRY 次），请删除任务重建",

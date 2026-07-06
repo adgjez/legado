@@ -1,6 +1,8 @@
 **2026/07/06**
 
-* 小说转视频：完成三轮代码审查，共 86 项修复 + 60 个测试用例，CI 全绿
+* 小说转视频：完成四轮代码审查，共 97 项修复 + 68 个测试用例，CI 全绿
+* 第四轮高风险（N1-N5）：修复第三轮 R6 引入的 retryJob 失效回归（新增 `updateJobStatusForRetry` 反向守卫）；通知改 VISIBILITY_PRIVATE + 移除 errorMessage 拼接保护阅读隐私；VideoMuxer 多段合并前校验格式一致性；隐私声明补充 AI 数据流告知
+* 第四轮中风险（N6-N11）：R3 熔断改用 `updateSegmentStatus` 不递增 retryCount 避免 UI 重试死循环；AiVideoService 错误消息脱敏（不再含完整响应体）；NovelVideoPromptBuilder 移除 8000 字符硬截断；confirmScreenplay 补空场景校验
 * 第三轮高风险（R1-R10）：合并失败不再误标 COMPLETED；retryCount 熔断防 API 配额浪费；PAUSED 死状态防护；start() 短路窗口修复；retry/cancel 加 Mutex 串行化；ConfigSheet 旋转保留输入；WakeLock 防 Doze 停滞；shouldStopOnTaskRemoved/onTimeout 重写
 * 第三轮中风险（M1-M13）：deleteJob 清理磁盘文件；50% 失败阈值改 >=；retry 智能重置保留 imageUrl；pickNextJob 跳过 PENDING_REVIEW；bind() 幂等；通知刷新 try/catch；startForegroundServiceCompat
 * 第三轮低风险：JobCard 改 combinedClickable；formatChapterRange 缓存 GSON 解析

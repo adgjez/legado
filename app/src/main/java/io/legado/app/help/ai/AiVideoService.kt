@@ -77,11 +77,15 @@ object AiVideoService {
         response.use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                error("视频提交失败：${resp.code} ${resp.message}\n$text")
+                // N7：错误消息仅保留 HTTP 状态码和简短 message，不包含响应体。
+                // 响应体可能含 Provider 内部错误堆栈、API 密钥片段、账户标识等敏感信息，
+                // 完整暴露到 errorMessage 会经通知/UI/日志流出设备。
+                error("视频提交失败：HTTP ${resp.code} ${resp.message}")
             }
             val root = JSONObject(text.takeIf { it.isNotBlank() } ?: "{}")
             val taskId = resolveJsonPath(root, target.taskIdJsonPath)
-                ?: error("视频提交响应缺少 taskId（path=${target.taskIdJsonPath}）：$text")
+                // N7：响应解析失败不回显完整响应体，仅提示 JSON path 缺失
+                ?: error("视频提交响应缺少 taskId（path=${target.taskIdJsonPath}）")
             taskId
         }
     }
@@ -138,7 +142,8 @@ object AiVideoService {
             if (!resp.isSuccessful) {
                 // 4xx 视为终态失败；5xx 视为暂态，继续轮询
                 return if (resp.code in 400..499) {
-                    VideoPollResult.Failed("轮询失败：${resp.code} ${resp.message}")
+                    // N8：错误消息不含响应体，避免 Provider 内部错误细节流出设备
+                    VideoPollResult.Failed("轮询失败：HTTP ${resp.code} ${resp.message}")
                 } else {
                     VideoPollResult.Polling
                 }
@@ -148,12 +153,14 @@ object AiVideoService {
             return when {
                 status == provider.doneStatusValue.lowercase() -> {
                     val videoUrl = resolveJsonPath(root, provider.videoUrlJsonPath)
-                        ?: return VideoPollResult.Failed("完成但缺少 video_url（path=${provider.videoUrlJsonPath}）：$text")
+                        // N8：不回显完整响应体
+                        ?: return VideoPollResult.Failed("完成但缺少 video_url（path=${provider.videoUrlJsonPath}）")
                     VideoPollResult.Success(videoUrl)
                 }
                 status == provider.failedStatusValue.lowercase() -> {
                     val err = resolveJsonPath(root, "$.error") ?: resolveJsonPath(root, "$.message") ?: "未知错误"
-                    VideoPollResult.Failed("视频生成失败：$err")
+                    // N9：err 是 Provider 返回的错误字段，可能含堆栈；截断到 200 字符避免长错误信息溢出
+                    VideoPollResult.Failed("视频生成失败：${err.take(200)}")
                 }
                 else -> VideoPollResult.Polling // 排队/进行中，继续轮询
             }
@@ -174,7 +181,7 @@ object AiVideoService {
         okHttpClient.newCallResponse {
             url(videoUrl)
         }.use { resp ->
-            if (!resp.isSuccessful) error("视频下载失败：${resp.code} ${resp.message}")
+            if (!resp.isSuccessful) error("视频下载失败：HTTP ${resp.code} ${resp.message}")
             resp.body?.byteStream()?.use { input ->
                 file.outputStream().use { output -> input.copyTo(output) }
             } ?: error("视频下载响应体为空")
