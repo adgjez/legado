@@ -193,6 +193,24 @@ class NovelVideoPromptBuilderTest {
         assertEquals("anime style, manga art, 2D animation, classroom", prompt)
     }
 
+    @Test
+    fun buildSceneImagePromptReturnsPrefixOnlyWhenImagePromptBlank() {
+        // P3-4: 空 imagePrompt 不应产生尾逗号 "anime style..., "
+        val segment = NovelVideoSegment(id = "seg_1", imagePrompt = "")
+        val prompt = NovelVideoPromptBuilder.buildSceneImagePrompt(segment, "anime style")
+        assertEquals("anime style", prompt)
+        assertFalse(prompt.endsWith(","))
+    }
+
+    @Test
+    fun buildSceneImagePromptReturnsPrefixOnlyWhenImagePromptBlankAndStyleBlank() {
+        // style 和 imagePrompt 都空时，返回默认画风前缀，无尾逗号
+        val segment = NovelVideoSegment(id = "seg_1", imagePrompt = "")
+        val prompt = NovelVideoPromptBuilder.buildSceneImagePrompt(segment, "")
+        assertEquals("anime style, manga art, 2D animation", prompt)
+        assertFalse(prompt.endsWith(","))
+    }
+
     // ============================================================
     // buildSceneVideoPrompt
     // ============================================================
@@ -318,6 +336,21 @@ class NovelVideoPromptBuilderTest {
         assertEquals(videoResult, imageResult)
     }
 
+    @Test
+    fun sanitizeVideoPromptReplacesAllConfiguredSensitiveWords() {
+        // P3-6: 预编译 Regex 后回归测试，确保 18 个敏感词规则全部生效
+        val allWords = listOf(
+            "lightning", "fight", "explosion", "attack", "intense", "fierce",
+            "battle", "weapon", "blood", "kill", "death", "war",
+            "glowing", "energy", "powerful", "dramatic", "trembling", "gripping"
+        )
+        val input = allWords.joinToString(" ")
+        val result = NovelVideoPromptBuilder.sanitizeVideoPrompt(input)
+        allWords.forEach { w ->
+            assertFalse("敏感词未被替换：$w（结果：$result）", result.contains("\\b$w\\b".toRegex(RegexOption.IGNORE_CASE)))
+        }
+    }
+
     // ============================================================
     // extractMainCharacters
     // ============================================================
@@ -418,5 +451,17 @@ class NovelVideoPromptBuilderTest {
         val characters = NovelVideoPromptBuilder.extractMainCharacters(scenes, maxCharacters = 2)
         assertEquals(2, characters.size)
         assertEquals("Alice", characters[0].name)
+    }
+
+    @Test
+    fun extractMainCharactersLabelsThirdCharacterAsSupporting() {
+        // P3-8: 第 3 个角色应标为"配角"而非"第二主角"
+        val desc = "Alice: a young girl. Bob: a tall boy. Carol: a small child."
+        val scenes = listOf(Scene(sceneId = 1, characterDescription = desc))
+        val characters = NovelVideoPromptBuilder.extractMainCharacters(scenes, maxCharacters = 3)
+        assertEquals(3, characters.size)
+        assertEquals("主角", characters[0].role)
+        assertEquals("第二主角", characters[1].role)
+        assertEquals("配角", characters[2].role)
     }
 }

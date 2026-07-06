@@ -60,6 +60,39 @@ class NovelVideoModelsTest {
     }
 
     @Test
+    fun screenplayFromJsonThrowsOnEmptyJsonObject() {
+        // P2-12: GSON 通过 Unsafe 实例化，"{}" 不抛异常但字段为 null。
+        // 加默认值后字段非 null，但 scenes 为 emptyList，takeIf{scenes.isNotEmpty()} 应触发抛异常
+        try {
+            Screenplay.fromJson("{}")
+            fail("应抛 JsonSyntaxException：场景为空")
+        } catch (e: JsonSyntaxException) {
+            assertTrue(e.message?.contains("Screenplay 解析失败") == true)
+        }
+    }
+
+    @Test
+    fun screenplayFromJsonThrowsOnEmptyScenesArray() {
+        val json = """{"taskId":"nv_x","title":"t","scenes":[]}"""
+        try {
+            Screenplay.fromJson(json)
+            fail("应抛 JsonSyntaxException：scenes 为空数组")
+        } catch (e: JsonSyntaxException) {
+            // 预期
+        }
+    }
+
+    @Test
+    fun screenplayDefaultConstructorDoesNotNpeOnFieldAccess() {
+        // P2-12: 无默认值时 GSON 解析 "{}" 得到 null 字段，访问 scenes 会 NPE。
+        // 加默认值后默认构造的对象字段应为空而非 null
+        val sp = Screenplay()
+        assertEquals("", sp.taskId)
+        assertEquals("", sp.title)
+        assertTrue(sp.scenes.isEmpty())
+    }
+
+    @Test
     fun screenplayFromDraftFillsBlankTaskIdWithGeneratedId() {
         val draft = ScreenplayDraft(
             taskId = "",
