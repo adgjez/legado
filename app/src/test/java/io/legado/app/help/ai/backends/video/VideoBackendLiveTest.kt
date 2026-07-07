@@ -24,6 +24,7 @@ import java.io.File
  *
  * 注：本测试会真实扣费（生成视频）。仅用于 P2a 一次性 live 验证，常规开发勿开。
  */
+@Ignore("P2a live 集成测试——需 API key + 真实扣费，CI 默认跳过")
 class VideoBackendLiveTest {
 
     private fun env(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
