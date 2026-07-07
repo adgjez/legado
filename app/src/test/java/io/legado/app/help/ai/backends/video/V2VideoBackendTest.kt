@@ -250,7 +250,8 @@ class V2VideoBackendTest {
 
     @Test
     fun firstStrByPathsReturnsFirstHitByPriority() {
-        // 顶层 url 优先于 data.task_result.videos[0].url
+        // data.task_result.videos[0].url（path 5）优先于顶层 url（path 6）——
+        // 优先级表按声明顺序逐个试取，kling 风格回包的深路径先于通用顶层 url
         val payload = JsonObject().apply {
             addProperty("url", "https://top.com/v.mp4")
             add("data", JsonObject().apply {
@@ -262,7 +263,7 @@ class V2VideoBackendTest {
             })
         }
         val url = V2VideoBackend.firstStrByPaths(payload, V2VideoBackend.VIDEO_URL_PATHS)
-        assertEquals("应取优先级最高的顶层 url", "https://top.com/v.mp4", url)
+        assertEquals("应取优先级更高的 data.task_result.videos[0].url", "https://deep.com/v.mp4", url)
     }
 
     @Test

@@ -267,9 +267,11 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     /** 顶层 code != 0 → 错误描述；0/缺失 → null。bearer/中转可能把 code 序列化成字符串，归一化 int 比较。 */
     private fun responseError(root: JsonObject): String? {
         val codeEl = root.get("code") ?: return null
-        val code = runCatching { codeEl.asBigDecimal.toIntExact() }.getOrElse {
-            runCatching { codeEl.asString.toInt() }.getOrNull()
-        } ?: return "Kling API code=${codeEl}: ${root.get("message")}"
+        val code: Int? = runCatching { codeEl.asInt }.getOrNull()
+            ?: runCatching { codeEl.asString.trim().toInt() }.getOrNull()
+        if (code == null) {
+            return "Kling API code=${codeEl}: ${root.get("message")}"
+        }
         return if (code != 0) "Kling API code=$code: ${root.get("message")}" else null
     }
 
