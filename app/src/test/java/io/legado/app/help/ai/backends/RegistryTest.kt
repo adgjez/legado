@@ -15,6 +15,7 @@ import org.junit.Test
  * P2c：kling/newapi/v2 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
  * P2d：dashscope/minimax/vidu/grok 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
  * P3a：agnes/ark image backend 注册（companion init），byConfig 可解析；其余 image type 仍未实现。
+ * P3b：openai/gemini image backend 注册（companion init），byConfig 可解析；其余 image type 仍未实现。
  * P3+：其余各家注册后逐步可解析。
  */
 class RegistryTest {
@@ -165,6 +166,26 @@ class RegistryTest {
     }
 
     @Test
+    fun imageRegistryResolvesOpenAiGeminiAfterClassLoad() {
+        // P3b：openai/gemini image backend companion init 注册到 registry。强制类加载触发 init 后 byConfig 应可解析。
+        Class.forName("io.legado.app.help.ai.backends.image.OpenAiImageBackend")
+        Class.forName("io.legado.app.help.ai.backends.image.GeminiImageBackend")
+        val openaiCfg = AiImageProviderConfig(
+            name = "openai-img-test", type = AiImageProviderConfig.TYPE_OPENAI,
+            baseUrl = "https://api.openai.com/v1", apiKey = "k",
+            model = "gpt-image-2"
+        )
+        val geminiCfg = AiImageProviderConfig(
+            name = "gemini-img-test", type = AiImageProviderConfig.TYPE_GEMINI,
+            baseUrl = "https://generativelanguage.googleapis.com", apiKey = "k",
+            model = "gemini-3.1-flash-image-preview"
+        )
+        // 不抛即通过
+        ImageBackendRegistry.byConfig(openaiCfg)
+        ImageBackendRegistry.byConfig(geminiCfg)
+    }
+
+    @Test
     fun arcReelTypeConstantsExist() {
         // 验证 ArcReel type 常量已加（P2/P3 注册时用）
         assertEquals("ark", AiVideoProviderConfig.TYPE_ARK)
@@ -187,7 +208,7 @@ class RegistryTest {
         assertEquals("kling", AiImageProviderConfig.TYPE_KLING)
         assertEquals("minimax", AiImageProviderConfig.TYPE_MINIMAX)
         assertEquals("vidu", AiImageProviderConfig.TYPE_VIDU)
-        // openai 图像 backend 仍保留常量（P3 注册 OpenAiImageBackend）
+        // openai 图像 backend 仍保留常量（P3b 注册 OpenAiImageBackend）
         assertEquals("openai", AiImageProviderConfig.TYPE_OPENAI)
     }
 }
