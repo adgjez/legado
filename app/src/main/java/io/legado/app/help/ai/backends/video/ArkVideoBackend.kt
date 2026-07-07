@@ -3,7 +3,7 @@ package io.legado.app.help.ai.backends.video
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import io.legado.app.help.ai.backends.ImageCodec
+import io.legado.app.help.ai.backends.compress.ImageCodec
 import io.legado.app.help.ai.backends.MediaGenerator
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
@@ -259,7 +259,7 @@ class ArkVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
 
         init {
             // 注册到 Registry（P2a）
-            VideoBackendRegistry.register(TYPE_ARK) { cfg -> ArkVideoBackend(cfg) }
+            VideoBackendRegistry.register(AiVideoProviderConfig.TYPE_ARK) { cfg -> ArkVideoBackend(cfg) }
         }
     }
 }

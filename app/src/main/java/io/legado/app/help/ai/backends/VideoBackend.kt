@@ -5,13 +5,16 @@ import java.io.File
 /**
  * 视频 backend 抽象（移植 ArcReel lib/video_backends/base.py:451-475）。
  *
+ * 非 sealed：各 backend 实现在 `video/` 子包，sealed 跨包不允许；
+ * 动态分发经 [VideoBackendRegistry]，无需 exhaustive when。
+ *
  * 生命周期模型 1a 忠实：[generate] 自管 submit+poll+download 全生命周期。
  * cancellation 通过 suspend 函数在 suspension point（[kotlinx.coroutines.delay]/HTTP await）
  * 自然响应 `CoroutineScope.cancel`。进度通过 [onProgress] 回调（对应 ArcReel
  * `poll_with_retry.on_progress`）。429 Retry-After、[AmbiguousSubmitError]、重试谓词在
  * [VideoBackendHttp] 内；413 续档在 MediaGenerator 咽喉层（P1）。
  */
-sealed interface VideoBackend {
+interface VideoBackend {
     val typeId: String                          // "ark"/"agnes"/...
     val model: String
     val capabilities: Set<VideoCapability>      // 端点级

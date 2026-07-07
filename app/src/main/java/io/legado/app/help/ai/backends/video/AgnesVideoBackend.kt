@@ -4,7 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.AmbiguousSubmitError
-import io.legado.app.help.ai.backends.ImageCodec
+import io.legado.app.help.ai.backends.compress.ImageCodec
 import io.legado.app.help.ai.backends.MediaGenerator
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
@@ -270,7 +270,7 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         }
 
         init {
-            VideoBackendRegistry.register(TYPE_AGNES) { cfg -> AgnesVideoBackend(cfg) }
+            VideoBackendRegistry.register(AiVideoProviderConfig.TYPE_AGNES) { cfg -> AgnesVideoBackend(cfg) }
         }
     }
 }
