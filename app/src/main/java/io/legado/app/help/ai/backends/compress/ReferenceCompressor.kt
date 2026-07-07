@@ -141,13 +141,14 @@ object ReferenceCompressor {
         startStep: Int = 0,
         crossinline block: suspend (landedStep: Int, List<CompressedRef>) -> T
     ): T {
-        // 读源字节：不可读则用 null 占位（透传原路径）
+        // 读源字节：不可读/非图片格式则用 null 占位（透传原路径，不写临时文件）
         val rawsOrNull: List<ByteArray?> = specs.map { spec ->
             runCatching { spec.source.readBytes() }
                 .onFailure { AppLog.put("ReferenceCompressor 读源失败，透传原路径：${spec.source} - ${it.message}") }
                 .getOrNull()
+                ?.let { raw -> if (ImageCodec.isLikelyImage(raw)) raw else null }
         }
-        // 透传项的索引
+        // 透传项的索引（读失败 + 非图片格式）
         val passthroughIndices = rawsOrNull.mapIndexedNotNull { i, raw -> if (raw == null) i else null }
 
         // 可压缩项：raws/roles/对应 spec

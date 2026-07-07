@@ -70,7 +70,7 @@ class ImageCodecTest {
     @Test
     fun toDataUriRoundTripsToOriginalBytes() {
         val payload = "hello agnes 参考图".toByteArray()
-        val f = tmpFile("rt", "jpg", payload)
+        val f = tmpFile("rtx", "jpg", payload)
         val uri = ImageCodec.toDataUri(f)
         val b64 = uri.substringAfter("base64,")
         assertArrayEquals(payload, Base64.decode(b64, Base64.NO_WRAP))

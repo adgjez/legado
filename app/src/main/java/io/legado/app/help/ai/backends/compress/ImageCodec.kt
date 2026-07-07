@@ -60,6 +60,10 @@ object ImageCodec {
         quality: Int,
         subsampling: Int = 0
     ): ByteArray {
+        // 非图片格式（无 JPEG/PNG/GIF/WebP 魔数）直接透传——
+        // 避免依赖 BitmapFactory.decodeByteArray 对非图片返回 null 的行为
+        // （Robolectric/部分 Android 版本对非图片字节可能返回非 null 占位 Bitmap）
+        if (!isLikelyImage(bytes)) return bytes
         val decoded = decodeSampled(bytes, maxLongEdge) ?: return bytes
         val oriented = applyExifOrientation(bytes, decoded) ?: decoded
         val scaled = scaleToLongEdge(oriented, maxLongEdge)
@@ -69,6 +73,22 @@ object ImageCodec {
         if (oriented !== decoded) oriented.recycle()
         decoded.recycle()
         return out.toByteArray()
+    }
+
+    /** 粗判字节是否为已知图片格式（JPEG/PNG/GIF/WebP 魔数）。非图片直接透传不压。 */
+    internal fun isLikelyImage(bytes: ByteArray): Boolean {
+        if (bytes.size < 4) return false
+        // JPEG: FFD8
+        if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) return true
+        // PNG: 89 50 4E 47
+        if (bytes[0] == 0x89.toByte() && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) return true
+        // GIF: 47 49 46 38 (GIF8)
+        if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38) return true
+        // WebP: RIFF....WEBP
+        if (bytes.size >= 12 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+            bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50
+        ) return true
+        return false
     }
 
     /** inSampleSize 采样解码，避免大图 OOM。 */
