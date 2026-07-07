@@ -50,7 +50,7 @@ class VideoBackendLiveTest {
      * 参考图的裸 base64 编码已在 [AgnesVideoBackendTest] 单测覆盖。
      */
     @Test
-    fun agnesTextToVideoDoesNotReportIncorrectPadding() = runBlocking {
+    fun agnesTextToVideoDoesNotReportIncorrectPadding() = runBlocking<Unit> {
         val key = env("AGNES_API_KEY")
         assumeTrue("AGNES_API_KEY 未设置，跳过 agnes live 验证", key != null)
 

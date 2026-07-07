@@ -56,6 +56,19 @@ class GeminiImageBackendTest {
         return File.createTempFile(name, ".jpg").apply { writeBytes(bytes); deleteOnExit() }
     }
 
+    /**
+     * 创建文件名 stem 恰好为 [stem] 的临时 JPEG（[File.createTempFile] 会追加随机数字，
+     * 导致 extractNameFromPath 得到 `stem<random>` 而非 `stem`，故需自建临时目录 + 精确文件名）。
+     */
+    private fun tmpJpegExactStem(stem: String): File {
+        val dir = createTempDir(prefix = "gemini-i2i-")
+        val f = File(dir, "$stem.jpg")
+        f.writeBytes(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0xFF.toByte(), 0xD9.toByte()))
+        f.deleteOnExit()
+        dir.deleteOnExit()
+        return f
+    }
+
     @Test
     fun capabilitiesSupportsTextAndImage() {
         val caps = backend().capabilities
@@ -161,7 +174,8 @@ class GeminiImageBackendTest {
     @Test
     fun buildPayloadImage2ImageLabelFromFilenameWhenRefLabelEmpty() {
         // ReferenceImage.label 为空 → 从文件名推断 stem
-        val ref = tmpJpeg("protagonist")
+        // 用 tmpJpegExactStem 保证 stem 恰好为 "protagonist"（tmpJpeg 会追加随机数字）
+        val ref = tmpJpegExactStem("protagonist")
         val request = ImageGenerationRequest(
             prompt = "p",
             outputPath = File("/tmp/out.png"),
