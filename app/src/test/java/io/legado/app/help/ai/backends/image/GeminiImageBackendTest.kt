@@ -10,6 +10,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.File
 
 /**
@@ -23,7 +26,12 @@ import java.io.File
  * - contents=[label?, image, ..., prompt]（label 优先 ReferenceImage.label，否则文件名推断）
  * - 跳过 scene_/storyboard_/output_ 前缀的文件名作为 label
  * - generationConfig 含 responseModalities=["IMAGE"] + imageConfig={aspectRatio, image_size?}
+ *
+ * 用 Robolectric：I2I 测试调 [buildPayload] 内部走 [ImageCodec.toBareBase64] →
+ * `android.util.Base64.encodeToString`，纯 JUnit 不可用，需 Robolectric 提供 Android 桩。
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], application = android.app.Application::class)
 class GeminiImageBackendTest {
 
     private fun backend(model: String = "", baseUrl: String = ""): GeminiImageBackend =

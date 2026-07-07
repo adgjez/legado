@@ -51,7 +51,7 @@ class ImageBackendLiveTest {
      * 参考图的 data URI 列表编码已在 [AgnesImageBackendTest] 单测覆盖。
      */
     @Test
-    fun agnesTextToImageDoesNotReportIncorrectPadding() = runBlocking {
+    fun agnesTextToImageDoesNotReportIncorrectPadding() = runBlocking<Unit> {
         val key = env("AGNES_API_KEY")
         assumeTrue("AGNES_API_KEY 未设置，跳过 agnes live 验证", key != null)
 
@@ -126,7 +126,7 @@ class ImageBackendLiveTest {
      * 验证 Seedream 端点（REST 等价 SDK）的 size 解析与同步响应解析跑通。
      */
     @Test
-    fun arkTextToImageDoesNotReportIncorrectPadding() = runBlocking {
+    fun arkTextToImageDoesNotReportIncorrectPadding() = runBlocking<Unit> {
         val key = env("ARK_API_KEY")
         assumeTrue("ARK_API_KEY 未设置，跳过 ark live 验证", key != null)
 
