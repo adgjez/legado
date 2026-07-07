@@ -133,7 +133,7 @@ class AgnesImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
      *
      * - null/空 → 1440（2K 档默认）
      * - 档位词（512px/1K/2K/4K，大小写不敏感）→ 查表
-     * - 自定义 "宽x高"（x/X/×/* 分隔）→ min(宽,高)，剥离自带比例
+     * - 自定义 "宽x高"（分隔符 x、X、×、星号）→ min(宽,高)，剥离自带比例
      * - 纯数字 → 直接当短边
      * - 无法解析 → 1440
      */
