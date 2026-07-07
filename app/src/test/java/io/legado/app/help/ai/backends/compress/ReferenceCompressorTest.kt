@@ -226,9 +226,12 @@ class ReferenceCompressorTest {
             tempName = compressed[0].path.nameWithoutExtension
             "ok"
         }
-        // 临时文件沿用源 stem：character_01_step{N}
-        assertTrue("临时文件应沿用源 stem，实际：$tempName",
-            tempName!!.startsWith("character_01_step"))
+        // 临时文件沿用源 stem + _step{N} 后缀
+        // （File.createTempFile 在 prefix 后加随机数，故源 stem 含随机数，只验前缀 + 后缀）
+        assertTrue("临时文件应沿用源 stem 前缀，实际：$tempName",
+            tempName!!.startsWith("character_01"))
+        assertTrue("临时文件应含 _step 后缀，实际：$tempName",
+            tempName!!.contains("_step"))
     }
 
     // ========== LADDER_STEPS 常量 ==========
