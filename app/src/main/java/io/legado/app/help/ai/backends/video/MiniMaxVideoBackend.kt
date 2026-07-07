@@ -226,7 +226,7 @@ class MiniMaxVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("minimax submit 响应非 JSON：$respBody") }
         baseRespError(root)?.let { error(it) }
-        val taskId = root.get("task_id")?.asString
+        val taskId = root.get("task_id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("minimax submit 响应缺 task_id：$respBody")
         return taskId
     }
@@ -248,8 +248,8 @@ class MiniMaxVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("minimax poll 响应非 JSON：$respBody") }
         baseRespError(root)?.let { error(it) }
-        val status = root.get("status")?.asString ?: "unknown"
-        val fileId = root.get("file_id")?.asString
+        val status = root.get("status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+        val fileId = root.get("file_id")?.takeIf { !it.isJsonNull }?.asString
         return MiniMaxPollResult(status, fileId, respBody)
     }
 
@@ -269,7 +269,7 @@ class MiniMaxVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend
             val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
                 .getOrElse { error("minimax retrieve 响应非 JSON：$respBody") }
             baseRespError(root)?.let { error(it) }
-            root.getAsJsonObject("file")?.get("download_url")?.asString
+            root.getAsJsonObject("file")?.get("download_url")?.takeIf { !it.isJsonNull }?.asString
                 ?: error("minimax retrieve 响应缺 file.download_url：$respBody")
         }
     }
@@ -279,7 +279,7 @@ class MiniMaxVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend
         val base = root.getAsJsonObject("base_resp") ?: return null
         val code = base.get("status_code")?.let { runCatching { it.asInt }.getOrNull() } ?: return null
         if (code != 0) {
-            val msg = base.get("status_msg")?.asString ?: ""
+            val msg = base.get("status_msg")?.takeIf { !it.isJsonNull }?.asString ?: ""
             return "MiniMax base_resp status_code=$code: $msg".trim()
         }
         return null

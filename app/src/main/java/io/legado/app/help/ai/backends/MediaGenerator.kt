@@ -65,18 +65,17 @@ object MediaGenerator {
     }
 
     /**
-     * 判定是否 413 Payload Too Large。
+     * 判定是否 413 Payload Too Large（移植 ArcReel `media_generator.is413`）。
      *
-     * - 异常 message 含 "413"
-     * - 或 message 含 "payload too large"（不区分大小写）
-     * - 或异常有 `statusCode`/`status_code`/`code` 字段 == 413（用反射兜底）
+     * - 异常 message 含 "HTTP 413"（服务层错误消息约定，精确匹配 "HTTP 413" 而非裸 "413"——
+     *   避免 "41300 bytes" / "request id 4134134" 误命中，对齐 ArcReel 刻意不用裸 "413" 子串的纪律）
+     * - 或 message 含 "payload too large" / "request entity too large"（不区分大小写）
      */
     private fun is413(e: Throwable): Boolean {
         val msg = e.message.orEmpty().lowercase()
-        if (msg.contains("413")) return true
+        if (msg.contains("http 413")) return true
         if (msg.contains("payload too large")) return true
-        // ArcReel 原 is413 检查 status_code/response.status_code/code 字段
-        // Kotlin 异常通常无这些字段，靠 message 约定（服务层错误消息含 "HTTP 413"）
+        if (msg.contains("request entity too large")) return true
         return false
     }
 

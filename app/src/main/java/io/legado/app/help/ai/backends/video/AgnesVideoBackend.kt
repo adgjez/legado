@@ -4,7 +4,6 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.AmbiguousSubmitError
-import io.legado.app.help.ai.backends.compress.ImageCodec
 import io.legado.app.help.ai.backends.MediaGenerator
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
@@ -14,7 +13,9 @@ import io.legado.app.help.ai.backends.VideoCapabilities
 import io.legado.app.help.ai.backends.VideoGenerationRequest
 import io.legado.app.help.ai.backends.VideoGenerationResult
 import io.legado.app.help.ai.backends.VideoProgress
+import io.legado.app.help.ai.backends.compress.AspectSize
 import io.legado.app.help.ai.backends.compress.CompressedRef
+import io.legado.app.help.ai.backends.compress.ImageCodec
 import io.legado.app.help.ai.backends.compress.PayloadLimits
 import io.legado.app.help.ai.backends.compress.RefRole
 import io.legado.app.help.ai.backends.compress.ReferenceSpec
@@ -26,6 +27,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -52,9 +54,7 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     override val model: String = cfg.model.ifBlank { DEFAULT_MODEL }
     override val capabilities: Set<VideoCapability> = setOf(
         VideoCapability.TEXT_TO_VIDEO,
-        VideoCapability.IMAGE_TO_VIDEO,
-        VideoCapability.GENERATE_AUDIO,
-        VideoCapability.SEED_CONTROL
+        VideoCapability.IMAGE_TO_VIDEO
     )
     override val videoCapabilities: VideoCapabilities
         get() = videoCapabilitiesForModel(model)
@@ -109,55 +109,93 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             durationSeconds = request.durationSeconds,
             videoUri = videoUrl,
             taskId = taskId,
-            generateAudio = request.generateAudio
+            // Agnes 视频恒无声（ArcReel agnes.py:440 generate_audio=False）
+            generateAudio = false
         )
     }
 
     /**
-     * 构造 Agnes 请求体。
+     * 构造 Agnes 请求体（对齐 ArcReel agnes.py:_build_payload）。
      *
-     * - 首帧（startImage）→ `image` 字段（裸 base64 字符串）
-     * - 参考图（referenceImages）→ `extra_body.image` 数组（裸 base64 字符串列表）
-     * - 尾帧（endImage）→ 不支持（agnes 无尾帧能力，理论上 videoCapabilities.lastFrame=true 但
-     *   实际 API 不接受 image_tail；这里把 endImage 也塞 extra_body.image 尾部作为参考）
+     * Fail-loud 校验（照搬 ArcReel agnes.py:284-319）：
+     * - duration ∉ [1,18] → error（防静默截帧+错记计费）
+     * - 参考图 + 首/尾帧同时给 → error（agnes 不支持混合）
+     * - 尾帧无首帧 → error
+     * - 参考图 > 4 → error
+     *
+     * 参考图分发（对齐 ArcReel agnes.py:294-305）：
+     * - 首帧 + 尾帧 → `extra_body.image=[start_b64, end_b64]` + `extra_body.mode="keyframes"`（不写顶层 image）
+     * - 仅首帧 → 顶层 `image=<start_b64>`（字符串）
+     * - 仅参考图 → `extra_body.image=[b64,...]`（数组，无 mode）
+     *
+     * Agnes 视频无音频能力：**不**下发 with_audio / generate_audio 字段（ArcReel 明确纪律）。
      */
     internal fun buildSubmitBody(request: VideoGenerationRequest, compressed: List<CompressedRef>): String {
+        // Fail-loud 校验（对齐 ArcReel _reject_out_of_range_duration）
+        require(request.durationSeconds in 1..MAX_DURATION_SECONDS) {
+            "video_duration_not_supported: ${request.durationSeconds} 不在 [1, $MAX_DURATION_SECONDS]"
+        }
+
+        val firstFrame = compressed.firstOrNull { it.label == "first_frame" }
+        val lastFrame = compressed.firstOrNull { it.label == "last_frame" }
+        val refImages = compressed.filter { it.label != "first_frame" && it.label != "last_frame" }
+
+        // 参考图与首/尾帧互斥（agnes 不支持混合）
+        if (refImages.isNotEmpty() && (firstFrame != null || lastFrame != null)) {
+            error("video_reference_images_with_frames_unsupported: agnes 不支持参考图与首/尾帧同时使用")
+        }
+        // 尾帧需首帧（keyframes 模式要求两端）
+        if (lastFrame != null && firstFrame == null) {
+            error("video_end_image_requires_start_image: agnes 尾帧必须配首帧（keyframes 模式）")
+        }
+        // 参考图上限
+        require(refImages.size <= MAX_REFERENCE_IMAGES) {
+            "video_reference_images_exceeded: ${refImages.size} > $MAX_REFERENCE_IMAGES"
+        }
+
         val root = JsonObject()
         root.addProperty("model", model)
         root.addProperty("prompt", request.prompt)
 
-        // 尺寸：aspectRatio → width/height
-        val (w, h) = parseAspectRatio(request.aspectRatio)
+        // 尺寸：用 AspectSize（8 整除 + 1920 长边收口 + VIDEO_TIER 档位）
+        val shortEdge = AspectSize.resolutionToShortEdge(
+            request.resolution,
+            AspectSize.VIDEO_TIER_SHORT_EDGE,
+            DEFAULT_SHORT_EDGE
+        )
+        val (w, h) = AspectSize.aspectSize(
+            request.aspectRatio, shortEdge,
+            roundTo = ROUND_TO, maxLongEdge = MAX_LONG_EDGE
+        )
         root.addProperty("width", w)
         root.addProperty("height", h)
         root.addProperty("num_frames", computeNumFrames(request.durationSeconds))
-        root.addProperty("frame_rate", 24)
+        root.addProperty("frame_rate", FPS)
 
-        // 首帧 → image 字段（裸 base64）
-        val firstFrame = compressed.firstOrNull { it.label == "first_frame" }
-        if (firstFrame != null) {
+        // 参考图分发
+        if (firstFrame != null && lastFrame != null) {
+            // keyframes 模式：首+尾帧 → extra_body.image=[start, end] + mode=keyframes（不写顶层 image）
+            val extra = JsonObject()
+            val arr = JsonArray()
+            arr.add(ImageCodec.toBareBase64(firstFrame.path))
+            arr.add(ImageCodec.toBareBase64(lastFrame.path))
+            extra.add("image", arr)
+            extra.addProperty("mode", "keyframes")
+            root.add("extra_body", extra)
+        } else if (firstFrame != null) {
+            // 仅首帧 → 顶层 image 字符串
             root.addProperty("image", ImageCodec.toBareBase64(firstFrame.path))
+        } else if (refImages.isNotEmpty()) {
+            // 仅参考图 → extra_body.image 数组（无 mode）
+            val extra = JsonObject()
+            val arr = JsonArray()
+            refImages.forEach { arr.add(ImageCodec.toBareBase64(it.path)) }
+            extra.add("image", arr)
+            root.add("extra_body", extra)
         }
 
-        // 参考图 + 尾帧 → extra_body.image 数组（裸 base64 列表）
-        val refImages = compressed.filter { it.label != "first_frame" }
-        if (refImages.isNotEmpty()) {
-            val extraBody = JsonObject()
-            val imageArr = JsonArray()
-            refImages.forEach { ref ->
-                imageArr.add(ImageCodec.toBareBase64(ref.path))
-            }
-            extraBody.add("image", imageArr)
-            root.add("extra_body", extraBody)
-        }
-
-        // 可选参数
         request.seed?.let { root.addProperty("seed", it) }
-        if (request.generateAudio) {
-            // agnes 默认生成音频，extra_body 已有则合并
-            val extra = root.getAsJsonObject("extra_body") ?: JsonObject().also { root.add("extra_body", it) }
-            extra.addProperty("with_audio", true)
-        }
+        // Agnes 视频无音频能力，不下发 with_audio / generate_audio
 
         return root.toString()
     }
@@ -236,19 +274,17 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         return specs
     }
 
-    private fun parseAspectRatio(ratio: String): Pair<Int, Int> {
-        val parts = ratio.split(":")
-        if (parts.size != 2) return 1080 to 1920
-        val w = parts[0].toIntOrNull() ?: 9
-        val h = parts[1].toIntOrNull() ?: 16
-        // 归一化到 1080 长边
-        return when {
-            w >= h -> (1080 to (1080 * h / w))
-            else -> ((1080 * w / h) to 1080)
-        }
-    }
+    private fun buildClient(timeoutMs: Long): OkHttpClient = OkHttpClient.Builder()
+        .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+        .build()
 
-    private fun computeNumFrames(durationSeconds: Int): Int = (durationSeconds * 24).coerceIn(24, 240)
+    private fun computeNumFrames(durationSeconds: Int): Int {
+        // 对齐 ArcReel _duration_to_num_frames：秒 × fps(24) 后对齐到最近的 8n+1，上限 441
+        val target = max(1, durationSeconds) * FPS
+        val n = (target - 1).toFloat() / FRAME_STEP
+        val numFrames = FRAME_STEP * Math.round(n) + 1
+        return numFrames.coerceIn(1, MAX_NUM_FRAMES)
+    }
 
     private fun buildClient(timeoutMs: Long): OkHttpClient = OkHttpClient.Builder()
         .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
@@ -261,6 +297,18 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         private const val SUBMIT_PATH = "/videos"
         private const val POLL_PATH = "/videos/{taskId}"
         private val FAILED_STATUSES = setOf("failed", "cancelled", "canceled", "error")
+        // 对齐 ArcReel agnes.py：fps=24，num_frames 须形如 8n+1，上限 441（≈18.4s）
+        private const val FPS = 24
+        private const val FRAME_STEP = 8
+        private const val MAX_NUM_FRAMES = 441
+        // 对齐 ArcReel agnes.py:_reject_out_of_range_duration：duration 上限 18s
+        private const val MAX_DURATION_SECONDS = 18
+        // 尺寸（对齐 ArcReel _resolve_size：round_to=8, max_long_edge=1920, 默认短边 720p）
+        private const val ROUND_TO = 8
+        private const val MAX_LONG_EDGE = 1920
+        private const val DEFAULT_SHORT_EDGE = 720
+        // 参考图上限（对齐 ArcReel agnes.py:293-299）
+        private const val MAX_REFERENCE_IMAGES = 4
 
         /**
          * base 归一化为 `{host}/v1`（对齐 ArcReel `agnes_base_url`）：

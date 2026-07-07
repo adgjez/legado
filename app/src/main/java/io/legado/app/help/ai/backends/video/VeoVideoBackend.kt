@@ -24,6 +24,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.File
+import java.util.Base64 as JvmBase64
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 
@@ -136,11 +137,13 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val instance = JsonObject()
         instance.addProperty("prompt", request.prompt)
 
-        // 首帧 → image.bytesBase64Encoded（裸 base64）
+        // 首帧 → image.bytesBase64Encoded（裸 base64）+ mimeType（ArcReel _prepare_image_param 按扩展名判定，
+        // Veo generateVideos 要求 image part 带 mimeType，缺失会被 Google 拒收）
         val firstFrame = compressed.firstOrNull { it.label == "first_frame" }
         if (firstFrame != null) {
             val imageObj = JsonObject()
             imageObj.addProperty("bytesBase64Encoded", ImageCodec.toBareBase64(firstFrame.path))
+            imageObj.addProperty("mimeType", ImageCodec.mimeByExtension(firstFrame.path.extension))
             instance.add("image", imageObj)
         }
 
@@ -154,11 +157,12 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         request.resolution?.takeIf { it.isNotBlank() }?.let { params.addProperty("resolution", it) }
         request.seed?.let { params.addProperty("seed", it) }
 
-        // 尾帧 → lastFrame.bytesBase64Encoded
+        // 尾帧 → lastFrame.bytesBase64Encoded + mimeType（同首帧，ArcReel 统一设 mime_type）
         val lastFrame = compressed.firstOrNull { it.label == "last_frame" }
         if (lastFrame != null) {
             val lastObj = JsonObject()
             lastObj.addProperty("bytesBase64Encoded", ImageCodec.toBareBase64(lastFrame.path))
+            lastObj.addProperty("mimeType", ImageCodec.mimeByExtension(lastFrame.path.extension))
             params.add("lastFrame", lastObj)
         }
 
@@ -170,6 +174,7 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
                 val refObj = JsonObject()
                 val imageObj = JsonObject()
                 imageObj.addProperty("bytesBase64Encoded", ImageCodec.toBareBase64(ref.path))
+                imageObj.addProperty("mimeType", ImageCodec.mimeByExtension(ref.path.extension))
                 refObj.add("image", imageObj)
                 refObj.addProperty("referenceType", "ASSET")
                 refArr.add(refObj)
@@ -199,7 +204,7 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val respBody = resp.body?.string() ?: error("veo submit 响应体为空")
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("veo submit 响应非 JSON：$respBody") }
-        val name = root.get("name")?.asString
+        val name = root.get("name")?.takeIf { !it.isJsonNull }?.asString
             ?: error("veo submit 响应缺 name（operation name）：$respBody")
         return name
     }
@@ -254,18 +259,18 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     private fun parseOperation(respBody: String): VeoOperation {
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("veo poll 响应非 JSON：$respBody") }
-        val done = root.get("done")?.asBoolean ?: false
-        val name = root.get("name")?.asString ?: ""
+        val done = root.get("done")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
+        val name = root.get("name")?.takeIf { !it.isJsonNull }?.asString ?: ""
         val error = root.getAsJsonObject("error")?.let { errObj ->
-            errObj.get("message")?.asString
+            errObj.get("message")?.takeIf { !it.isJsonNull }?.asString
         }
         val response = root.getAsJsonObject("response")?.let { respObj ->
             val generatedVideos = respObj.getAsJsonArray("generatedVideos")?.map { v ->
                 val videoObj = v.asJsonObject.getAsJsonObject("video")
                 VeoGeneratedVideo(
-                    gcsUri = videoObj?.get("gcsUri")?.asString,
-                    videoBytes = videoObj?.get("videoBytes")?.asString,
-                    uri = videoObj?.get("uri")?.asString
+                    gcsUri = videoObj?.get("gcsUri")?.takeIf { !it.isJsonNull }?.asString,
+                    videoBytes = videoObj?.get("videoBytes")?.takeIf { !it.isJsonNull }?.asString,
+                    uri = videoObj?.get("uri")?.takeIf { !it.isJsonNull }?.asString
                 )
             }
             VeoOperationResponse(generatedVideos)
@@ -285,9 +290,7 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         when {
             !video.videoBytes.isNullOrBlank() -> {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val bytes = android.util.Base64.decode(
-                        video.videoBytes, android.util.Base64.NO_WRAP
-                    )
+                    val bytes = JvmBase64.getDecoder().decode(video.videoBytes)
                     request.outputPath.parentFile?.mkdirs()
                     request.outputPath.writeBytes(bytes)
                 }

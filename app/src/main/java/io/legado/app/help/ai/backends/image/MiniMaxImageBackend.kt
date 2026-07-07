@@ -1,6 +1,6 @@
 package io.legado.app.help.ai.backends.image
 
-import android.util.Base64
+import java.util.Base64 as JvmBase64
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -41,7 +41,7 @@ import kotlin.math.roundToInt
  * - 响应：
  *   1. 先查 `base_resp.status_code != 0` 抛错
  *   2. 优先 `$.data.image_urls[0]` 下载
- *   3. URL 缺失降级 `$.data.image_base64` 解码写盘（容忍 data URI 前缀）
+ *   3. URL 缺失降级 `$.data.image_base64[0]` 解码写盘（ArcReel 按数组取首项；容忍 data URI 前缀）
  *   4. 两者皆空抛错
  * - 鉴权：Bearer
  * - **无 usage token**
@@ -202,7 +202,7 @@ class MiniMaxImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend
         val base = root.getAsJsonObject("base_resp") ?: return null
         val code = base.get("status_code")?.let { runCatching { it.asInt }.getOrNull() } ?: return null
         if (code != 0) {
-            val msg = base.get("status_msg")?.asString ?: ""
+            val msg = base.get("status_msg")?.takeIf { !it.isJsonNull }?.asString ?: ""
             return "minimax base_resp status_code=$code: $msg".trim()
         }
         return null
@@ -213,7 +213,7 @@ class MiniMaxImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend
      *
      * 1. 先查 base_resp.status_code != 0 抛错
      * 2. 优先 `$.data.image_urls[0]` 下载；URL 缺失或下载失败降级 base64
-     * 3. URL 缺失降级 `$.data.image_base64` 解码写盘（容忍 data URI 前缀）
+     * 3. URL 缺失降级 `$.data.image_base64[0]` 解码写盘（ArcReel 按数组取首项；容忍 data URI 前缀）
      * 4. 两者皆空报错
      */
     private suspend fun persistImage(respBody: String, outputPath: File) {
@@ -222,13 +222,22 @@ class MiniMaxImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend
         baseRespError(root)?.let { error(it) }
 
         val data = root.getAsJsonObject("data")
-        val url = data?.getAsJsonArray("image_urls")?.firstOrNull()?.asString
+        val url = data?.getAsJsonArray("image_urls")?.firstOrNull()?.takeIf { !it.isJsonNull }?.asString
         if (!url.isNullOrBlank()) {
             runCatching { VideoBackendHttp.downloadVideo(url, outputPath) }
                 .onSuccess { return }
                 .onFailure { /* 降级到 image_base64 */ }
         }
-        val b64 = data?.get("image_base64")?.asString
+        // ArcReel extract_image_base64：data.image_base64 是数组，取首个非空项（与 image_urls 同款）；
+        // 兼容个别中转返回单字符串。JsonArray.asString 会抛错，故须按类型分流。
+        val b64 = data?.get("image_base64")?.takeIf { !it.isJsonNull }?.let { elem ->
+            when {
+                elem.isJsonArray -> elem.asJsonArray.firstOrNull()
+                    ?.takeIf { !it.isJsonNull }?.asString
+                elem.isJsonPrimitive -> elem.asString
+                else -> null
+            }
+        }
         if (!b64.isNullOrBlank()) {
             writeBase64Image(b64, outputPath)
             return
@@ -241,7 +250,7 @@ class MiniMaxImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend
         val payload = if (b64.startsWith("data:") && b64.contains(",")) {
             b64.substringAfter(",")
         } else b64
-        val bytes = Base64.decode(payload, Base64.NO_WRAP)
+        val bytes = JvmBase64.getDecoder().decode(payload)
         outputPath.parentFile?.mkdirs()
         outputPath.writeBytes(bytes)
     }

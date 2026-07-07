@@ -121,6 +121,6 @@ class ArkVideoBackendTest {
     fun typeIdAndModelDefaults() {
         val backend = newBackend("")
         assertEquals("ark", backend.typeId)
-        assertEquals("空 model 应用默认值", "doubao-seedance-2-0", backend.model)
+        assertEquals("空 model 应用默认值", "doubao-seedance-1-5-pro-251215", backend.model)
     }
 }

@@ -3,6 +3,7 @@ package io.legado.app.help.ai.backends.video
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.MediaGenerator
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
@@ -75,7 +76,7 @@ class SoraVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val client = buildClient(cfg.validPollTimeout())
         val final = pollUntilDone(client, jobId, request.durationSeconds, onProgress = {}) { status ->
             // resume 路径：expired 抛 ResumeExpiredError
-            if (status == "expired") throw ResumeExpiredError(jobId, typeId)
+            if (status == "expired") throw ResumeExpiredError("任务已过期（provider=$typeId, jobId=$jobId）")
         }
         downloadContent(client, final.id, request.outputPath)
         return VideoGenerationResult(
@@ -163,7 +164,7 @@ class SoraVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val respBody = resp.body?.string() ?: error("sora submit 响应体为空")
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("sora submit 响应非 JSON：$respBody") }
-        val id = root.get("id")?.asString
+        val id = root.get("id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("sora submit 响应缺 id：$respBody")
         return id
     }
@@ -212,9 +213,9 @@ class SoraVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         }
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("sora poll 响应非 JSON：$respBody") }
-        val status = root.get("status")?.asString ?: "unknown"
+        val status = root.get("status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
         val seconds = runCatching { root.get("seconds")?.asString?.toIntOrNull() }.getOrNull()
-        return SoraVideoStatus(root.get("id")?.asString ?: "", status, seconds, respBody)
+        return SoraVideoStatus(root.get("id")?.takeIf { !it.isJsonNull }?.asString ?: "", status, seconds, respBody)
     }
 
     /**
@@ -334,10 +335,3 @@ class SoraVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         }
     }
 }
-
-/** Sora resume 路径 expired 状态：任务已过期（jobId 不再可轮询）。 */
-class ResumeExpiredError(
-    val jobId: String,
-    val provider: String,
-    message: String = "任务已过期（provider=$provider, jobId=$jobId）"
-) : IllegalStateException(message)

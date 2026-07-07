@@ -237,7 +237,7 @@ class ViduVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val respBody = resp.body?.string() ?: error("vidu submit 响应体为空")
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("vidu submit 响应非 JSON：$respBody") }
-        val taskId = root.get("task_id")?.asString
+        val taskId = root.get("task_id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("vidu submit 响应缺 task_id：$respBody")
         return taskId
     }
@@ -254,8 +254,8 @@ class ViduVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         }
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("vidu poll 响应非 JSON：$respBody") }
-        val state = root.get("state")?.asString ?: "unknown"
-        val videoUrl = root.getAsJsonArray("creations")?.firstOrNull()?.asJsonObject?.get("url")?.asString
+        val state = root.get("state")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+        val videoUrl = root.getAsJsonArray("creations")?.firstOrNull()?.asJsonObject?.get("url")?.takeIf { !it.isJsonNull }?.asString
         return ViduPollResult(state, videoUrl, respBody)
     }
 

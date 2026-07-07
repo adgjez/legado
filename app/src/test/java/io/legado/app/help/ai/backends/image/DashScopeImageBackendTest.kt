@@ -22,7 +22,7 @@ import java.io.File
  * - 参考图上限截断（qwen 系 3 / wan 系 9）+ fail-loud（文件不可读抛错）
  * - resolveSize 三族尺寸计算（wan 总像素约束 + 4K 门控 / edit 长边收口 / fusion 总像素约束）
  * - normalizeBaseUrl 剥 `/compatible-mode/v1`、`/api/v1` 后补 `/api/v1`
- * - extractImageUrl 提取 url（优先）/ image_url（降级）/ 错误形态报错
+ * - extractImageUrl 提取 choices[0].message.content[*].image / 错误形态报错
  *
  * Robolectric 必需：I2I 测试调 buildPayload → ImageCodec.toDataUri → android.util.Base64。
  */
@@ -432,17 +432,17 @@ class DashScopeImageBackendTest {
     // ==================== extractImageUrl 响应解析 ====================
 
     @Test
-    fun extractImageUrlPicksUrlField() {
+    fun extractImageUrlPicksImageFromContent() {
         val backend = newBackend()
-        val resp = """{"output":{"results":[{"url":"https://cdn/img/x.png","image_url":"https://cdn/img/y.png"}]}}"""
-        assertEquals("应优先 url 字段", "https://cdn/img/x.png", backend.extractImageUrl(resp))
+        val resp = """{"output":{"choices":[{"message":{"content":[{"image":"https://cdn/img/x.png"}]}}]}}"""
+        assertEquals("应取 choices[0].message.content[0].image", "https://cdn/img/x.png", backend.extractImageUrl(resp))
     }
 
     @Test
-    fun extractImageUrlFallsBackToImageUrlField() {
+    fun extractImageUrlPicksFirstNonBlankImage() {
         val backend = newBackend()
-        val resp = """{"output":{"results":[{"image_url":"https://cdn/img/y.png"}]}}"""
-        assertEquals("url 缺失应降级 image_url", "https://cdn/img/y.png", backend.extractImageUrl(resp))
+        val resp = """{"output":{"choices":[{"message":{"content":[{"image":""},{"image":"https://cdn/img/y.png"}]}}]}}"""
+        assertEquals("应跳过空 image 取首个非空", "https://cdn/img/y.png", backend.extractImageUrl(resp))
     }
 
     @Test(expected = IllegalStateException::class)

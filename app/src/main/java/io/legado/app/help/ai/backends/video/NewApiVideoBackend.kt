@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.MediaGenerator
 import io.legado.app.help.ai.backends.VideoBackend
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
 import io.legado.app.help.ai.backends.VideoCapability
@@ -168,7 +169,7 @@ class NewApiVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend 
         val respBody = resp.body?.string() ?: error("newapi submit 响应体为空")
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("newapi submit 响应非 JSON：$respBody") }
-        val taskId = root.get("task_id")?.asString
+        val taskId = root.get("task_id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("newapi submit 响应缺 task_id：$respBody")
         return taskId
     }
@@ -199,7 +200,7 @@ class NewApiVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend 
 
         if (final.status == "expired") {
             // expired 分流：generate 抛 IllegalStateException；resume 抛 ResumeExpiredError
-            if (isResume) throw ResumeExpiredError(jobId = taskId, provider = typeId)
+            if (isResume) throw ResumeExpiredError("任务已过期（provider=$typeId, jobId=$taskId）")
             error("newapi 任务已过期：$taskId")
         }
 
@@ -231,11 +232,11 @@ class NewApiVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend 
         }
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("newapi poll 响应非 JSON：$respBody") }
-        val status = root.get("status")?.asString ?: "unknown"
+        val status = root.get("status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
         val url = runCatching { root.get("url")?.asString }.getOrNull()
         val metadata = root.getAsJsonObject("metadata")?.let {
             NewApiMetadata(
-                duration = it.get("duration")?.asString,
+                duration = it.get("duration")?.takeIf { !it.isJsonNull }?.asString,
                 seed = runCatching { it.get("seed")?.asLong }.getOrNull()
             )
         }

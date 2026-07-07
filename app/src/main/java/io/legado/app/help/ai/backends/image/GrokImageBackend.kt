@@ -1,6 +1,6 @@
 package io.legado.app.help.ai.backends.image
 
-import android.util.Base64
+import java.util.Base64 as JvmBase64
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -138,7 +138,7 @@ class GrokImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         val data = root.getAsJsonArray("data") ?: return null
         for (i in 0 until data.size()) {
             val item = data[i].asJsonObject
-            val value = item.get(key)?.asString
+            val value = item.get(key)?.takeIf { !it.isJsonNull }?.asString
             if (!value.isNullOrBlank()) return value
         }
         return null
@@ -149,7 +149,7 @@ class GrokImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         val payload = if (b64.startsWith("data:") && b64.contains(",")) {
             b64.substringAfter(",")
         } else b64
-        val bytes = Base64.decode(payload, Base64.NO_WRAP)
+        val bytes = JvmBase64.getDecoder().decode(payload)
         outputPath.parentFile?.mkdirs()
         outputPath.writeBytes(bytes)
     }

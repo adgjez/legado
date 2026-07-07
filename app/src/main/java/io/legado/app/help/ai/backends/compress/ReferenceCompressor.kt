@@ -129,7 +129,13 @@ object ReferenceCompressor {
     /**
      * 压缩 specs → 临时文件 → 调 [block] → finally 清理临时文件。
      *
-     * - 临时文件沿用源 stem（Gemini 按文件名推断参考图名）：`<源stem>_step<step>.jpg`
+     * 透传纪律（照搬 ArcReel `reference_compression.py:261-271`）：
+     * - **透传项用原路径、不写临时副本**——用对象 identity 判定（`compressSingleAtStep` 返回的
+     *   `ByteArray` 与传入 `raw` 是否同一引用），避免 PNG 字节落进 `.jpg` 后缀造成 MIME 错配，
+     *   也最大保真（FRAME 像素匹配）
+     * - **临时文件写到系统 temp 目录**（`createTempFile`），与源资产目录隔离，源目录只读时不失败
+     * - 临时文件名仅用源 stem（Gemini 按文件名推断参考图名），**不加 `_stepN` 后缀**——
+     *   多图重名靠子目录隔离（`refcomp-<random>/<idx>/<stem>.jpg`）
      * - 不可解码/非本地源（[ReferenceSpec.source] 不存在或读失败）→ 原路径透传，不 raise
      * - 透传项不计字节预算，但按原序位合并回完整列表保 1:1
      *
@@ -171,17 +177,26 @@ object ReferenceCompressor {
                     compressibleRaws, compressibleRoles, limits, startStep
                 )
                 landedStep = step
-                // 写临时文件（沿用源 stem）
-                val compressedBySpec = compressibleSpecs.zip(compressedBytes).map { (spec, bytes) ->
-                    val tempFile = File(
-                        spec.source.parentFile,
-                        "${spec.source.nameWithoutExtension}_step${step}.jpg"
-                    )
-                    tempFile.writeBytes(bytes)
-                    tempFiles.add(tempFile)
-                    CompressedRef(tempFile, spec.label, spec.role)
+                // 写临时文件：identity 判定透传项用原路径，非透传写系统 temp 目录
+                // temp root 隔离多图重名（对齐 ArcReel tempfile.mkdtemp）
+                val tempRoot = File(System.getProperty("java.io.tmpdir"), "refcomp-${System.nanoTime()}")
+                tempRoot.mkdirs()
+                tempFiles.add(tempRoot) // finally 清理整个 temp root
+                val compressedBySpec = compressibleSpecs.zip(compressedBytes).mapIndexed { idx, (spec, bytes) ->
+                    val sameRef = bytes === compressibleRaws[idx] // identity：compressSingleAtStep 返回原 raw
+                    if (sameRef) {
+                        // 透传：用原路径，不写临时文件（避免 MIME 错配）
+                        CompressedRef(spec.source, spec.label, spec.role)
+                    } else {
+                        // 压缩产物：写 temp 目录，文件名仅源 stem（不加 _stepN，Gemini stem 推断）
+                        val idxDir = File(tempRoot, idx.toString()).apply { mkdirs() }
+                        val tempFile = File(idxDir, "${spec.source.nameWithoutExtension}.jpg")
+                        tempFile.writeBytes(bytes)
+                        tempFiles.add(tempFile)
+                        CompressedRef(tempFile, spec.label, spec.role)
+                    }
                 }
-                // 合并回原序位：透传项用原路径，压缩项用临时文件
+                // 合并回原序位：透传项（含读失败 + identity 透传）用原路径，压缩项用临时文件
                 val compressedIter = compressedBySpec.iterator()
                 compressedRefs = specs.mapIndexed { i, spec ->
                     if (i in passthroughIndices) {
@@ -194,8 +209,9 @@ object ReferenceCompressor {
             block(landedStep, compressedRefs)
         } finally {
             tempFiles.forEach { f ->
-                runCatching { if (f.exists()) f.delete() }
-                    .onFailure { AppLog.put("ReferenceCompressor 删临时文件失败：${f} - ${it.message}") }
+                runCatching {
+                    if (f.isDirectory) f.deleteRecursively() else if (f.exists()) f.delete()
+                }.onFailure { AppLog.put("ReferenceCompressor 删临时文件失败：${f} - ${it.message}") }
             }
         }
     }

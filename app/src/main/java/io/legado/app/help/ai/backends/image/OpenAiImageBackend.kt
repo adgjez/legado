@@ -1,6 +1,6 @@
 package io.legado.app.help.ai.backends.image
 
-import android.util.Base64
+import java.util.Base64 as JvmBase64
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.ImageBackend
@@ -101,6 +101,17 @@ class OpenAiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
         val params = resolveOpenAiParams(request.imageSize, request.aspectRatio)
         val refs = request.referenceImages.take(MAX_REFERENCE_IMAGES)
 
+        // ArcReel _open_refs：单张 FileNotFoundError warn 跳过；但全部不可读则 fail-loud
+        // （ImageCapabilityError image_endpoint_mismatch_no_i2i: all reference images failed to open），
+        // 不静默退化为 T2I 继续提交（用户提交 i2i 却无有效素材应是错误而非默默 fallback）
+        val openedRefs = refs.mapIndexedNotNull { i, ref ->
+            val file = File(ref.path)
+            if (file.exists()) i to file else null
+        }
+        if (openedRefs.isEmpty()) {
+            error("openai image i2i 所有参考图均不可读（model=$model），不应静默退化为 t2i")
+        }
+
         val multipart = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("model", model)
             .addFormDataPart("prompt", request.prompt)
@@ -108,9 +119,7 @@ class OpenAiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
             .addFormDataPart("size", params["size"]!!)
             .apply { params["quality"]?.let { addFormDataPart("quality", it) } }
             .apply {
-                refs.forEachIndexed { i, ref ->
-                    val file = File(ref.path)
-                    if (!file.exists()) return@forEachIndexed  // 跳过不存在的参考图（ArcReel 行为）
+                openedRefs.forEach { (i, file) ->
                     val bytes = file.readBytes()
                     addFormDataPart(
                         name = "image[]",
@@ -214,12 +223,12 @@ class OpenAiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
         }
         val item = data[0].asJsonObject
         // b64_json 优先；b64_json 缺失降级 url（与 Agnes 的 url 优先相反——gpt-image 默认返 b64_json）
-        val b64 = item.get("b64_json")?.asString
+        val b64 = item.get("b64_json")?.takeIf { !it.isJsonNull }?.asString
         if (!b64.isNullOrBlank()) {
             writeBase64Image(b64, outputPath)
             return
         }
-        val url = item.get("url")?.asString
+        val url = item.get("url")?.takeIf { !it.isJsonNull }?.asString
         if (!url.isNullOrBlank()) {
             VideoBackendHttp.downloadVideo(url, outputPath)
             return
@@ -240,7 +249,7 @@ class OpenAiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
         val payload = if (b64.startsWith("data:") && b64.contains(",")) {
             b64.substringAfter(",")
         } else b64
-        val bytes = Base64.decode(payload, Base64.NO_WRAP)
+        val bytes = JvmBase64.getDecoder().decode(payload)
         outputPath.parentFile?.mkdirs()
         outputPath.writeBytes(bytes)
     }

@@ -1,6 +1,6 @@
 package io.legado.app.help.ai.backends.image
 
-import android.util.Base64
+import java.util.Base64 as JvmBase64
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -134,12 +134,12 @@ class ArkImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
             error("ark image 响应 data 为空（model=$model），可能触发内容安全过滤或上游服务异常")
         }
         val item = data[0].asJsonObject
-        val b64 = item.get("b64_json")?.asString
+        val b64 = item.get("b64_json")?.takeIf { !it.isJsonNull }?.asString
         if (!b64.isNullOrBlank()) {
             writeBase64Image(b64, outputPath)
             return
         }
-        val url = item.get("url")?.asString
+        val url = item.get("url")?.takeIf { !it.isJsonNull }?.asString
         if (!url.isNullOrBlank()) {
             VideoBackendHttp.downloadVideo(url, outputPath)
             return
@@ -158,7 +158,7 @@ class ArkImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         val payload = if (b64.startsWith("data:") && b64.contains(",")) {
             b64.substringAfter(",")
         } else b64
-        val bytes = Base64.decode(payload, Base64.NO_WRAP)
+        val bytes = JvmBase64.getDecoder().decode(payload)
         outputPath.parentFile?.mkdirs()
         outputPath.writeBytes(bytes)
     }

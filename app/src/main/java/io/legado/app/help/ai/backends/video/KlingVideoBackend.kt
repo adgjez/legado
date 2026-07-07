@@ -215,7 +215,7 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             .getOrElse { error("kling submit 响应非 JSON：$respBody") }
         // 顶层 code 硬错误（鉴权失败/参数非法）优先暴露
         responseError(root)?.let { error(it) }
-        val taskId = root.getAsJsonObject("data")?.get("task_id")?.asString
+        val taskId = root.getAsJsonObject("data")?.get("task_id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("kling submit 响应缺 data.task_id：$respBody")
         return taskId
     }
@@ -258,9 +258,9 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("kling poll 响应非 JSON：$respBody") }
         responseError(root)?.let { error(it) }
-        val status = root.getAsJsonObject("data")?.get("task_status")?.asString ?: "unknown"
+        val status = root.getAsJsonObject("data")?.get("task_status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
         val videoUrl = root.getAsJsonObject("data")?.getAsJsonObject("task_result")
-            ?.getAsJsonArray("videos")?.firstOrNull()?.asJsonObject?.get("url")?.asString
+            ?.getAsJsonArray("videos")?.firstOrNull()?.asJsonObject?.get("url")?.takeIf { !it.isJsonNull }?.asString
         return KlingPollResult(status, videoUrl, respBody)
     }
 

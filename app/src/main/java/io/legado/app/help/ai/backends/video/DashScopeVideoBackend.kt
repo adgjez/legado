@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.MediaGenerator
 import io.legado.app.help.ai.backends.VideoBackend
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
 import io.legado.app.help.ai.backends.VideoCapability
@@ -122,7 +123,7 @@ class DashScopeVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBacke
 
         // UNKNOWN = task_id 24h 过期；generate 抛 IllegalStateException，resume 抛 ResumeExpiredError
         if (final.status == STATUS_UNKNOWN) {
-            if (isResume) throw ResumeExpiredError(jobId = taskId, provider = typeId)
+            if (isResume) throw ResumeExpiredError("任务已过期（provider=$typeId, jobId=$taskId）")
             error("DashScope task 已过期（UNKNOWN）：$taskId")
         }
         final.failureReason?.let { error(it) }
@@ -166,7 +167,7 @@ class DashScopeVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBacke
             addProperty("duration", request.durationSeconds)
             addProperty("watermark", false)
         }
-        val hasFirstFrame = (0 until media.size()).any { media[it].asJsonObject.get("type")?.asString == "first_frame" }
+        val hasFirstFrame = (0 until media.size()).any { media[it].asJsonObject.get("type")?.takeIf { !it.isJsonNull }?.asString == "first_frame" }
         if (request.aspectRatio.isNotBlank() && !hasFirstFrame) {
             parameters.addProperty("ratio", request.aspectRatio)
         }
@@ -238,7 +239,7 @@ class DashScopeVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBacke
             .getOrElse { error("dashscope submit 响应非 JSON：$respBody") }
         // 提交阶段顶层错误（如 InvalidApiKey）：{code, message, request_id} 无 output
         responseError(root)?.let { error(it) }
-        val taskId = root.getAsJsonObject("output")?.get("task_id")?.asString
+        val taskId = root.getAsJsonObject("output")?.get("task_id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("dashscope submit 响应缺 output.task_id：$respBody")
         return taskId
     }
@@ -257,8 +258,8 @@ class DashScopeVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBacke
             .getOrElse { error("dashscope poll 响应非 JSON：$respBody") }
         responseError(root)?.let { error(it) }
         val output = root.getAsJsonObject("output")
-        val status = output?.get("task_status")?.asString ?: "unknown"
-        val videoUrl = output?.get("video_url")?.asString
+        val status = output?.get("task_status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+        val videoUrl = output?.get("video_url")?.takeIf { !it.isJsonNull }?.asString
         val billingDuration = root.getAsJsonObject("usage")?.get("duration")?.let { dur ->
             runCatching { dur.asString.trim().toInt() }.getOrNull()
                 ?: runCatching { dur.asInt }.getOrNull()
@@ -269,14 +270,14 @@ class DashScopeVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBacke
     /** 顶层 code 非空即错误（提交阶段鉴权/参数非法）；output.code（FAILED/CANCELED）也暴露。 */
     private fun responseError(root: JsonObject): String? {
         val output = root.getAsJsonObject("output")
-        val outStatus = output?.get("task_status")?.asString
+        val outStatus = output?.get("task_status")?.takeIf { !it.isJsonNull }?.asString
         if (outStatus in FAILURE_STATUSES) {
-            val code = output.get("code")?.asString ?: "unknown"
-            val msg = output.get("message")?.asString ?: ""
+            val code = output.get("code")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+            val msg = output.get("message")?.takeIf { !it.isJsonNull }?.asString ?: ""
             return "DashScope 任务失败 status=$outStatus code=$code: $msg".trim()
         }
         if (outStatus == null && root.get("code") != null) {
-            val msg = root.get("message")?.asString ?: ""
+            val msg = root.get("message")?.takeIf { !it.isJsonNull }?.asString ?: ""
             return "DashScope 提交失败 code=${root.get("code")}: $msg".trim()
         }
         return null

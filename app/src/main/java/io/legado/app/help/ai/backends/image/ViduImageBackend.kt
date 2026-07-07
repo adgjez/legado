@@ -168,7 +168,7 @@ class ViduImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         val respBody = resp.body?.string() ?: error("vidu image submit 响应体为空")
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("vidu image submit 响应非 JSON：$respBody") }
-        val taskId = root.get("task_id")?.asString
+        val taskId = root.get("task_id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("vidu image submit 响应缺 task_id：$respBody")
         val credits = extractCredits(root)
         return taskId to credits
@@ -205,8 +205,8 @@ class ViduImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         }
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("vidu image poll 响应非 JSON：$respBody") }
-        val state = root.get("state")?.asString ?: "unknown"
-        val imageUrl = root.getAsJsonArray("creations")?.firstOrNull()?.asJsonObject?.get("url")?.asString
+        val state = root.get("state")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+        val imageUrl = root.getAsJsonArray("creations")?.firstOrNull()?.asJsonObject?.get("url")?.takeIf { !it.isJsonNull }?.asString
         val credits = extractCredits(root)
         return ViduPollResult(state, imageUrl, credits, respBody)
     }

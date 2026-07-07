@@ -1,6 +1,6 @@
 package io.legado.app.help.ai.backends.image
 
-import android.util.Base64
+import java.util.Base64 as JvmBase64
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -93,7 +93,7 @@ class GeminiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
      * - prompt：最后加 `{text: prompt}` part
      * - generationConfig：`responseModalities=["IMAGE"]` + `imageConfig={aspectRatio, image_size?}`
      *
-     * 跳过不存在的参考图文件（ArcReel 行为：`_open_refs` 里 FileNotFoundError 仅 warn 跳过）。
+     * 参考图文件缺失/不可读 fail-loud（ArcReel `_load_image_detached` → `Image.open` 缺文件直接抛 FileNotFoundError，不静默跳过）。
      */
     internal fun buildPayload(request: ImageGenerationRequest): String {
         val parts = JsonArray()
@@ -105,14 +105,16 @@ class GeminiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
                 parts.add(textPart)
             }
             val file = File(ref.path)
-            if (file.exists()) {
-                val inlinePart = JsonObject()
-                val inlineData = JsonObject()
-                inlineData.addProperty("mime_type", ImageCodec.mimeByExtension(file.extension))
-                inlineData.addProperty("data", ImageCodec.toBareBase64(file))
-                inlinePart.add("inline_data", inlineData)
-                parts.add(inlinePart)
+            // ArcReel fail-loud：_load_image_detached → Image.open 缺文件直接抛 FileNotFoundError，不静默跳过
+            if (!file.exists()) {
+                error("gemini image 参考图文件不可读: ${ref.path}")
             }
+            val inlinePart = JsonObject()
+            val inlineData = JsonObject()
+            inlineData.addProperty("mime_type", ImageCodec.mimeByExtension(file.extension))
+            inlineData.addProperty("data", ImageCodec.toBareBase64(file))
+            inlinePart.add("inline_data", inlineData)
+            parts.add(inlinePart)
         }
         // prompt 放最后
         val promptPart = JsonObject()
@@ -190,7 +192,7 @@ class GeminiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
             val inlineData = part.asJsonObject.getAsJsonObject("inline_data")
                 ?: part.asJsonObject.getAsJsonObject("inlineData")  // 兼容 camelCase
             if (inlineData != null) {
-                val b64 = inlineData.get("data")?.asString
+                val b64 = inlineData.get("data")?.takeIf { !it.isJsonNull }?.asString
                 if (!b64.isNullOrBlank()) {
                     writeBase64Image(b64, outputPath)
                     return
@@ -205,7 +207,7 @@ class GeminiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
         val payload = if (b64.startsWith("data:") && b64.contains(",")) {
             b64.substringAfter(",")
         } else b64
-        val bytes = Base64.decode(payload, Base64.NO_WRAP)
+        val bytes = JvmBase64.getDecoder().decode(payload)
         outputPath.parentFile?.mkdirs()
         outputPath.writeBytes(bytes)
     }

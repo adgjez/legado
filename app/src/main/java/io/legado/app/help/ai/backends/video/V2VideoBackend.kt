@@ -209,7 +209,7 @@ class V2VideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         if (normalizeStatus(firstStrByPaths(state, STATUS_PATHS)) != "failed") return null
         val err = dig(state, "error")
         val msg = when {
-            err is JsonObject -> err.get("message")?.asString ?: err.get("name")?.asString ?: "unknown"
+            err is JsonObject -> err.get("message")?.takeIf { !it.isJsonNull }?.asString ?: err.get("name")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
             err?.isJsonPrimitive == true && err.asString.isNotBlank() -> err.asString
             else -> "unknown"
         }

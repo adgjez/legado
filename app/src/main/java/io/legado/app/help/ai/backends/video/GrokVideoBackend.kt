@@ -178,7 +178,7 @@ class GrokVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val respBody = resp.body?.string() ?: error("grok submit 响应体为空")
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("grok submit 响应非 JSON：$respBody") }
-        val id = root.get("id")?.asString
+        val id = root.get("id")?.takeIf { !it.isJsonNull }?.asString
             ?: error("grok submit 响应缺 id：$respBody")
         return id
     }
@@ -195,8 +195,8 @@ class GrokVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         }
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("grok poll 响应非 JSON：$respBody") }
-        val status = root.get("status")?.asString ?: "unknown"
-        val url = root.get("url")?.asString
+        val status = root.get("status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+        val url = root.get("url")?.takeIf { !it.isJsonNull }?.asString
         return GrokPollResult(status, url, respBody)
     }
 

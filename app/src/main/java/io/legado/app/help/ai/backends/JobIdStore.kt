@@ -55,11 +55,11 @@ object JobIdStore {
             root.entrySet().forEach { (k, v) ->
                 val obj = v.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
                 map[k] = Entry(
-                    obj.get("providerId")?.asString.orEmpty(),
-                    obj.get("taskId")?.asString.orEmpty(),
-                    obj.get("model")?.asString.orEmpty(),
-                    obj.get("promptDigest")?.asString.orEmpty(),
-                    obj.get("savedAt")?.asLong ?: 0L
+                    obj.get("providerId")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                    obj.get("taskId")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                    obj.get("model")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                    obj.get("promptDigest")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                    obj.get("savedAt")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
                 )
             }
         }.onFailure { AppLog.put("JobIdStore 加载失败：${it.message}") }

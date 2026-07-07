@@ -3,6 +3,7 @@ package io.legado.app.help.ai.backends.image
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import io.legado.app.constant.AppLog
 import io.legado.app.help.ai.backends.ImageBackend
 import io.legado.app.help.ai.backends.ImageBackendRegistry
 import io.legado.app.help.ai.backends.ImageCapability
@@ -35,7 +36,7 @@ import kotlin.math.sqrt
  *   - **content**：I2I 时先放若干 `{image: <dataURI>}`，最后放 `{text: prompt}`；T2I 时仅 `{text: prompt}`
  *   - **size 分隔符是星号 `*`**（如 `"1152*2048"`，非 `x`）
  * - **参考图编码：data URI**（[ImageCodec.toDataUri]）——qwen 系上限 3 张、wan 系上限 9 张（按 model 前缀 `wan` 判定），超限截断；任一不可读即 fail-loud
- * - 响应：`$.output.results[0].url` 优先（降级 `image_url`）→ [VideoBackendHttp.downloadVideo] 落盘；无 url 且 `$.code` 非空即报错（`{code, message, request_id}` 错误形态）；无 usage token
+ * - 响应：遍历 `$.output.choices[0].message.content[*].image` 取首个 URL → [VideoBackendHttp.downloadVideo] 落盘；无 image 时查 [dashscopeFailureReason]（`output.task_status` 失败态 + 顶层 `code`/`message` 兜底）报错；无 usage token
  * - 能力：edit 系（model 含 `qwen-image-edit`）仅 I2I；其余（qwen-image-2.0 / wan 系）{T2I, I2I}
  * - 尺寸：按 model 族三分支（wan 总像素约束 + 4K 门控 / edit 长边收口 / fusion 总像素约束），全部 round_to=16
  *
@@ -188,12 +189,15 @@ class DashScopeImageBackend(private val cfg: AiImageProviderConfig) : ImageBacke
         return aspectSizePixelCapped(aw, ah, shortEdge, maxTotal, MAX_RATIO_WAN)
     }
 
-    /** edit 系尺寸：max_long_edge=2048 收口，max_ratio=4.0。 */
+    /** edit 系尺寸：max_long_edge=2048 收口，max_ratio=4.0（超限仅 warn 不抛，对齐 ArcReel 留 API 判定）。 */
     private fun aspectSizeEdit(aw: Int, ah: Int, shortEdge: Int): Pair<Int, Int> {
         val shortComp = minOf(aw, ah)
         val longComp = maxOf(aw, ah)
         val ratio = longComp.toDouble() / shortComp
-        if (ratio > MAX_RATIO_EDIT) error("dashscope 宽高比 ${aw}:${ah} 超过最大 $MAX_RATIO_EDIT")
+        // 对齐 ArcReel：超 max_ratio 仅 warn 不抛，留 API 判定（容忍 1e-9 浮点误差）
+        if (ratio > MAX_RATIO_EDIT + 1e-9) {
+            AppLog.put("dashscope 宽高比 ${aw}:${ah}（比例 $ratio）超出后端支持上限 $MAX_RATIO_EDIT，可能被 API 拒绝或裁剪")
+        }
         return aspectSizeLongEdgeCapped(aw, ah, shortEdge, MAX_LONG_EDGE_EDIT)
     }
 
@@ -203,7 +207,7 @@ class DashScopeImageBackend(private val cfg: AiImageProviderConfig) : ImageBacke
 
     /**
      * 总像素约束版 aspect_size（wan/fusion）：比例优先、清晰度决定短边，round_to=16，
-     * 再约束 W*H <= maxTotalPixels（超则减小 t），max_ratio 超即 fail-loud。
+     * 再约束 W*H <= maxTotalPixels（超则减小 t），max_ratio 超仅 warn 不抛（对齐 ArcReel，留 API 判定）。
      */
     private fun aspectSizePixelCapped(
         aw: Int, ah: Int, shortEdge: Int, maxTotalPixels: Long, maxRatio: Double
@@ -211,7 +215,10 @@ class DashScopeImageBackend(private val cfg: AiImageProviderConfig) : ImageBacke
         val shortComp = minOf(aw, ah)
         val longComp = maxOf(aw, ah)
         val ratio = longComp.toDouble() / shortComp
-        if (ratio > maxRatio) error("dashscope 宽高比 ${aw}:${ah} 超过最大 $maxRatio")
+        // 对齐 ArcReel：超 max_ratio 仅 warn 不抛，留 API 判定（容忍 1e-9 浮点误差）
+        if (ratio > maxRatio + 1e-9) {
+            AppLog.put("dashscope 宽高比 ${aw}:${ah}（比例 $ratio）超出后端支持上限 $maxRatio，可能被 API 拒绝或裁剪")
+        }
         val shortUnit = ROUND_TO * shortComp
         var t = maxOf(1, (shortEdge.toDouble() / shortUnit).roundToInt())
         // W*H = aw*ah*ROUND_TO^2*t^2 <= maxTotalPixels → t <= sqrt(maxTotalPixels/(aw*ah*ROUND_TO^2))
@@ -296,29 +303,61 @@ class DashScopeImageBackend(private val cfg: AiImageProviderConfig) : ImageBacke
     }
 
     /**
-     * 从 multimodal-generation 响应提取生成图 URL。
+     * 从 multimodal-generation 响应提取生成图 URL（移植 ArcReel `extract_image_url`）。
      *
-     * - `$.output.results[0].url` 优先，降级 `$.output.results[0].image_url`
-     * - results 为空/无 url 且 `$.code` 非空 → 报错（`{code, message, request_id}` 错误形态）
-     * - 否则报「缺少 results[0].url」
+     * - 遍历 `$.output.choices[0].message.content` 取首个 `image` 字段（multimodal-generation
+     *   端点不返 `results`，旧实现读 `output.results[0].url` 永远取不到 URL）
+     * - 无 choices / content 无 image → 查 [dashscopeFailureReason]（`output.task_status`
+     *   失败态 + 顶层 `code`/`message` 兜底）；仍取不到则报「content 无 image 字段」
+     *
+     * JsonNull 守卫：所有 `.asString` 前置 `?.takeIf { !it.isJsonNull }`，避免 JsonNull 被当作 "null" 字符串误判为有效 URL。
      */
     internal fun extractImageUrl(respBody: String): String {
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("dashscope image 响应非 JSON：$respBody") }
+        // 上游异常结构（choices[0]/message 非 object）以 takeIf 守卫归一化为 null，避免 asJsonObject 抛 IllegalStateException
+        val choices = root.getAsJsonObject("output")?.getAsJsonArray("choices")
+        if (choices != null && choices.size() > 0) {
+            val message = choices[0].takeIf { it.isJsonObject }?.asJsonObject?.getAsJsonObject("message")
+            val content = message?.getAsJsonArray("content")
+            if (content != null) {
+                content.forEach { item ->
+                    if (!item.isJsonObject) return@forEach
+                    val url = item.asJsonObject.get("image")?.takeIf { !it.isJsonNull }?.asString
+                    if (!url.isNullOrBlank()) return url
+                }
+            }
+        }
+        val reason = dashscopeFailureReason(root)
+        error(reason ?: "dashscope image 响应缺少 choices[0].message.content[*].image：$respBody")
+    }
+
+    /**
+     * 失败原因提取（移植 ArcReel `dashscope_failure_reason`）。
+     *
+     * - `output.task_status` 为 FAILED/CANCELED → 返回 `DashScope 任务失败 status=... code=...: message`
+     * - 无 task_status 且顶层 `code` 非空 → 返回 `DashScope 提交失败 code=...: message`（如 InvalidApiKey）
+     * - 否则返回 null
+     *
+     * JsonNull 守卫：所有 `.asString` 前置 `?.takeIf { !it.isJsonNull }`。
+     */
+    private fun dashscopeFailureReason(root: JsonObject): String? {
         val output = root.getAsJsonObject("output")
-        val results = output?.getAsJsonArray("results")
-        if (results != null && results.size() > 0) {
-            val item = results[0].asJsonObject
-            val url = item.get("url")?.asString
-            if (!url.isNullOrBlank()) return url
-            val imageUrl = item.get("image_url")?.asString
-            if (!imageUrl.isNullOrBlank()) return imageUrl
+        val status = output?.get("task_status")?.takeIf { !it.isJsonNull }?.asString
+        if (status in FAILURE_STATES) {
+            val code = output?.get("code")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+            val message = output?.get("message")?.takeIf { !it.isJsonNull }?.asString ?: ""
+            return "DashScope 任务失败 status=$status code=$code: $message".trim()
         }
-        if (root.get("code") != null) {
-            val msg = root.get("message")?.asString ?: ""
-            error("dashscope image 生成失败 code=${root.get("code")}: $msg".trim())
+        // 提交阶段顶层错误（如 InvalidApiKey），无 output.task_status
+        if (status == null) {
+            val topCode = root.get("code")?.takeIf { !it.isJsonNull }?.asString
+            if (!topCode.isNullOrBlank()) {
+                val topMsg = root.get("message")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                return "DashScope 提交失败 code=$topCode: $topMsg".trim()
+            }
         }
-        error("dashscope image 响应缺少 results[0].url：$respBody")
+        return null
     }
 
     private fun doSubmit(client: OkHttpClient, url: String, body: String): Response {
@@ -359,6 +398,10 @@ class DashScopeImageBackend(private val cfg: AiImageProviderConfig) : ImageBacke
         // 参考图上限：qwen 系 3、wan 系 9（移植 ArcReel dashscope_shared.py）
         internal const val _QWEN_REF_LIMIT = 3
         internal const val _WAN_REF_LIMIT = 9
+
+        // 任务失败终态（移植 ArcReel dashscope_shared._FAILURE_STATES）：FAILED/CANCELED 视为失败；
+        // UNKNOWN 不算失败（由过期路径单独处理）
+        internal val FAILURE_STATES = setOf("FAILED", "CANCELED")
 
         // 图片档位 → 短边像素
         internal val IMAGE_TIER_SHORT_EDGE: Map<String, Int> = mapOf(
