@@ -270,10 +270,16 @@ class SoraVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         }
         // 过滤方向匹配
         val directional = candidates.filter { (it.second.first >= it.second.second) == landscape }
-        // 若指定 resolution，优先匹配前缀
+        // 若指定 resolution，按维度数值匹配（"1080"/"1080p" → 任一维度==1080）
+        // 注：不能 startsWith——"1920x1080" 不以 "1080" 开头
         val byRes = if (resolution != null) {
-            directional.firstOrNull { it.first.startsWith(resolution, ignoreCase = true) }
-                ?: directional.firstOrNull()
+            val resNum = resolution.trimEnd('p', 'P').toIntOrNull()
+            val matchFn: (Pair<String, Pair<Int, Int>>) -> Boolean = if (resNum != null) {
+                { it.second.first == resNum || it.second.second == resNum }
+            } else {
+                { it.first.startsWith(resolution, ignoreCase = true) }
+            }
+            directional.firstOrNull(matchFn) ?: directional.firstOrNull()
         } else {
             // 选比例最接近的
             directional.minByOrNull {
