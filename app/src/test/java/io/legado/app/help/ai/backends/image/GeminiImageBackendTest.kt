@@ -61,7 +61,7 @@ class GeminiImageBackendTest {
      * 导致 extractNameFromPath 得到 `stem<random>` 而非 `stem`，故需自建临时目录 + 精确文件名）。
      */
     private fun tmpJpegExactStem(stem: String): File {
-        val dir = createTempDir(prefix = "gemini-i2i-")
+        val dir = kotlin.io.path.createTempDirectory(prefix = "gemini-i2i-").toFile()
         val f = File(dir, "$stem.jpg")
         f.writeBytes(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0xFF.toByte(), 0xD9.toByte()))
         f.deleteOnExit()
