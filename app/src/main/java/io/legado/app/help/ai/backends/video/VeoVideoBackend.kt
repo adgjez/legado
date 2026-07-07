@@ -81,7 +81,7 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         // jobId 是 LRO operation.name，直接 poll 直到 done
         val client = buildClient(cfg.validPollTimeout())
         return try {
-            val operation = pollUntilDone(client, jobId, onProgress = {}) {}
+            val operation = pollUntilDone(client, jobId, onProgress = {})
             extractResultAndDownload(client, operation, request)
         } catch (e: CancellationException) {
             throw e
@@ -121,7 +121,7 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         ).use { resp -> parseOperationName(resp) }
 
         onProgress(VideoProgress("submitted", "operation=$operationName"))
-        val operation = pollUntilDone(client, operationName, onProgress) {}
+        val operation = pollUntilDone(client, operationName, onProgress)
         return extractResultAndDownload(client, operation, request)
     }
 
@@ -240,8 +240,7 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     private suspend fun pollUntilDone(
         client: OkHttpClient,
         operationName: String,
-        onProgress: (VideoProgress) -> Unit,
-        onExpired: () -> Unit
+        onProgress: (VideoProgress) -> Unit
     ): VeoOperation {
         val pollUrl = cfg.resolvePollUrl(operationName).ifBlank {
             cfg.baseUrl.trimEnd('/') + POLL_PATH.replace("{operationName}", operationName)

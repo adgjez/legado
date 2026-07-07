@@ -82,7 +82,7 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val (subpath, taskId, persistedAudio) = decodeJobId(jobId)
         val generateAudio = persistedAudio ?: effectiveAudio(request)
         val client = buildClient(cfg.validPollTimeout())
-        val videoUrl = pollUntilDone(client, subpath, taskId, request.durationSeconds, onProgress = {}) {}
+        val videoUrl = pollUntilDone(client, subpath, taskId, request.durationSeconds, onProgress = {})
         VideoBackendHttp.downloadVideo(videoUrl, request.outputPath)
         return VideoGenerationResult(
             videoPath = request.outputPath,
@@ -111,7 +111,7 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         ).use { resp -> parseTaskId(resp) }
 
         onProgress(VideoProgress("submitted", "taskId=$taskId subpath=$subpath"))
-        val videoUrl = pollUntilDone(client, subpath, taskId, request.durationSeconds, onProgress) {}
+        val videoUrl = pollUntilDone(client, subpath, taskId, request.durationSeconds, onProgress)
         VideoBackendHttp.downloadVideo(videoUrl, request.outputPath)
         return VideoGenerationResult(
             videoPath = request.outputPath,
@@ -225,8 +225,7 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         subpath: String,
         taskId: String,
         durationSeconds: Int,
-        onProgress: (VideoProgress) -> Unit,
-        onExpired: (String) -> Unit
+        onProgress: (VideoProgress) -> Unit
     ): String {
         val pollUrl = cfg.baseUrl.trimEnd('/') + POLL_BASE + subpath + "/" + taskId
         val maxWait = maxOf(900L, durationSeconds * 60L).seconds
@@ -260,7 +259,7 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         responseError(root)?.let { error(it) }
         val status = root.getAsJsonObject("data")?.get("task_status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
         val videoUrl = root.getAsJsonObject("data")?.getAsJsonObject("task_result")
-            ?.getAsJsonArray("videos")?.firstOrNull()?.asJsonObject?.get("url")?.takeIf { !it.isJsonNull }?.asString
+            ?.getAsJsonArray("videos")?.firstOrNull { it.isJsonObject }?.asJsonObject?.get("url")?.takeIf { !it.isJsonNull }?.asString
         return KlingPollResult(status, videoUrl, respBody)
     }
 

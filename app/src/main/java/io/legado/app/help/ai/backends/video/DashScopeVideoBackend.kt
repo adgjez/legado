@@ -276,7 +276,7 @@ class DashScopeVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBacke
             val msg = output.get("message")?.takeIf { !it.isJsonNull }?.asString ?: ""
             return "DashScope 任务失败 status=$outStatus code=$code: $msg".trim()
         }
-        if (outStatus == null && root.get("code") != null) {
+        if (outStatus == null && root.get("code")?.takeIf { !it.isJsonNull } != null) {
             val msg = root.get("message")?.takeIf { !it.isJsonNull }?.asString ?: ""
             return "DashScope 提交失败 code=${root.get("code")}: $msg".trim()
         }

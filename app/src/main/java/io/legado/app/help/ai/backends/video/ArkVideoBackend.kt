@@ -79,7 +79,7 @@ class ArkVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         // （404/task_not_found/expired）转 ResumeExpiredError，worker 据此区分「过期」与「真错误」。
         return try {
             val client = buildClient(cfg.validPollTimeout())
-            val videoUrl = pollUntilDone(client, jobId, onProgress = {}) { /* no-op */ }
+            val videoUrl = pollUntilDone(client, jobId, onProgress = {})
             downloadVideoWithRetry(videoUrl, request.outputPath)
             VideoGenerationResult(
                 videoPath = request.outputPath,
@@ -116,7 +116,7 @@ class ArkVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         ).use { resp -> parseTaskId(resp) }
 
         onProgress(VideoProgress("submitted", "taskId=$taskId"))
-        val videoUrl = pollUntilDone(client, taskId, onProgress) { }
+        val videoUrl = pollUntilDone(client, taskId, onProgress)
         downloadVideoWithRetry(videoUrl, request.outputPath)
         return VideoGenerationResult(
             videoPath = request.outputPath,
@@ -193,8 +193,7 @@ class ArkVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     private suspend fun pollUntilDone(
         client: OkHttpClient,
         taskId: String,
-        onProgress: (VideoProgress) -> Unit,
-        retryFallback: suspend () -> Unit
+        onProgress: (VideoProgress) -> Unit
     ): String {
         val pollUrl = cfg.resolvePollUrl(taskId).ifBlank {
             normalizeBaseUrl(cfg.baseUrl) + POLL_PATH.replace("{taskId}", taskId)
