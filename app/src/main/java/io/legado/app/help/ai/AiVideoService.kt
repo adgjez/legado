@@ -613,9 +613,9 @@ object AiVideoService {
                 caps.lastFrame -> specs.add(ReferenceSpec(endImage, "last_frame", RefRole.FRAME))
                 caps.referenceImages -> {
                     specs.add(ReferenceSpec(endImage, "last_frame_downgraded", RefRole.ARRAY))
-                    AppLog.put("video backend ${backend.typeId} 不支持 last_frame，尾帧降级为 reference_images")
+                    logBackendWarning("video backend ${backend.typeId} 不支持 last_frame，尾帧降级为 reference_images")
                 }
-                else -> AppLog.put("video backend ${backend.typeId} 不支持 last_frame 与 reference_images，尾帧被忽略：${endImage}")
+                else -> logBackendWarning("video backend ${backend.typeId} 不支持 last_frame 与 reference_images，尾帧被忽略：${endImage}")
             }
         }
         request.referenceImages?.forEachIndexed { i, f ->
@@ -663,6 +663,15 @@ object AiVideoService {
     // ============================================================
     // 内部工具
     // ============================================================
+
+    /**
+     * 记录 backend 能力 warning。用 runCatching 包裹 [AppLog.put]，避免
+     * 在 Robolectric 测试环境下 [AppConfig] 类初始化失败（appCtx 未初始化）
+     * 导致 buildSpecs 抛 ExceptionInInitializerError。日志失败不应影响业务。
+     */
+    private fun logBackendWarning(message: String) {
+        runCatching { AppLog.put(message) }
+    }
 
     private fun resolveProvider(provider: AiVideoProviderConfig?): AiVideoProviderConfig {
         return provider ?: currentProviderOrNull()

@@ -1,6 +1,7 @@
 package io.legado.app.help.ai
 
 import android.app.Application
+import android.graphics.Bitmap
 import io.legado.app.help.ai.backends.ImageBackend
 import io.legado.app.help.ai.backends.ImageBackendRegistry
 import io.legado.app.help.ai.backends.ImageCapability
@@ -17,6 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
@@ -61,11 +63,14 @@ class AiImageServiceTest {
 
     @Test
     fun generatePassesAllReferenceImagesAsArrayRole() = runTest {
-        // 通过 captureRequest 捕获 backend 实际收到的 request，
-        // 但 buildSpecs 在 AiImageService.generate 内部 inline 调用，
-        // backend 收到的是经过 withCompressedRefs 处理后的 request.referenceImages
-        // （无参考图压缩时 specs 为空 → MediaGenerator 直接调 backend，
-        //  传给 backend 的 request.referenceImages 与原 request 相同）
+        // 用真实临时 JPEG 文件：避免 ReferenceCompressor 读源失败触发 AppLog.put
+        // （AppLog.put 在 Robolectric 下触发 AppConfig init 失败）。
+        // 合规小 JPEG（<1MB）走 step0 透传，原路径透传，backend 收到的路径与原 request 相同。
+        // 通过 captureRequest 捕获 backend 实际收到的 request，验证参考图按 ARRAY 角色透传。
+        val refFiles = (0..2).map { i ->
+            val raw = synthJpeg(100, 100)
+            File.createTempFile("ref$i", ".jpg").apply { writeBytes(raw); deleteOnExit() }
+        }
         val captured = ArrayList<ImageGenerationRequest>()
         val expected = ImageGenerationResult(
             imagePath = File("/tmp/out.jpg"),
@@ -83,22 +88,22 @@ class AiImageServiceTest {
             prompt = "p",
             outputPath = File("/tmp/out.jpg"),
             referenceImages = listOf(
-                ReferenceImage("/tmp/ref0.jpg", "scene"),
-                ReferenceImage("/tmp/ref1.jpg", "character"),
-                ReferenceImage("/tmp/ref2.jpg", "")
+                ReferenceImage(refFiles[0].absolutePath, "scene"),
+                ReferenceImage(refFiles[1].absolutePath, "character"),
+                ReferenceImage(refFiles[2].absolutePath, "")
             )
         )
         val result = AiImageService.generate(request, provider)
         assertSame(expected, result)
-        // backend 收到 3 张参考图（无压缩，原路径透传）
+        // backend 收到 3 张参考图（合规小 JPEG step0 透传，原路径透传）
         assertEquals(1, captured.size)
         val received = captured[0]
         assertEquals(3, received.referenceImages.size)
-        assertEquals("/tmp/ref0.jpg", received.referenceImages[0].path)
+        assertEquals(refFiles[0].absolutePath, received.referenceImages[0].path)
         assertEquals("scene", received.referenceImages[0].label)
-        assertEquals("/tmp/ref1.jpg", received.referenceImages[1].path)
+        assertEquals(refFiles[1].absolutePath, received.referenceImages[1].path)
         assertEquals("character", received.referenceImages[1].label)
-        assertEquals("/tmp/ref2.jpg", received.referenceImages[2].path)
+        assertEquals(refFiles[2].absolutePath, received.referenceImages[2].path)
         assertEquals("", received.referenceImages[2].label)
     }
 
@@ -179,6 +184,15 @@ class AiImageServiceTest {
     // ============================================================
     // 测试桩
     // ============================================================
+
+    /** 合成真实 JPEG 字节，供参考图临时文件用（避免 ReferenceCompressor 读源失败）。 */
+    private fun synthJpeg(w: Int, h: Int): ByteArray {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.JPEG, 95, out)
+        bmp.recycle()
+        return out.toByteArray()
+    }
 
     /** 捕获 request 并返回固定 result 的 stub backend。 */
     private class FakeImageBackend(
