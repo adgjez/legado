@@ -95,18 +95,18 @@ class AiImageServiceTest {
         )
         val result = AiImageService.generate(request, provider)
         assertSame(expected, result)
-        // backend 收到 3 张参考图（合规小 JPEG 走压缩梯子，写临时文件 _step0.jpg，
-        // 路径变为压缩后临时文件路径；核心验证 label 保留 + 数量正确 + ARRAY 角色透传）
+        // backend 收到 3 张参考图（合规小 JPEG <1MB 走 step0 透传：identity 判定 → CompressedRef
+        // 用原路径，不写临时文件；核心验证 label 保留 + 数量正确 + ARRAY 角色透传）
         assertEquals(1, captured.size)
         val received = captured[0]
         assertEquals(3, received.referenceImages.size)
         assertEquals("scene", received.referenceImages[0].label)
         assertEquals("character", received.referenceImages[1].label)
         assertEquals("", received.referenceImages[2].label)
-        // 路径应为压缩后临时文件（含 _step0 后缀），证明走了压缩管线
-        assertTrue(received.referenceImages[0].path.contains("_step0"))
-        assertTrue(received.referenceImages[1].path.contains("_step0"))
-        assertTrue(received.referenceImages[2].path.contains("_step0"))
+        // 合规小 JPEG 透传，路径不变（等于原 request 路径，证明透传语义）
+        assertEquals(refFiles[0].absolutePath, received.referenceImages[0].path)
+        assertEquals(refFiles[1].absolutePath, received.referenceImages[1].path)
+        assertEquals(refFiles[2].absolutePath, received.referenceImages[2].path)
     }
 
     @Test

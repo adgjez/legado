@@ -242,23 +242,16 @@ class GeminiImageBackendTest {
         assertTrue(parts[0].asJsonObject.has("inline_data"))
     }
 
-    @Test
-    fun buildPayloadSkipsNonExistentRefFiles() {
-        // 参考图文件不存在 → 跳过（ArcReel FileNotFoundError 仅 warn）
+    @Test(expected = IllegalStateException::class)
+    fun buildPayloadFailsLoudOnMissingRefFile() {
+        // ArcReel _load_image_detached → Image.open 缺文件直接抛 FileNotFoundError，不静默跳过
         val request = ImageGenerationRequest(
             prompt = "p",
             outputPath = File("/tmp/out.png"),
             referenceImages = listOf(ReferenceImage("/tmp/nonexistent_xyz.jpg", "Ghost")),
             aspectRatio = "9:16"
         )
-        val payload = backend().buildPayload(request)
-        val root = JsonParser.parseString(payload).asJsonObject
-        val parts = root.getAsJsonArray("contents")[0].asJsonObject.getAsJsonArray("parts")
-        // label part 仍加（label 非空），但 inline_data 跳过（文件不存在）
-        // parts: [text=Ghost, text=prompt]
-        assertEquals(2, parts.size())
-        assertEquals("Ghost", parts[0].asJsonObject.get("text").asString)
-        assertEquals("p", parts[1].asJsonObject.get("text").asString)
+        backend().buildPayload(request)
     }
 
     // ---- resolveLabel / extractNameFromPath ----

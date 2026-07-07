@@ -42,6 +42,22 @@ class ReferenceCompressorTest {
         return out.toByteArray()
     }
 
+    /**
+     * 合成高熵（随机噪声）JPEG：Robolectric 下 [Bitmap.createBitmap] 零初始化为空白位图，
+     * 空白 JPEG 极小（<1MB）会被 step0 透传而不写临时文件。噪声图必然 >1MB，
+     * 跳过 step0 透传 → 进入压缩 → 写临时文件，用于验证临时文件清理 / 命名。
+     */
+    private fun synthNoisyJpeg(w: Int, h: Int, quality: Int = 95): ByteArray {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val rnd = java.util.Random(42)
+        val pixels = IntArray(w * h) { rnd.nextInt() or 0xFF000000.toInt() }
+        bmp.setPixels(pixels, 0, w, 0, 0, w, h)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        bmp.recycle()
+        return out.toByteArray()
+    }
+
     private fun canDecodeJpeg(bytes: ByteArray): Boolean {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
@@ -192,8 +208,11 @@ class ReferenceCompressorTest {
 
     @Test
     fun withCompressedPayloadCleansUpTempFiles() = kotlinx.coroutines.test.runTest {
-        val raw = synthJpeg(3000, 2000)
+        // 噪声 JPEG >1MB → 跳过 step0 透传 → 进入压缩 → 写临时文件，方能验证 finally 清理
+        // （空白位图 JPEG <1MB 会被透传不写临时文件，tempPath 退化为原文件，清理断言失效）
+        val raw = synthNoisyJpeg(800, 600)
         assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
+        assumeTrue("噪声 JPEG 应 >1MB 以跳过 step0 透传", raw.size > 1024 * 1024)
         val src = File.createTempFile("big", ".jpg").apply {
             writeBytes(raw); deleteOnExit()
         }
@@ -201,20 +220,22 @@ class ReferenceCompressorTest {
         var tempPath: File? = null
         ReferenceCompressor.withCompressedPayload(
             listOf(spec),
-            PayloadLimits(totalMaxBytes = 500 * 1024L, singleMaxBytes = 300 * 1024L)
+            PayloadLimits(totalMaxBytes = 10 * 1024 * 1024L, singleMaxBytes = 5 * 1024 * 1024L)
         ) { _, compressed ->
             tempPath = compressed[0].path
             assertTrue("临时文件应存在", tempPath!!.exists())
             "ok"
         }
-        // finally 后临时文件应被删
+        // finally 后临时文件应被删（tempRoot 整树递归删除）
         assertFalse("临时文件应被清理", tempPath!!.exists())
     }
 
     @Test
     fun withCompressedPayloadTempFileKeepsSourceStem() = kotlinx.coroutines.test.runTest {
-        val raw = synthJpeg(3000, 2000)
+        // 噪声 JPEG >1MB → 跳过 step0 透传 → 写临时文件，验证临时文件名沿用源 stem
+        val raw = synthNoisyJpeg(800, 600)
         assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
+        assumeTrue("噪声 JPEG 应 >1MB 以跳过 step0 透传", raw.size > 1024 * 1024)
         val src = File.createTempFile("character_01", ".jpg").apply {
             writeBytes(raw); deleteOnExit()
         }
@@ -226,12 +247,10 @@ class ReferenceCompressorTest {
             tempName = compressed[0].path.nameWithoutExtension
             "ok"
         }
-        // 临时文件沿用源 stem + _step{N} 后缀
-        // （File.createTempFile 在 prefix 后加随机数，故源 stem 含随机数，只验前缀 + 后缀）
+        // 临时文件沿用源 stem，无 _step 后缀（File.createTempFile 在 prefix 后加随机数，
+        // 故源 stem 含随机数，只验前缀）
         assertTrue("临时文件应沿用源 stem 前缀，实际：$tempName",
             tempName!!.startsWith("character_01"))
-        assertTrue("临时文件应含 _step 后缀，实际：$tempName",
-            tempName!!.contains("_step"))
     }
 
     // ========== LADDER_STEPS 常量 ==========

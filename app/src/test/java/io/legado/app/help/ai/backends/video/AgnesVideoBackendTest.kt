@@ -8,7 +8,6 @@ import io.legado.app.help.ai.backends.VideoGenerationRequest
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -132,31 +131,34 @@ class AgnesVideoBackendTest {
     }
 
     @Test
-    fun buildSubmitBodyFirstFramePlusRefsSeparatesCorrectly() {
-        // 首帧 + 参考图：首帧进 image 字段，参考图进 extra_body.image 数组
+    fun buildSubmitBodyFirstAndLastFrameUsesKeyframesMode() {
+        // 首帧 + 尾帧 → keyframes 模式：extra_body.image=[start_b64, end_b64] + mode=keyframes
+        // （参考图与首/尾帧互斥，agnes 不支持混合，故此用例只测首+尾帧组合）
         val backend = newBackend("agnes-video-v2.0")
         val firstFrame = tmpJpeg("agnesff")
-        val ref1 = tmpJpeg("agnesr1")
+        val lastFrame = tmpJpeg("agneslf")
         val request = VideoGenerationRequest(
             prompt = "测试",
             outputPath = File("/tmp/out.mp4"),
             startImage = firstFrame,
-            referenceImages = listOf(ref1)
+            endImage = lastFrame
         )
         val compressed = listOf(
             CompressedRef(firstFrame, "first_frame", RefRole.FRAME),
-            CompressedRef(ref1, "ref_0", RefRole.ARRAY)
+            CompressedRef(lastFrame, "last_frame", RefRole.FRAME)
         )
         val body = backend.buildSubmitBody(request, compressed)
         val root = JsonParser.parseString(body).asJsonObject
 
-        // 首帧进 image 字段
-        assertTrue("首帧应进 image 字段", root.has("image"))
-        assertNotNull(root.get("image").asString)
-
-        // 参考图进 extra_body.image 数组
-        val imageArr = root.getAsJsonObject("extra_body").getAsJsonArray("image")
-        assertEquals("extra_body.image 应只有 1 个参考图（首帧不在内）", 1, imageArr.size())
+        // keyframes 模式：不写顶层 image，仅 extra_body.image=[首帧, 尾帧] + mode=keyframes
+        assertFalse("keyframes 模式不应写顶层 image", root.has("image"))
+        assertTrue("应有 extra_body", root.has("extra_body"))
+        val extraBody = root.getAsJsonObject("extra_body")
+        assertTrue("extra_body 应有 image 数组", extraBody.has("image"))
+        val imageArr = extraBody.getAsJsonArray("image")
+        assertEquals("extra_body.image 应有首+尾帧共 2 个元素", 2, imageArr.size())
+        assertTrue("extra_body 应有 mode", extraBody.has("mode"))
+        assertEquals("mode 应为 keyframes", "keyframes", extraBody.get("mode").asString)
     }
 
     @Test
@@ -172,16 +174,18 @@ class AgnesVideoBackendTest {
         val root = JsonParser.parseString(body).asJsonObject
         assertEquals("agnes-video-v2.0", root.get("model").asString)
         assertEquals("hello world", root.get("prompt").asString)
-        // 9:16 → 长边 1080，归一化为 607x1080
-        assertTrue("应有 width", root.has("width"))
-        assertTrue("应有 height", root.has("height"))
+        // 9:16 → 短边 720（VIDEO_TIER 默认）+ round_to=8 + max_long_edge=1920 → 720x1280
+        assertEquals("9:16 width 应 720", 720, root.get("width").asInt)
+        assertEquals("9:16 height 应 1280", 1280, root.get("height").asInt)
         assertEquals("frame_rate 应 24", 24, root.get("frame_rate").asInt)
-        // 5 秒 * 24 = 120 帧
-        assertEquals("num_frames 应 120（5s * 24fps）", 120, root.get("num_frames").asInt)
+        // num_frames 对齐 8n+1：5s*24=120 → (120-1)/8=14.875 → round=15 → 8*15+1=121
+        assertEquals("num_frames 应 121（8n+1 对齐）", 121, root.get("num_frames").asInt)
     }
 
     @Test
-    fun buildSubmitBodyGenerateAudioAddsWithAudioFlag() {
+    fun buildSubmitBodyNeverAddsWithAudioEvenWhenRequested() {
+        // Agnes 视频无音频能力：即使 request.generateAudio=true 也不下发 with_audio / generate_audio
+        // （ArcReel agnes.py 明确纪律：agnes 视频恒无声，generate_audio=False）
         val backend = newBackend("agnes-video-v2.0")
         val request = VideoGenerationRequest(
             prompt = "测试",
@@ -190,9 +194,10 @@ class AgnesVideoBackendTest {
         )
         val body = backend.buildSubmitBody(request, emptyList())
         val root = JsonParser.parseString(body).asJsonObject
-        assertTrue("generateAudio=true 应在 extra_body 加 with_audio=true",
-            root.has("extra_body") && root.getAsJsonObject("extra_body").has("with_audio"))
-        assertEquals(true, root.getAsJsonObject("extra_body").get("with_audio").asBoolean)
+        // 反向断言：提交体不应含 with_audio 字段
+        val hasWithAudio = root.has("extra_body") &&
+            root.getAsJsonObject("extra_body").has("with_audio")
+        assertFalse("Agnes 视频无音频能力，不应下发 with_audio", hasWithAudio)
     }
 
     @Test
