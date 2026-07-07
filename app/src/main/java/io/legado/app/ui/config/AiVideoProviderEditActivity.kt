@@ -45,7 +45,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     private var pollTimeoutText by mutableStateOf("600000")
     private var pollIntervalText by mutableStateOf("2000")
     private var enabledState by mutableStateOf(true)
-    private var providerType by mutableStateOf(AiVideoProviderConfig.TYPE_OPENAI)
+    private var providerType by mutableStateOf(AiVideoProviderConfig.TYPE_ARK)
     private var paramsText by mutableStateOf("")
     private var scriptText by mutableStateOf("")
     private var jsLibText by mutableStateOf("")
@@ -63,7 +63,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         providerId = intent.getStringExtra(EXTRA_PROVIDER_ID)
-        providerType = intent.getStringExtra(EXTRA_PROVIDER_TYPE) ?: AiVideoProviderConfig.TYPE_OPENAI
+        providerType = intent.getStringExtra(EXTRA_PROVIDER_TYPE) ?: AiVideoProviderConfig.TYPE_ARK
         val provider = currentProvider()
         if (provider != null) providerType = provider.type
         bind(provider)
@@ -85,9 +85,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                val isOpenAi = providerType == AiVideoProviderConfig.TYPE_OPENAI ||
-                    providerType == AiVideoProviderConfig.TYPE_AGNES ||
-                    providerType == AiVideoProviderConfig.TYPE_DOUBAO
+                val isOpenAi = true
                 AiVideoProviderEditScreen(
                     name = nameText,
                     onNameChange = { nameText = it },
@@ -123,6 +121,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                     onEnabledChange = { enabledState = it },
                     providerType = providerType,
                     isOpenAi = isOpenAi,
+                    typeLabel = typeLabel(),
                     onTypeClick = { selectType() },
                     paramsSummary = "${getString(R.string.ai_video_params)}: ${summary(paramsText.ifBlank { defaultParams() })}",
                     onParamsClick = {
@@ -149,16 +148,6 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun bind(provider: AiVideoProviderConfig?) {
-        if (provider == null && providerType == AiVideoProviderConfig.TYPE_AGNES) {
-            // 新建 Agnes Provider 时预填配置
-            applyAgnesPreset()
-            return
-        }
-        if (provider == null && providerType == AiVideoProviderConfig.TYPE_DOUBAO) {
-            // 新建豆包 Seedance 2.0 Provider 时预填配置
-            applyDoubaoPreset()
-            return
-        }
         nameText = provider?.name.orEmpty()
         submitUrlText = provider?.submitUrl.orEmpty()
         pollUrlTemplateText = provider?.pollUrlTemplate.orEmpty()
@@ -180,81 +169,41 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         jsLibText = provider?.jsLib.orEmpty()
     }
 
-    /**
-     * Agnes Video V2.0 预置配置：填好 submitUrl/pollUrlTemplate/JSONPath/状态值，
-     * 用户只需填入 apiKey 即可使用。
-     */
-    private fun applyAgnesPreset() {
-        nameText = "Agnes Video V2.0"
-        modelText = "agnes-video-v2.0"
-        submitUrlText = "https://apihub.agnes-ai.com/v1/videos"
-        pollUrlTemplateText = "https://apihub.agnes-ai.com/agnesapi?video_id={taskId}"
-        taskIdJsonPathText = "\$.video_id"
-        videoUrlJsonPathText = "\$.remixed_from_video_id"
-        statusJsonPathText = "\$.status"
-        doneStatusValueText = "completed"
-        failedStatusValueText = "failed"
-        maxReferenceImagesText = "4"
-        submitTimeoutText = "60000"
-        pollTimeoutText = "600000"
-        pollIntervalText = "3000"
-        enabledState = true
-        paramsText = ""
-        scriptText = ""
-        jsLibText = ""
-        headersText = ""
-        apiKeyText = ""
-    }
-
-    /**
-     * 豆包 Seedance 2.0 预置配置：填好 submitUrl/pollUrlTemplate/JSONPath/状态值，
-     * 用户只需填入 apiKey（即火山引擎 ARK API Key）即可使用。
-     *
-     * 端点：`POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks`
-     * 轮询：`GET https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/{taskId}`
-     * taskIdJsonPath: `$.id`
-     * videoUrlJsonPath: `$.content.video_url`
-     * statusJsonPath: `$.status`，done=`succeeded`，failed=`failed`
-     */
-    private fun applyDoubaoPreset() {
-        nameText = "豆包 Seedance 2.0"
-        modelText = "doubao-seedance-2-0-260128"
-        submitUrlText = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"
-        pollUrlTemplateText = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/{taskId}"
-        taskIdJsonPathText = "\$.id"
-        videoUrlJsonPathText = "\$.content.video_url"
-        statusJsonPathText = "\$.status"
-        doneStatusValueText = "succeeded"
-        failedStatusValueText = "failed"
-        maxReferenceImagesText = "1"
-        submitTimeoutText = "60000"
-        pollTimeoutText = "600000"
-        pollIntervalText = "3000"
-        enabledState = true
-        paramsText = ""
-        scriptText = ""
-        jsLibText = ""
-        headersText = ""
-        apiKeyText = ""
-    }
-
     private fun selectType() {
+        val types = listOf(
+            AiVideoProviderConfig.TYPE_ARK,
+            AiVideoProviderConfig.TYPE_AGNES,
+            AiVideoProviderConfig.TYPE_SORA,
+            AiVideoProviderConfig.TYPE_VEO,
+            AiVideoProviderConfig.TYPE_KLING,
+            AiVideoProviderConfig.TYPE_NEWAPI,
+            AiVideoProviderConfig.TYPE_V2,
+            AiVideoProviderConfig.TYPE_DASHSCOPE,
+            AiVideoProviderConfig.TYPE_MINIMAX,
+            AiVideoProviderConfig.TYPE_VIDU,
+            AiVideoProviderConfig.TYPE_GROK
+        )
         showComposeActionListDialog(
             title = getString(R.string.ai_video_provider_type),
-            labels = listOf(
-                getString(R.string.ai_video_provider_openai),
-                getString(R.string.ai_video_provider_agnes),
-                getString(R.string.ai_video_provider_doubao),
-                getString(R.string.ai_video_provider_js)
-            )
+            labels = types.map { typeLabel(it) }
         ) { index ->
-            providerType = when (index) {
-                0 -> AiVideoProviderConfig.TYPE_OPENAI
-                1 -> AiVideoProviderConfig.TYPE_AGNES
-                2 -> AiVideoProviderConfig.TYPE_DOUBAO
-                else -> AiVideoProviderConfig.TYPE_JS
-            }
+            types.getOrNull(index)?.let { providerType = it }
         }
+    }
+
+    private fun typeLabel(type: String = providerType): String = when (type) {
+        AiVideoProviderConfig.TYPE_ARK -> getString(R.string.ai_video_provider_ark)
+        AiVideoProviderConfig.TYPE_AGNES -> getString(R.string.ai_video_provider_agnes)
+        AiVideoProviderConfig.TYPE_SORA -> getString(R.string.ai_video_provider_sora)
+        AiVideoProviderConfig.TYPE_VEO -> getString(R.string.ai_video_provider_veo)
+        AiVideoProviderConfig.TYPE_KLING -> getString(R.string.ai_video_provider_kling)
+        AiVideoProviderConfig.TYPE_NEWAPI -> getString(R.string.ai_video_provider_newapi)
+        AiVideoProviderConfig.TYPE_V2 -> getString(R.string.ai_video_provider_v2)
+        AiVideoProviderConfig.TYPE_DASHSCOPE -> getString(R.string.ai_video_provider_dashscope)
+        AiVideoProviderConfig.TYPE_MINIMAX -> getString(R.string.ai_video_provider_minimax)
+        AiVideoProviderConfig.TYPE_VIDU -> getString(R.string.ai_video_provider_vidu)
+        AiVideoProviderConfig.TYPE_GROK -> getString(R.string.ai_video_provider_grok)
+        else -> type
     }
 
     private fun openCodeEditor(
@@ -274,14 +223,6 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     private fun save() {
         if (nameText.isBlank()) {
             toastOnUi(R.string.ai_provider_name_required)
-            return
-        }
-        if ((providerType == AiVideoProviderConfig.TYPE_OPENAI ||
-                providerType == AiVideoProviderConfig.TYPE_AGNES ||
-                providerType == AiVideoProviderConfig.TYPE_DOUBAO) &&
-            submitUrlText.isBlank()
-        ) {
-            toastOnUi(R.string.ai_provider_url_required)
             return
         }
         val old = currentProvider()
@@ -324,41 +265,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun defaultParams(): String {
-        return when (providerType) {
-            AiVideoProviderConfig.TYPE_OPENAI -> {
-                "{\n  \"duration_seconds\": 8,\n  \"resolution\": \"1080p\",\n  \"aspect_ratio\": \"16:9\"\n}"
-            }
-            AiVideoProviderConfig.TYPE_AGNES -> {
-                // Agnes 高级参数模板：mode/negative_prompt/seed/num_inference_steps
-                "// 留空使用默认文生视频模式\n" +
-                    "// 启用关键帧模式（需 ≥2 张参考图）：\n" +
-                    "{\n" +
-                    "  \"mode\": \"keyframes\",\n" +
-                    "  \"negative_prompt\": \"blurry, low quality, distorted\",\n" +
-                    "  \"seed\": 42,\n" +
-                    "  \"num_inference_steps\": 30\n" +
-                    "}"
-            }
-            AiVideoProviderConfig.TYPE_DOUBAO -> {
-                // 豆包 Seedance 2.0 高级参数模板：
-                // - duration: 视频时长秒数（4-15 或 -1 自动）；这里不设，由 NovelVideoParams.sceneDurationSeconds 注入
-                // - camera_fixed: 镜头固定，避免运镜抖动（适合稳定叙事场景）
-                // - return_last_frame: 返回尾帧，用于续拍衔接
-                // - generate_audio: 是否生成音频
-                // - watermark: 是否加水印
-                // - seed: 随机种子
-                "// 豆包 Seedance 2.0 高级参数（按模型自适应注入）\n" +
-                    "// duration 由 NovelVideoParams.sceneDurationSeconds 自动覆盖\n" +
-                    "{\n" +
-                    "  \"camera_fixed\": false,\n" +
-                    "  \"return_last_frame\": false,\n" +
-                    "  \"generate_audio\": false,\n" +
-                    "  \"watermark\": false,\n" +
-                    "  \"seed\": 42\n" +
-                    "}"
-            }
-            else -> ""
-        }
+        return ""
     }
 
     private fun summary(value: String): String {

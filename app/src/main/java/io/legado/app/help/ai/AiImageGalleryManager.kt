@@ -86,7 +86,7 @@ object AiImageGalleryManager {
             providerId = provider.id,
             providerName = provider.displayName(),
             model = model?.takeIf { it.isNotBlank() }
-                ?: provider.model.ifBlank { if (provider.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS" },
+                ?: provider.model.ifBlank { "gpt-image-1" },
             localPath = file.absolutePath,
             originalSource = sourceSummary(imageSource),
             bookKey = metadata.bookKey,

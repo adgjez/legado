@@ -14,6 +14,10 @@ import io.legado.app.data.entities.NovelVideoSegment
 import io.legado.app.data.entities.NovelVideoSegmentStatus
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.help.ai.AiImageGalleryManager.ImageMetadata
+import io.legado.app.help.ai.backends.ImageGenerationRequest
+import io.legado.app.help.ai.backends.ReferenceImage
+import io.legado.app.help.ai.backends.VideoGenerationRequest
+import io.legado.app.help.ai.backends.VideoGenerationResult
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
@@ -361,7 +365,14 @@ object NovelVideoGenerator {
         )
         val provider = AiImageService.providerByIdOrNull(params.imageProviderId)
         return runCatching {
-            val image = AiImageService.generateAndStore(prompt, provider, metadata)
+            val image = AiImageService.generateAndStore(
+                ImageGenerationRequest(
+                    prompt = prompt,
+                    outputPath = File.createTempFile("char_sheet", ".png")
+                ),
+                provider,
+                metadata
+            )
             NovelVideoCharacterSheet(
                 id = "cs_${job.id}_${index}",
                 jobId = job.id,
@@ -604,7 +615,15 @@ object NovelVideoGenerator {
                     NovelVideoPromptBuilder.rewriteImagePromptForSafety(imagePrompt)
                 }
                 val result = runCatching {
-                    AiImageService.generateAndStore(sanitizedPrompt, characterRefs, imageProvider, metadata)
+                    AiImageService.generateAndStore(
+                        ImageGenerationRequest(
+                            prompt = sanitizedPrompt,
+                            outputPath = File.createTempFile("scene", ".png"),
+                            referenceImages = characterRefs.map { ReferenceImage(it) }
+                        ),
+                        imageProvider,
+                        metadata
+                    )
                 }
                 if (result.isSuccess) {
                     savedImage = result.getOrThrow()
@@ -649,7 +668,7 @@ object NovelVideoGenerator {
 
             // Stage 6 重试 3 次：前 2 次用 sanitizeVideoPrompt，第 3 次调 LLM 改写
             val maxRetry = 3
-            var success: AiVideoTaskPoller.Result.Success? = null
+            var success: VideoGenerationResult? = null
             var failedMsg: String? = null
             for (attempt in 1..maxRetry) {
                 checkCancelled(isCancelled, job.id)
@@ -658,30 +677,23 @@ object NovelVideoGenerator {
                 } else {
                     NovelVideoPromptBuilder.rewriteVideoPromptForSafety(videoPrompt)
                 }
-                // Stage 6：构造 VideoSubmitRequest 提交。
-                // 高级参数（mode/negative_prompt/seed/camera_fixed/generate_audio 等）由
-                // AiVideoService.submit 内部按 videoProvider.type 从 defaultParamsJson 自动注入，
-                // 实现「按所选模型自适应发挥其能力」——配 Agnes 用关键帧模式，配豆包用 camera_fixed 等。
-                val submitRequest = VideoSubmitRequest(
-                    prompt = sanitizedPrompt,
-                    seconds = params.sceneDurationSeconds,
-                    size = params.resolution,
-                    referenceImages = videoRefs
-                )
-                val result = AiVideoTaskPoller.generate(
-                    request = submitRequest,
-                    jobId = job.id,
-                    segId = segment.id,
-                    provider = videoProvider,
-                    isCancelled = isCancelled
-                )
-                if (result is AiVideoTaskPoller.Result.Success) {
-                    success = result
+                checkCancelled(isCancelled, job.id)
+                try {
+                    val videoRequest = VideoGenerationRequest(
+                        prompt = sanitizedPrompt,
+                        outputPath = File.createTempFile("video_seg_${segment.id}", ".mp4"),
+                        durationSeconds = params.sceneDurationSeconds,
+                        resolution = params.resolution,
+                        referenceImages = videoRefs.map { File(it) }
+                    )
+                    success = AiVideoService.generate(videoRequest, videoProvider) { /* onProgress 忽略 */ }
                     break
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    failedMsg = e.message
+                    AppLog.put("场景生视频失败 attempt=$attempt ${segment.id}: $failedMsg", null)
+                    if (attempt < maxRetry) delay(1_000L * attempt)
                 }
-                failedMsg = (result as AiVideoTaskPoller.Result.Failed).message
-                AppLog.put("场景生视频失败 attempt=$attempt ${segment.id}: $failedMsg", null)
-                if (attempt < maxRetry) delay(1_000L * attempt)
             }
             when (success) {
                 null -> {
@@ -692,8 +704,8 @@ object NovelVideoGenerator {
                 else -> {
                     appDb.novelVideoDao.updateSegmentVideo(
                         segment.id,
-                        success.remoteUrl,
-                        success.localPath,
+                        success.videoUri ?: success.videoPath.absolutePath,
+                        success.videoPath.absolutePath,
                         params.sceneDurationSeconds * 1000L,
                         NovelVideoSegmentStatus.VIDEO_COMPLETED,
                         System.currentTimeMillis()

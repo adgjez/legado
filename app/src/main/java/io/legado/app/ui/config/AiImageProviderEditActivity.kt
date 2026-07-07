@@ -36,7 +36,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     private var headersText by mutableStateOf("")
     private var timeoutText by mutableStateOf("300000")
     private var enabledState by mutableStateOf(true)
-    private var providerType by mutableStateOf(AiImageProviderConfig.TYPE_OPENAI)
+    private var providerType by mutableStateOf(AiImageProviderConfig.TYPE_ARK)
     private var paramsText by mutableStateOf("")
     private var stylePromptText by mutableStateOf("")
     private var scriptText by mutableStateOf("")
@@ -56,7 +56,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         providerId = intent.getStringExtra(EXTRA_PROVIDER_ID)
-        providerType = intent.getStringExtra(EXTRA_PROVIDER_TYPE) ?: AiImageProviderConfig.TYPE_OPENAI
+        providerType = intent.getStringExtra(EXTRA_PROVIDER_TYPE) ?: AiImageProviderConfig.TYPE_ARK
         val provider = currentProvider()
         if (provider != null) providerType = provider.type
         bind(provider)
@@ -80,8 +80,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                val isOpenAi = providerType == AiImageProviderConfig.TYPE_OPENAI ||
-                    providerType == AiImageProviderConfig.TYPE_AGNES
+                val isOpenAi = true
                 AiImageProviderEditScreen(
                     name = nameText,
                     onNameChange = { nameText = it },
@@ -99,6 +98,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                     onEnabledChange = { enabledState = it },
                     providerType = providerType,
                     isOpenAi = isOpenAi,
+                    typeLabel = typeLabel(),
                     onTypeClick = { selectType() },
                     stylePromptSummary = "${getString(R.string.ai_image_style_prompt)}: ${summary(stylePromptText)}",
                     onStylePromptClick = {
@@ -134,11 +134,6 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun bind(provider: AiImageProviderConfig?) {
-        if (provider == null && providerType == AiImageProviderConfig.TYPE_AGNES) {
-            // 新建 Agnes Image 2.1 Flash Provider 时预填配置
-            applyAgnesPreset()
-            return
-        }
         nameText = provider?.name.orEmpty()
         baseUrlText = provider?.baseUrl.orEmpty()
         apiKeyText = provider?.apiKey.orEmpty()
@@ -152,41 +147,33 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         jsLibText = provider?.jsLib.orEmpty()
     }
 
-    /**
-     * Agnes Image 2.1 Flash 预置配置：填好 baseUrl/model/默认参数，
-     * 用户只需填入 apiKey 即可使用。
-     *
-     * 端点：POST https://apihub.agnes-ai.com/v1/images/generations
-     * 原生支持 extra_body.image 参考图（图生图），用于 Stage 5 场景图保持人物一致性。
-     */
-    private fun applyAgnesPreset() {
-        nameText = "Agnes Image 2.1 Flash"
-        modelText = "agnes-image-2.1-flash"
-        baseUrlText = "https://apihub.agnes-ai.com/v1"
-        paramsText = ""
-        stylePromptText = ""
-        scriptText = ""
-        jsLibText = ""
-        headersText = ""
-        apiKeyText = ""
-        enabledState = true
-    }
-
     private fun selectType() {
+        val types = listOf(
+            AiImageProviderConfig.TYPE_ARK,
+            AiImageProviderConfig.TYPE_DASHSCOPE,
+            AiImageProviderConfig.TYPE_GEMINI,
+            AiImageProviderConfig.TYPE_GROK,
+            AiImageProviderConfig.TYPE_KLING,
+            AiImageProviderConfig.TYPE_MINIMAX,
+            AiImageProviderConfig.TYPE_VIDU
+        )
         showComposeActionListDialog(
             title = getString(R.string.ai_image_provider_type),
-            labels = listOf(
-                getString(R.string.ai_image_provider_openai),
-                getString(R.string.ai_image_provider_agnes),
-                getString(R.string.ai_image_provider_js)
-            )
+            labels = types.map { typeLabel(it) }
         ) { index ->
-            providerType = when (index) {
-                0 -> AiImageProviderConfig.TYPE_OPENAI
-                1 -> AiImageProviderConfig.TYPE_AGNES
-                else -> AiImageProviderConfig.TYPE_JS
-            }
+            types.getOrNull(index)?.let { providerType = it }
         }
+    }
+
+    private fun typeLabel(type: String = providerType): String = when (type) {
+        AiImageProviderConfig.TYPE_ARK -> getString(R.string.ai_image_provider_ark)
+        AiImageProviderConfig.TYPE_DASHSCOPE -> getString(R.string.ai_image_provider_dashscope)
+        AiImageProviderConfig.TYPE_GEMINI -> getString(R.string.ai_image_provider_gemini)
+        AiImageProviderConfig.TYPE_GROK -> getString(R.string.ai_image_provider_grok)
+        AiImageProviderConfig.TYPE_KLING -> getString(R.string.ai_image_provider_kling)
+        AiImageProviderConfig.TYPE_MINIMAX -> getString(R.string.ai_image_provider_minimax)
+        AiImageProviderConfig.TYPE_VIDU -> getString(R.string.ai_image_provider_vidu)
+        else -> type
     }
 
     private fun openCodeEditor(
@@ -206,13 +193,6 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     private fun save() {
         if (nameText.isBlank()) {
             toastOnUi(R.string.ai_provider_name_required)
-            return
-        }
-        if ((providerType == AiImageProviderConfig.TYPE_OPENAI ||
-                providerType == AiImageProviderConfig.TYPE_AGNES) &&
-            baseUrlText.isBlank()
-        ) {
-            toastOnUi(R.string.ai_provider_url_required)
             return
         }
         val old = currentProvider()
@@ -246,16 +226,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun defaultParams(): String {
-        return when (providerType) {
-            AiImageProviderConfig.TYPE_OPENAI -> {
-                "{\n  \"size\": \"1024x1024\"\n}"
-            }
-            AiImageProviderConfig.TYPE_AGNES -> {
-                // Agnes Image 2.1 Flash：size 必填，response_format 放 extra_body
-                "{\n  \"size\": \"1024x768\",\n  \"response_format\": \"url\"\n}"
-            }
-            else -> ""
-        }
+        return ""
     }
 
     private fun summary(value: String): String {

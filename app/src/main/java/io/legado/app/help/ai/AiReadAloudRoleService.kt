@@ -7,6 +7,7 @@ import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.ai.backends.ImageGenerationRequest
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.character.BookCharacterProfileMeta
@@ -35,6 +36,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 object AiReadAloudRoleService {
@@ -2782,7 +2784,10 @@ object AiReadAloudRoleService {
                         ?: return@forEach
                     val book = appDb.bookDao.getBook(sourceBookUrl)
                     val image = AiImageService.generateAndStore(
-                        prompt = buildAutoCharacterAvatarPrompt(character),
+                        ImageGenerationRequest(
+                            prompt = buildAutoCharacterAvatarPrompt(character),
+                            outputPath = File.createTempFile("ai_img", ".png")
+                        ),
                         metadata = AiImageGalleryManager.ImageMetadata(
                             bookName = book?.name.orEmpty(),
                             bookAuthor = book?.author.orEmpty(),

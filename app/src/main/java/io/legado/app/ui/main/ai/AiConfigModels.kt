@@ -173,7 +173,7 @@ data class AiPersonaConfig(
 data class AiImageProviderConfig(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val type: String = TYPE_OPENAI,
+    val type: String = TYPE_ARK,
     val baseUrl: String = "",
     val apiKey: String = "",
     val headers: String = "",
@@ -197,10 +197,9 @@ data class AiImageProviderConfig(
     }
 
     companion object {
+        // ArcReel image backends（P3 注册，9 家）
         const val TYPE_OPENAI = "openai"
-        const val TYPE_JS = "js"
         const val TYPE_AGNES = "agnes"
-        // ArcReel image backends（P3 注册）
         const val TYPE_ARK = "ark"
         const val TYPE_DASHSCOPE = "dashscope"
         const val TYPE_GEMINI = "gemini"
@@ -208,6 +207,10 @@ data class AiImageProviderConfig(
         const val TYPE_KLING = "kling"
         const val TYPE_MINIMAX = "minimax"
         const val TYPE_VIDU = "vidu"
+        val VALID_TYPES = setOf(
+            TYPE_OPENAI, TYPE_AGNES, TYPE_ARK, TYPE_DASHSCOPE, TYPE_GEMINI,
+            TYPE_GROK, TYPE_KLING, TYPE_MINIMAX, TYPE_VIDU
+        )
     }
 }
 
@@ -227,7 +230,7 @@ data class AiImageProviderConfig(
 data class AiVideoProviderConfig(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val type: String = TYPE_OPENAI,
+    val type: String = TYPE_ARK,
     val baseUrl: String = "",
     val apiKey: String = "",
     val headers: String = "",
@@ -274,11 +277,8 @@ data class AiVideoProviderConfig(
     }
 
     companion object {
-        const val TYPE_OPENAI = "openai"
-        const val TYPE_JS = "js"
-        const val TYPE_AGNES = "agnes"
-        const val TYPE_DOUBAO = "doubao"
         // ArcReel video backends（P2 注册）
+        const val TYPE_AGNES = "agnes"
         const val TYPE_ARK = "ark"
         const val TYPE_SORA = "sora"
         const val TYPE_VEO = "veo"
@@ -289,5 +289,6 @@ data class AiVideoProviderConfig(
         const val TYPE_MINIMAX = "minimax"
         const val TYPE_VIDU = "vidu"
         const val TYPE_GROK = "grok"
+        val VALID_TYPES = setOf(TYPE_AGNES, TYPE_ARK, TYPE_SORA, TYPE_VEO, TYPE_KLING, TYPE_NEWAPI, TYPE_V2, TYPE_DASHSCOPE, TYPE_MINIMAX, TYPE_VIDU, TYPE_GROK)
     }
 }

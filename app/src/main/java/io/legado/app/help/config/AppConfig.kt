@@ -1900,8 +1900,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 null
             } else {
                 val type = safeString { provider.type }.trim()
-                    .takeIf { it == AiImageProviderConfig.TYPE_JS || it == AiImageProviderConfig.TYPE_OPENAI || it == AiImageProviderConfig.TYPE_AGNES }
-                    ?: AiImageProviderConfig.TYPE_OPENAI
+                    .takeIf { it in AiImageProviderConfig.VALID_TYPES }
+                    ?: AiImageProviderConfig.TYPE_ARK
                 AiImageProviderConfig(
                     id = id,
                     name = name,
@@ -1937,8 +1937,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 null
             } else {
                 val type = safeString { provider.type }.trim()
-                    .takeIf { it == AiVideoProviderConfig.TYPE_JS || it == AiVideoProviderConfig.TYPE_OPENAI || it == AiVideoProviderConfig.TYPE_AGNES || it == AiVideoProviderConfig.TYPE_DOUBAO }
-                    ?: AiVideoProviderConfig.TYPE_OPENAI
+                    .takeIf { it in AiVideoProviderConfig.VALID_TYPES }
+                    ?: AiVideoProviderConfig.TYPE_ARK
                 AiVideoProviderConfig(
                     id = id,
                     name = name,

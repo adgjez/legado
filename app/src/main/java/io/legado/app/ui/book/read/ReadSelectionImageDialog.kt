@@ -13,6 +13,7 @@ import io.legado.app.databinding.DialogReadSelectionImageBinding
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiImagePromptRewriter
 import io.legado.app.help.ai.AiImageService
+import io.legado.app.help.ai.backends.ImageGenerationRequest
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.glide.ImageLoader
@@ -31,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selection_image) {
 
@@ -106,7 +108,10 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
             runCatching {
                 withContext(Dispatchers.IO) {
                     AiImageService.generateAndStore(
-                        content,
+                        ImageGenerationRequest(
+                            prompt = content,
+                            outputPath = File.createTempFile("ai_img", ".png")
+                        ),
                         metadata = readSelectionMetadata()
                     )
                 }

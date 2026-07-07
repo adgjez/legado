@@ -71,6 +71,7 @@ internal fun AiImageProviderEditScreen(
     onEnabledChange: (Boolean) -> Unit,
     providerType: String,
     isOpenAi: Boolean,
+    typeLabel: String,
     onTypeClick: () -> Unit,
     stylePromptSummary: String,
     onStylePromptClick: () -> Unit,
@@ -120,11 +121,7 @@ internal fun AiImageProviderEditScreen(
                         insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
                     ) {
                         Text(
-                            text = "${stringResource(R.string.ai_image_provider_type)}: " +
-                                stringResource(
-                                    if (isOpenAi) R.string.ai_image_provider_openai
-                                    else R.string.ai_image_provider_js
-                                ),
+                            text = "${stringResource(R.string.ai_image_provider_type)}: " + typeLabel,
                             color = style.primaryText,
                             fontSize = 14.sp,
                             maxLines = 1,

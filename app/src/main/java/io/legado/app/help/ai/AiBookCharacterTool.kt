@@ -8,6 +8,7 @@ import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.ReadAloudSpeakerGroup
 import io.legado.app.data.entities.ReadAloudSpeakerGroupItem
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
+import io.legado.app.help.ai.backends.ImageGenerationRequest
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.character.BookCharacterProfileMeta
@@ -21,6 +22,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 object AiBookCharacterTool {
 
@@ -839,7 +841,10 @@ object AiBookCharacterTool {
         }
         val image = runCatching {
             AiImageService.generateAndStore(
-                prompt,
+                ImageGenerationRequest(
+                    prompt = prompt,
+                    outputPath = File.createTempFile("ai_img", ".png")
+                ),
                 provider,
                 metadata = AiImageGalleryManager.ImageMetadata(
                     bookName = book.name,

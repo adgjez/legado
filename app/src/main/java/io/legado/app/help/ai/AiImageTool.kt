@@ -1,7 +1,9 @@
 package io.legado.app.help.ai
 
+import io.legado.app.help.ai.backends.ImageGenerationRequest
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 object AiImageTool {
     fun resolvedTools(): List<AiResolvedTool> = listOf(
@@ -49,7 +51,10 @@ object AiImageTool {
                         val targetProvider = provider ?: AiImageService.currentProviderOrNull()
                         runCatching {
                             val image = AiImageService.generateAndStore(
-                                prompt,
+                                ImageGenerationRequest(
+                                    prompt = prompt,
+                                    outputPath = File.createTempFile("ai_img", ".png")
+                                ),
                                 provider,
                                 metadata = AiImageGalleryManager.ImageMetadata(
                                     sourceType = AiImageGalleryManager.SOURCE_TYPE_CHAT,

@@ -33,6 +33,7 @@ import io.legado.app.databinding.ItemAiGeneratedImageBinding
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.ai.AiImageService
+import io.legado.app.help.ai.backends.ImageGenerationRequest
 import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.config.AppConfig
@@ -65,6 +66,7 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.FileOutputStream
 
 class BookCharacterEditActivity : BaseActivity<ViewBinding>(
@@ -376,7 +378,10 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                 runCatching {
                     val book = appDb.bookDao.getBook(bookUrl)
                     AiImageService.generateAndStore(
-                        prompt,
+                        ImageGenerationRequest(
+                            prompt = prompt,
+                            outputPath = File.createTempFile("ai_img", ".png")
+                        ),
                         metadata = AiImageGalleryManager.ImageMetadata(
                             bookName = book?.name.orEmpty(),
                             bookAuthor = book?.author.orEmpty(),

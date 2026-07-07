@@ -192,11 +192,7 @@ private fun AiVideoProviderCard(
                 }
                 Spacer(modifier = Modifier.height(5.dp))
                 Text(
-                    text = if (provider.type == AiVideoProviderConfig.TYPE_OPENAI) {
-                        provider.baseUrl.ifBlank { "OpenAI" }
-                    } else {
-                        stringResource(R.string.ai_video_provider_js)
-                    },
+                    text = videoProviderTypeLabel(provider.type),
                     color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -204,9 +200,7 @@ private fun AiVideoProviderCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = provider.model.ifBlank {
-                        if (provider.type == AiVideoProviderConfig.TYPE_OPENAI) "veo3.1" else "JS"
-                    },
+                    text = provider.model,
                     color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -276,5 +270,23 @@ private fun AiVideoProviderEmptyCard() {
             fontSize = 13.sp,
             lineHeight = 18.sp
         )
+    }
+}
+
+@Composable
+private fun videoProviderTypeLabel(type: String): String {
+    return when (type) {
+        AiVideoProviderConfig.TYPE_ARK -> stringResource(R.string.ai_video_provider_ark)
+        AiVideoProviderConfig.TYPE_AGNES -> stringResource(R.string.ai_video_provider_agnes)
+        AiVideoProviderConfig.TYPE_SORA -> stringResource(R.string.ai_video_provider_sora)
+        AiVideoProviderConfig.TYPE_VEO -> stringResource(R.string.ai_video_provider_veo)
+        AiVideoProviderConfig.TYPE_KLING -> stringResource(R.string.ai_video_provider_kling)
+        AiVideoProviderConfig.TYPE_NEWAPI -> stringResource(R.string.ai_video_provider_newapi)
+        AiVideoProviderConfig.TYPE_V2 -> stringResource(R.string.ai_video_provider_v2)
+        AiVideoProviderConfig.TYPE_DASHSCOPE -> stringResource(R.string.ai_video_provider_dashscope)
+        AiVideoProviderConfig.TYPE_MINIMAX -> stringResource(R.string.ai_video_provider_minimax)
+        AiVideoProviderConfig.TYPE_VIDU -> stringResource(R.string.ai_video_provider_vidu)
+        AiVideoProviderConfig.TYPE_GROK -> stringResource(R.string.ai_video_provider_grok)
+        else -> type
     }
 }

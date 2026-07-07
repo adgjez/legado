@@ -46,8 +46,6 @@ internal fun AiImageProviderManageScreen(
     providers: List<AiImageProviderConfig>,
     currentProviderId: String,
     onBack: () -> Unit,
-    onImportRules: () -> Unit,
-    onExportRules: () -> Unit,
     onAdd: () -> Unit,
     onOpenProvider: (AiImageProviderConfig) -> Unit,
     providerActions: (AiImageProviderConfig) -> List<AppManagementMenuAction>
@@ -67,11 +65,7 @@ internal fun AiImageProviderManageScreen(
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                AiImageProviderTopBar(
-                    onBack = onBack,
-                    onImportRules = onImportRules,
-                    onExportRules = onExportRules
-                )
+                AiImageProviderTopBar(onBack = onBack)
                 Text(
                     text = stringResource(R.string.ai_image_provider_manage_summary),
                     color = palette.settings.secondaryText,
@@ -120,11 +114,7 @@ internal fun AiImageProviderManageScreen(
 }
 
 @Composable
-private fun AiImageProviderTopBar(
-    onBack: () -> Unit,
-    onImportRules: () -> Unit,
-    onExportRules: () -> Unit
-) {
+private fun AiImageProviderTopBar(onBack: () -> Unit) {
     val palette = rememberAppManagementPalette()
     Row(
         modifier = Modifier
@@ -165,50 +155,7 @@ private fun AiImageProviderTopBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
-        AiImageProviderTopBarButton(
-            iconRes = R.drawable.ic_import,
-            contentDescription = stringResource(R.string.import_str),
-            palette = palette,
-            onClick = onImportRules
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        AiImageProviderTopBarButton(
-            iconRes = R.drawable.ic_export,
-            contentDescription = stringResource(R.string.export_str),
-            palette = palette,
-            onClick = onExportRules
-        )
-    }
-}
-
-@Composable
-private fun AiImageProviderTopBarButton(
-    iconRes: Int,
-    contentDescription: String,
-    palette: AppManagementPalette,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .size(42.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
-        color = Color.Transparent,
-        contentColor = palette.settings.primaryText,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = contentDescription,
-                tint = palette.settings.primaryText,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+        Spacer(modifier = Modifier.width(42.dp))
     }
 }
 
@@ -245,11 +192,7 @@ private fun AiImageProviderCard(
                 }
                 Spacer(modifier = Modifier.height(5.dp))
                 Text(
-                    text = if (provider.type == AiImageProviderConfig.TYPE_OPENAI) {
-                        provider.baseUrl.ifBlank { "OpenAI" }
-                    } else {
-                        stringResource(R.string.ai_image_provider_js)
-                    },
+                    text = imageProviderTypeLabel(provider.type),
                     color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -257,9 +200,7 @@ private fun AiImageProviderCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = provider.model.ifBlank {
-                        if (provider.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS"
-                    },
+                    text = provider.model,
                     color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -329,5 +270,19 @@ private fun AiImageProviderEmptyCard() {
             fontSize = 13.sp,
             lineHeight = 18.sp
         )
+    }
+}
+
+@Composable
+private fun imageProviderTypeLabel(type: String): String {
+    return when (type) {
+        AiImageProviderConfig.TYPE_ARK -> stringResource(R.string.ai_image_provider_ark)
+        AiImageProviderConfig.TYPE_DASHSCOPE -> stringResource(R.string.ai_image_provider_dashscope)
+        AiImageProviderConfig.TYPE_GEMINI -> stringResource(R.string.ai_image_provider_gemini)
+        AiImageProviderConfig.TYPE_GROK -> stringResource(R.string.ai_image_provider_grok)
+        AiImageProviderConfig.TYPE_KLING -> stringResource(R.string.ai_image_provider_kling)
+        AiImageProviderConfig.TYPE_MINIMAX -> stringResource(R.string.ai_image_provider_minimax)
+        AiImageProviderConfig.TYPE_VIDU -> stringResource(R.string.ai_image_provider_vidu)
+        else -> type
     }
 }

@@ -54,24 +54,42 @@ class AiVideoProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     private fun showAddSelector() {
-        val labels = listOf(
-            getString(R.string.ai_video_provider_openai),
-            getString(R.string.ai_video_provider_agnes),
-            getString(R.string.ai_video_provider_doubao),
-            getString(R.string.ai_video_provider_js)
+        val types = listOf(
+            AiVideoProviderConfig.TYPE_ARK,
+            AiVideoProviderConfig.TYPE_AGNES,
+            AiVideoProviderConfig.TYPE_SORA,
+            AiVideoProviderConfig.TYPE_VEO,
+            AiVideoProviderConfig.TYPE_KLING,
+            AiVideoProviderConfig.TYPE_NEWAPI,
+            AiVideoProviderConfig.TYPE_V2,
+            AiVideoProviderConfig.TYPE_DASHSCOPE,
+            AiVideoProviderConfig.TYPE_MINIMAX,
+            AiVideoProviderConfig.TYPE_VIDU,
+            AiVideoProviderConfig.TYPE_GROK
         )
         showComposeActionListDialog(
             title = getString(R.string.add),
-            labels = labels
+            labels = types.map { videoProviderTypeLabel(it) }
         ) { index ->
-            val type = when (index) {
-                0 -> AiVideoProviderConfig.TYPE_OPENAI
-                1 -> AiVideoProviderConfig.TYPE_AGNES
-                2 -> AiVideoProviderConfig.TYPE_DOUBAO
-                else -> AiVideoProviderConfig.TYPE_JS
+            types.getOrNull(index)?.let { type ->
+                openEdit(AiVideoProviderEditActivity.newIntent(this, null, type))
             }
-            openEdit(AiVideoProviderEditActivity.newIntent(this, null, type))
         }
+    }
+
+    private fun videoProviderTypeLabel(type: String): String = when (type) {
+        AiVideoProviderConfig.TYPE_ARK -> getString(R.string.ai_video_provider_ark)
+        AiVideoProviderConfig.TYPE_AGNES -> getString(R.string.ai_video_provider_agnes)
+        AiVideoProviderConfig.TYPE_SORA -> getString(R.string.ai_video_provider_sora)
+        AiVideoProviderConfig.TYPE_VEO -> getString(R.string.ai_video_provider_veo)
+        AiVideoProviderConfig.TYPE_KLING -> getString(R.string.ai_video_provider_kling)
+        AiVideoProviderConfig.TYPE_NEWAPI -> getString(R.string.ai_video_provider_newapi)
+        AiVideoProviderConfig.TYPE_V2 -> getString(R.string.ai_video_provider_v2)
+        AiVideoProviderConfig.TYPE_DASHSCOPE -> getString(R.string.ai_video_provider_dashscope)
+        AiVideoProviderConfig.TYPE_MINIMAX -> getString(R.string.ai_video_provider_minimax)
+        AiVideoProviderConfig.TYPE_VIDU -> getString(R.string.ai_video_provider_vidu)
+        AiVideoProviderConfig.TYPE_GROK -> getString(R.string.ai_video_provider_grok)
+        else -> type
     }
 
     private fun openEdit(intent: Intent) {
