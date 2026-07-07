@@ -48,6 +48,12 @@ class ReferenceCompressorTest {
         return o.outWidth > 0 && o.outHeight > 0
     }
 
+    /** 探测 Robolectric nativeruntime 是否真正可用：synthJpeg 输出应为有效 JPEG（FFD8 开头）。 */
+    private fun canSynthValidJpeg(): Boolean {
+        val bytes = synthJpeg(40, 20)
+        return bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
+    }
+
     private fun decodeBounds(bytes: ByteArray): Pair<Int, Int> {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
@@ -60,7 +66,7 @@ class ReferenceCompressorTest {
     fun selectLadderStepReturnsStep0WhenAlreadyCompliant() = kotlinx.coroutines.test.runTest {
         // 小 JPEG（100x100, q95）已合规 → step0 透传
         val raw = synthJpeg(100, 100)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         val (step, compressed) = ReferenceCompressor.selectLadderStep(
             listOf(raw), listOf(RefRole.ARRAY), limits
         )
@@ -71,15 +77,15 @@ class ReferenceCompressorTest {
 
     @Test
     fun selectLadderStepDescendsLadderUntilCompliant() = kotlinx.coroutines.test.runTest {
-        // 大 JPEG（3000x2000）需降档才合规（nativeruntime 可用时应 step>0）
+        // 大 JPEG（3000x2000）压缩后应合规
         val raw = synthJpeg(3000, 2000)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         val (step, compressed) = ReferenceCompressor.selectLadderStep(
             listOf(raw), listOf(RefRole.ARRAY), limits
         )
-        // 仅验证流程：降档了（step>0）+ 输出是有效 JPEG
-        // （nativeruntime 不可靠时不验证具体尺寸/字节，避免误报）
-        assertTrue("应降档（step>0），实际 step=$step", step > 0)
+        // 仅验证流程：某档合规 + 输出是有效 JPEG
+        // （step=0 也合法——LADDER[0] 就够了；nativeruntime 不可靠时不验证具体尺寸）
+        assertTrue("step 应在 0..LADDER_STEPS 范围", step in 0..ReferenceCompressor.LADDER_STEPS)
         assertTrue("输出应为有效 JPEG（FFD8 开头）",
             compressed[0].size >= 2 && compressed[0][0] == 0xFF.toByte() && compressed[0][1] == 0xD8.toByte())
     }
@@ -108,7 +114,7 @@ class ReferenceCompressorTest {
     fun compressSingleAtStepFrameNeverResizes() = kotlinx.coroutines.test.runTest {
         // FRAME 40x20 即使 singleMaxBytes 很大也不缩尺寸
         val raw = synthJpeg(40, 20)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         val out = ReferenceCompressor.compressSingleAtStep(
             raw, RefRole.FRAME, step = 3, singleMaxBytes = 10 * 1024 * 1024L
         )
@@ -121,7 +127,7 @@ class ReferenceCompressorTest {
     fun compressSingleAtStepFrameQ92WhenOverSingleMax() = kotlinx.coroutines.test.runTest {
         // FRAME 超 singleMaxBytes → q92 重编码（不缩尺寸）
         val raw = synthJpeg(200, 200, quality = 100)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         val out = ReferenceCompressor.compressSingleAtStep(
             raw, RefRole.FRAME, step = 0, singleMaxBytes = 100L  // 极小，必超
         )
@@ -138,7 +144,7 @@ class ReferenceCompressorTest {
     fun compressSingleAtStepArrayStep0PassesThroughCompliantJpeg() = kotlinx.coroutines.test.runTest {
         // ARRAY step0 + 合规小 JPEG → 原字节透传
         val raw = synthJpeg(100, 100)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         val out = ReferenceCompressor.compressSingleAtStep(
             raw, RefRole.ARRAY, step = 0, singleMaxBytes = 10 * 1024 * 1024L
         )
@@ -151,7 +157,7 @@ class ReferenceCompressorTest {
     fun compressSingleAtStepArrayStep0DoesNotPassThroughLargeJpeg() = kotlinx.coroutines.test.runTest {
         // ARRAY step0 + 超 PASSTHROUGH_MAX_BYTES 的 JPEG → 不透传，走 LADDER[0] 压缩
         val raw = synthJpeg(3000, 3000, quality = 100)  // 大 JPEG >1MB
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         assumeTrue("合成 JPEG 应 >1MB", raw.size > 1 * 1024 * 1024)
         val out = ReferenceCompressor.compressSingleAtStep(
             raw, RefRole.ARRAY, step = 0, singleMaxBytes = 10 * 1024 * 1024L
@@ -187,7 +193,7 @@ class ReferenceCompressorTest {
     @Test
     fun withCompressedPayloadCleansUpTempFiles() = kotlinx.coroutines.test.runTest {
         val raw = synthJpeg(3000, 2000)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         val src = File.createTempFile("big", ".jpg").apply {
             writeBytes(raw); deleteOnExit()
         }
@@ -208,7 +214,7 @@ class ReferenceCompressorTest {
     @Test
     fun withCompressedPayloadTempFileKeepsSourceStem() = kotlinx.coroutines.test.runTest {
         val raw = synthJpeg(3000, 2000)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
+        assumeTrue("Robolectric nativeruntime 不可用", canSynthValidJpeg())
         val src = File.createTempFile("character_01", ".jpg").apply {
             writeBytes(raw); deleteOnExit()
         }

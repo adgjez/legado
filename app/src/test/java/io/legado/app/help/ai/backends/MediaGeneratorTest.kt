@@ -2,7 +2,6 @@ package io.legado.app.help.ai.backends
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import io.legado.app.help.ai.backends.compress.PayloadLimits
 import io.legado.app.help.ai.backends.compress.ReferencePayloadFloorError
 import io.legado.app.help.ai.backends.compress.ReferenceSpec
@@ -12,7 +11,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -29,7 +27,7 @@ import java.io.File
  * - **地板耗尽抛 [ReferencePayloadFloorError] 保 cause**：永远 413 → 续档耗尽抛错，cause 是 413 异常
  *
  * 续档测试依赖 [ReferenceCompressor] 能成功压缩（nativeruntime 可用）。nativeruntime
- * 不可用时用 [assumeTrue] 跳过，不阻断 CI。无参考图测试不依赖压缩，始终跑。
+ * 413 续档测试不依赖真实压缩结果（透传也能跑续档逻辑），故不加 assumeTrue。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -41,12 +39,6 @@ class MediaGeneratorTest {
         bmp.compress(Bitmap.CompressFormat.JPEG, 95, out)
         bmp.recycle()
         return out.toByteArray()
-    }
-
-    private fun canDecodeJpeg(bytes: ByteArray): Boolean {
-        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-        return o.outWidth > 0 && o.outHeight > 0
     }
 
     private fun four13Exception(msg: String = "HTTP 413 Payload Too Large"): Throwable =
@@ -98,7 +90,6 @@ class MediaGeneratorTest {
     fun four13RetriesFromLandedPlusOne() = kotlinx.coroutines.test.runTest {
         // 第一次抛 413 → 续档；第二次成功
         val raw = synthJpeg(100, 100)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
         val src = File.createTempFile("ref", ".jpg").apply { writeBytes(raw); deleteOnExit() }
         val spec = ReferenceSpec(src, "ref", RefRole.ARRAY)
 
@@ -119,7 +110,6 @@ class MediaGeneratorTest {
     fun four13FloorExhaustionThrowsReferencePayloadFloorErrorPreservingCause() = kotlinx.coroutines.test.runTest {
         // 永远 413 → 续档耗尽（step 0→1→2→3→FLOOR 共 5 次）抛 ReferencePayloadFloorError，cause 是 413
         val raw = synthJpeg(100, 100)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
         val src = File.createTempFile("ref", ".jpg").apply { writeBytes(raw); deleteOnExit() }
         val spec = ReferenceSpec(src, "ref", RefRole.ARRAY)
 
@@ -147,7 +137,6 @@ class MediaGeneratorTest {
     fun non413ErrorDoesNotRetry() = kotlinx.coroutines.test.runTest {
         // 非 413 错误（如 500）→ 直接抛，不续档
         val raw = synthJpeg(100, 100)
-        assumeTrue("Robolectric nativeruntime 不可用", canDecodeJpeg(raw))
         val src = File.createTempFile("ref", ".jpg").apply { writeBytes(raw); deleteOnExit() }
         val spec = ReferenceSpec(src, "ref", RefRole.ARRAY)
 
