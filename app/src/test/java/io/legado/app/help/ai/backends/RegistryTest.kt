@@ -13,7 +13,8 @@ import org.junit.Test
  * P0：factories 空，所有 type 均报错。
  * P2a/P2b：agnes/ark/sora/veo 注册（companion init），byConfig 可解析；其余 type 仍未实现。
  * P2c：kling/newapi/v2 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
- * P2d+/P3：其余各家注册后逐步可解析。
+ * P2d：dashscope/minimax/vidu/grok 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
+ * P3+：其余各家注册后逐步可解析。
  */
 class RegistryTest {
 
@@ -29,17 +30,14 @@ class RegistryTest {
 
     @Test
     fun videoRegistryByConfigThrowsForUnimplementedTypes() {
-        // P2c 后 ark/agnes/sora/veo/kling/newapi/v2 已注册（companion init）；其余 type 仍未实现，应报错。
+        // P2d 后 ark/agnes/sora/veo/kling/newapi/v2/dashscope/minimax/vidu/grok 已注册（companion init）；
+        // 其余 type 仍未实现，应报错。
         // 注：不测已注册的——它们的 companion init 在被任何测试类引用时即注册到全局
         // singleton，测试顺序非确定，故只测确定性「未实现」的 type。
         listOf(
             AiVideoProviderConfig.TYPE_OPENAI,
             AiVideoProviderConfig.TYPE_JS,
-            AiVideoProviderConfig.TYPE_DOUBAO,
-            AiVideoProviderConfig.TYPE_DASHSCOPE,
-            AiVideoProviderConfig.TYPE_MINIMAX,
-            AiVideoProviderConfig.TYPE_VIDU,
-            AiVideoProviderConfig.TYPE_GROK
+            AiVideoProviderConfig.TYPE_DOUBAO
         ).forEach { t ->
             val cfg = AiVideoProviderConfig(name = "x", type = t)
             assertThrows("$t 应报错", IllegalStateException::class.java) {
@@ -100,6 +98,40 @@ class RegistryTest {
         VideoBackendRegistry.byConfig(klingCfg)
         VideoBackendRegistry.byConfig(newApiCfg)
         VideoBackendRegistry.byConfig(v2Cfg)
+    }
+
+    @Test
+    fun videoRegistryResolvesDashScopeMiniMaxViduGrokAfterClassLoad() {
+        // P2d：dashscope/minimax/vidu/grok companion init 注册到 registry。强制类加载触发 init 后 byConfig 应可解析。
+        Class.forName("io.legado.app.help.ai.backends.video.DashScopeVideoBackend")
+        Class.forName("io.legado.app.help.ai.backends.video.MiniMaxVideoBackend")
+        Class.forName("io.legado.app.help.ai.backends.video.ViduVideoBackend")
+        Class.forName("io.legado.app.help.ai.backends.video.GrokVideoBackend")
+        val dashscopeCfg = AiVideoProviderConfig(
+            name = "dashscope-test", type = AiVideoProviderConfig.TYPE_DASHSCOPE,
+            baseUrl = "https://dashscope.aliyuncs.com", apiKey = "k",
+            model = "happyhorse-1.0-t2v"
+        )
+        val minimaxCfg = AiVideoProviderConfig(
+            name = "minimax-test", type = AiVideoProviderConfig.TYPE_MINIMAX,
+            baseUrl = "https://api.minimaxi.com/v1", apiKey = "k",
+            model = "MiniMax-Hailuo-2.3"
+        )
+        val viduCfg = AiVideoProviderConfig(
+            name = "vidu-test", type = AiVideoProviderConfig.TYPE_VIDU,
+            baseUrl = "https://api.vidu.cn/ent/v2", apiKey = "k",
+            model = "viduq3-turbo"
+        )
+        val grokCfg = AiVideoProviderConfig(
+            name = "grok-test", type = AiVideoProviderConfig.TYPE_GROK,
+            baseUrl = "https://api.x.ai", apiKey = "k",
+            model = "grok-imagine-video"
+        )
+        // 不抛即通过
+        VideoBackendRegistry.byConfig(dashscopeCfg)
+        VideoBackendRegistry.byConfig(minimaxCfg)
+        VideoBackendRegistry.byConfig(viduCfg)
+        VideoBackendRegistry.byConfig(grokCfg)
     }
 
     @Test
