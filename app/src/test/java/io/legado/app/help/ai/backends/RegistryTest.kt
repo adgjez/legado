@@ -16,6 +16,7 @@ import org.junit.Test
  * P2d：dashscope/minimax/vidu/grok 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
  * P3a：agnes/ark image backend 注册（companion init），byConfig 可解析；其余 image type 仍未实现。
  * P3b：openai/gemini image backend 注册（companion init），byConfig 可解析；其余 image type 仍未实现。
+ * P3c：dashscope/grok/kling/minimax/vidu image backend 注册（companion init），byConfig 可解析；image 9 家全齐。
  * P3+：其余各家注册后逐步可解析。
  */
 class RegistryTest {
@@ -183,6 +184,48 @@ class RegistryTest {
         // 不抛即通过
         ImageBackendRegistry.byConfig(openaiCfg)
         ImageBackendRegistry.byConfig(geminiCfg)
+    }
+
+    @Test
+    fun imageRegistryResolvesDashScopeGrokKlingMiniMaxViduAfterClassLoad() {
+        // P3c：dashscope/grok/kling/minimax/vidu image backend companion init 注册到 registry。
+        // 强制类加载触发 init 后 byConfig 应可解析。
+        Class.forName("io.legado.app.help.ai.backends.image.DashScopeImageBackend")
+        Class.forName("io.legado.app.help.ai.backends.image.GrokImageBackend")
+        Class.forName("io.legado.app.help.ai.backends.image.KlingImageBackend")
+        Class.forName("io.legado.app.help.ai.backends.image.MiniMaxImageBackend")
+        Class.forName("io.legado.app.help.ai.backends.image.ViduImageBackend")
+        val dashscopeCfg = AiImageProviderConfig(
+            name = "dashscope-img-test", type = AiImageProviderConfig.TYPE_DASHSCOPE,
+            baseUrl = "https://dashscope.aliyuncs.com", apiKey = "k",
+            model = "qwen-image-2.0"
+        )
+        val grokCfg = AiImageProviderConfig(
+            name = "grok-img-test", type = AiImageProviderConfig.TYPE_GROK,
+            baseUrl = "https://api.x.ai", apiKey = "k",
+            model = "grok-imagine-image"
+        )
+        val klingCfg = AiImageProviderConfig(
+            name = "kling-img-test", type = AiImageProviderConfig.TYPE_KLING,
+            baseUrl = "https://api.klingai.com", apiKey = "k",
+            model = "kling-image-o1"
+        )
+        val minimaxCfg = AiImageProviderConfig(
+            name = "minimax-img-test", type = AiImageProviderConfig.TYPE_MINIMAX,
+            baseUrl = "https://api.minimaxi.com/v1", apiKey = "k",
+            model = "image-01"
+        )
+        val viduCfg = AiImageProviderConfig(
+            name = "vidu-img-test", type = AiImageProviderConfig.TYPE_VIDU,
+            baseUrl = "https://api.vidu.cn/ent/v2", apiKey = "k",
+            model = "viduq2"
+        )
+        // 不抛即通过
+        ImageBackendRegistry.byConfig(dashscopeCfg)
+        ImageBackendRegistry.byConfig(grokCfg)
+        ImageBackendRegistry.byConfig(klingCfg)
+        ImageBackendRegistry.byConfig(minimaxCfg)
+        ImageBackendRegistry.byConfig(viduCfg)
     }
 
     @Test
