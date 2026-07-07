@@ -80,7 +80,7 @@ class SoraVideoBackendTest {
         assertEquals("应有 5 个 part（4 文本 + 1 文件）", 5, parts.size)
 
         // 验证文本 part
-        val textPartNames = parts.map { it.headers?.value("Content-Disposition") }.filterNotNull()
+        val textPartNames = parts.map { it.headers?.get("Content-Disposition") }.filterNotNull()
         assertTrue("应有 model part", textPartNames.any { it.contains("name=\"model\"") })
         assertTrue("应有 prompt part", textPartNames.any { it.contains("name=\"prompt\"") })
         assertTrue("应有 seconds part", textPartNames.any { it.contains("name=\"seconds\"") })
@@ -88,10 +88,10 @@ class SoraVideoBackendTest {
 
         // 验证 input_reference part：含 filename（文件 part 标志）
         val refPart = parts.firstOrNull {
-            it.headers?.value("Content-Disposition")?.contains("name=\"input_reference\"") == true
+            it.headers?.get("Content-Disposition")?.contains("name=\"input_reference\"") == true
         }
         assertNotNull("应有 input_reference part", refPart)
-        val disp = refPart!!.headers?.value("Content-Disposition")
+        val disp = refPart!!.headers?.get("Content-Disposition")
         assertTrue("input_reference part 应带 filename（文件 part）",
             disp?.contains("filename=") == true)
         // 不应含 data: 前缀或 base64 字样——是原始字节
@@ -116,7 +116,7 @@ class SoraVideoBackendTest {
         )
         val body = backend.buildMultipartBody(request, compressed)
         val refParts = body.parts.filter {
-            it.headers?.value("Content-Disposition")?.contains("name=\"input_reference\"") == true
+            it.headers?.get("Content-Disposition")?.contains("name=\"input_reference\"") == true
         }
         assertEquals("应有 2 个 input_reference part（共享槽位）", 2, refParts.size)
     }
