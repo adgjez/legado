@@ -114,7 +114,7 @@ class AppConfigMigrationTest {
     fun videoDefaultTypeIsArk() {
         assertTrue(
             "video 默认 type 应是 TYPE_ARK（老配置回退目标）",
-            AiVideoProviderConfig().type == AiVideoProviderConfig.TYPE_ARK
+            AiVideoProviderConfig(name = "test").type == AiVideoProviderConfig.TYPE_ARK
         )
     }
 
@@ -122,7 +122,7 @@ class AppConfigMigrationTest {
     fun imageDefaultTypeIsArk() {
         assertTrue(
             "image 默认 type 应是 TYPE_ARK（老配置回退目标）",
-            AiImageProviderConfig().type == AiImageProviderConfig.TYPE_ARK
+            AiImageProviderConfig(name = "test").type == AiImageProviderConfig.TYPE_ARK
         )
     }
 }
