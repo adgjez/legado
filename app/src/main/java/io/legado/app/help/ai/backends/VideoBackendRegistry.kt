@@ -10,7 +10,12 @@ import io.legado.app.ui.main.ai.AiVideoProviderConfig
  * P2 各家 backend 实现后在此注册（ark/agnes/sora/veo/kling/newapi/v2/dashscope/minimax/vidu/grok）。
  */
 object VideoBackendRegistry {
-    private val factories: Map<String, (AiVideoProviderConfig) -> VideoBackend> = emptyMap()
+    private val factories: MutableMap<String, (AiVideoProviderConfig) -> VideoBackend> = mutableMapOf()
+
+    /** P2+ 各家 backend 在 companion init 里调此方法注册。 */
+    fun register(typeId: String, factory: (AiVideoProviderConfig) -> VideoBackend) {
+        factories[typeId] = factory
+    }
 
     fun byConfig(cfg: AiVideoProviderConfig): VideoBackend =
         (factories[cfg.type] ?: error("未知视频 backend type: ${cfg.type}"))(cfg)
