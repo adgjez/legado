@@ -12,7 +12,8 @@ import org.junit.Test
  *
  * P0：factories 空，所有 type 均报错。
  * P2a/P2b：agnes/ark/sora/veo 注册（companion init），byConfig 可解析；其余 type 仍未实现。
- * P2c+/P3：其余各家注册后逐步可解析。
+ * P2c：kling/newapi/v2 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
+ * P2d+/P3：其余各家注册后逐步可解析。
  */
 class RegistryTest {
 
@@ -28,16 +29,13 @@ class RegistryTest {
 
     @Test
     fun videoRegistryByConfigThrowsForUnimplementedTypes() {
-        // P2a/P2b 后 ark/agnes/sora/veo 已注册（companion init）；其余 type 仍未实现，应报错。
+        // P2c 后 ark/agnes/sora/veo/kling/newapi/v2 已注册（companion init）；其余 type 仍未实现，应报错。
         // 注：不测已注册的——它们的 companion init 在被任何测试类引用时即注册到全局
         // singleton，测试顺序非确定，故只测确定性「未实现」的 type。
         listOf(
             AiVideoProviderConfig.TYPE_OPENAI,
             AiVideoProviderConfig.TYPE_JS,
             AiVideoProviderConfig.TYPE_DOUBAO,
-            AiVideoProviderConfig.TYPE_KLING,
-            AiVideoProviderConfig.TYPE_NEWAPI,
-            AiVideoProviderConfig.TYPE_V2,
             AiVideoProviderConfig.TYPE_DASHSCOPE,
             AiVideoProviderConfig.TYPE_MINIMAX,
             AiVideoProviderConfig.TYPE_VIDU,
@@ -78,6 +76,30 @@ class RegistryTest {
         VideoBackendRegistry.byConfig(arkCfg)
         VideoBackendRegistry.byConfig(soraCfg)
         VideoBackendRegistry.byConfig(veoCfg)
+    }
+
+    @Test
+    fun videoRegistryResolvesKlingNewApiV2AfterClassLoad() {
+        // P2c：kling/newapi/v2 companion init 注册到 registry。强制类加载触发 init 后 byConfig 应可解析。
+        Class.forName("io.legado.app.help.ai.backends.video.KlingVideoBackend")
+        Class.forName("io.legado.app.help.ai.backends.video.NewApiVideoBackend")
+        Class.forName("io.legado.app.help.ai.backends.video.V2VideoBackend")
+        val klingCfg = AiVideoProviderConfig(
+            name = "kling-test", type = AiVideoProviderConfig.TYPE_KLING,
+            baseUrl = "https://api.klingai.com", apiKey = "k", model = "kling-v2-5-turbo"
+        )
+        val newApiCfg = AiVideoProviderConfig(
+            name = "newapi-test", type = AiVideoProviderConfig.TYPE_NEWAPI,
+            baseUrl = "https://api.newapi.com", apiKey = "k", model = "kling-v1"
+        )
+        val v2Cfg = AiVideoProviderConfig(
+            name = "v2-test", type = AiVideoProviderConfig.TYPE_V2,
+            baseUrl = "https://api.aimlapi.com", apiKey = "k", model = "kling-v1"
+        )
+        // 不抛即通过
+        VideoBackendRegistry.byConfig(klingCfg)
+        VideoBackendRegistry.byConfig(newApiCfg)
+        VideoBackendRegistry.byConfig(v2Cfg)
     }
 
     @Test
