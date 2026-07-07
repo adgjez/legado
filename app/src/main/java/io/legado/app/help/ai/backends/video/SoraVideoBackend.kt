@@ -142,9 +142,9 @@ class SoraVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             val mime = ImageCodec.mimeByExtension(ref.path.extension).toMediaType()
             val requestBody = ref.path.asRequestBody(mime)
             builder.addFormDataPart(
-                name = "input_reference",
-                filename = ref.path.name,
-                value = requestBody
+                "input_reference",
+                ref.path.name,
+                requestBody
             )
         }
         return builder.build()
