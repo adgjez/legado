@@ -4,9 +4,13 @@ import java.io.File
 
 /**
  * 图像 backend 抽象（移植 ArcReel lib/image_backends/base.py）。
- * 与 [VideoBackend] 同构：[generate] 自管请求+解析+落盘全生命周期。
+ *
+ * 非 sealed：各 backend 实现在 `image/` 子包，sealed 跨包不允许；
+ * 动态分发经 [ImageBackendRegistry]，无需 exhaustive when。与 [VideoBackend] 同构。
+ *
+ * 生命周期模型 1a 忠实：[generate] 自管请求+解析+落盘全生命周期。
  */
-sealed interface ImageBackend {
+interface ImageBackend {
     val typeId: String
     val model: String
     val capabilities: Set<ImageCapability>
