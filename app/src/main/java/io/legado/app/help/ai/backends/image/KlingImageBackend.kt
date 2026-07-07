@@ -140,9 +140,9 @@ class KlingImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         return taskId
     }
 
-    /** 顶层 code != 0 → 错误描述；0/缺失 → null。bearer/中转可能把 code 序列化成字符串，归一化 int 比较。 */
+    /** 顶层 code != 0 → 错误描述；0/缺失/null → null。bearer/中转可能把 code 序列化成字符串，归一化 int 比较。 */
     internal fun responseError(root: JsonObject): String? {
-        val codeEl = root.get("code") ?: return null
+        val codeEl = root.get("code")?.takeIf { !it.isJsonNull } ?: return null
         val code: Int? = runCatching { codeEl.asInt }.getOrNull()
             ?: runCatching { codeEl.asString.trim().toInt() }.getOrNull()
         if (code == null) {

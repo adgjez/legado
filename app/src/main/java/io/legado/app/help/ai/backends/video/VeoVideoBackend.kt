@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.MediaGenerator
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
@@ -27,6 +28,7 @@ import java.io.File
 import java.util.Base64 as JvmBase64
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
 
 /**
  * Veo 视频后端（移植 ArcReel `video_backends/gemini.py`）。
@@ -78,8 +80,28 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     override suspend fun resumeVideo(jobId: String, request: VideoGenerationRequest): VideoGenerationResult {
         // jobId 是 LRO operation.name，直接 poll 直到 done
         val client = buildClient(cfg.validPollTimeout())
-        val operation = pollUntilDone(client, jobId, onProgress = {}) {}
-        return extractResultAndDownload(client, operation, request)
+        return try {
+            val operation = pollUntilDone(client, jobId, onProgress = {}) {}
+            extractResultAndDownload(client, operation, request)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // resume 路径：operation 过期/不存在（404/not found）→ ResumeExpiredError
+            // 便于 worker 区分「过期」与「真错误」（对齐共享层契约，同 Ark/DashScope/Agnes）
+            if (isVeoNotFound(e)) {
+                throw ResumeExpiredError("Veo 任务已过期或不存在（provider=$typeId, jobId=$jobId）：${e.message}")
+            }
+            throw e
+        }
+    }
+
+    /** Veo operation「不存在/已过期」判定（对齐 Ark isArkNotFound / Agnes isAgnesNotFound）。 */
+    private fun isVeoNotFound(e: Throwable): Boolean {
+        val msg = e.message.orEmpty().lowercase()
+        return msg.contains("http 404") ||
+            msg.contains("not found") ||
+            msg.contains("notfound") ||
+            msg.contains("expired")
     }
 
     private suspend fun submitPollDownload(
@@ -230,7 +252,11 @@ class VeoVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             isFailed = { false },
             pollInterval = 20.seconds,
             maxWait = 600.seconds,
-            retryIf = VideoBackendHttp::shouldRetryPoll,
+            // Veo：poll 404 视为 operation 已过期/不存在（终态，不重试），让 resume 路径识别为 ResumeExpiredError
+            retryIf = { e ->
+                !e.message.orEmpty().lowercase().contains("http 404") &&
+                    VideoBackendHttp.shouldRetryPoll(e)
+            },
             label = "veo poll operation=$operationName",
             onProgress = onProgress
         )

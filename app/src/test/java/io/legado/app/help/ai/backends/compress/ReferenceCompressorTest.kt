@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test

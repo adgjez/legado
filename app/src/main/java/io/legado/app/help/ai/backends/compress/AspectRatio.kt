@@ -98,6 +98,7 @@ object AspectSize {
 
         val shortComp = min(aw, ah)
         val longComp = max(aw, ah)
+        require(roundTo > 0) { "roundTo 必须 > 0，当前=$roundTo（否则会整数除零）" }
         val shortUnit = roundTo * shortComp
 
         var t = max(1, (shortEdge.toFloat() / shortUnit).roundToInt())

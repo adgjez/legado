@@ -53,14 +53,22 @@ object JobIdStore {
             val root = JsonParser.parseString(storeFile.readText()).takeIf { it.isJsonObject }?.asJsonObject
                 ?: return@runCatching
             root.entrySet().forEach { (k, v) ->
-                val obj = v.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
-                map[k] = Entry(
-                    obj.get("providerId")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
-                    obj.get("taskId")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
-                    obj.get("model")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
-                    obj.get("promptDigest")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
-                    obj.get("savedAt")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
-                )
+                // 单条 entry 解析失败不影响其余 entry（savedAt 若为非数字 Primitive 由内层 runCatching 兜底）
+                val obj = v.takeIf { it.isJsonObject }?.asJsonObject
+                if (obj != null) {
+                    map[k] = runCatching {
+                        Entry(
+                            obj.get("providerId")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                            obj.get("taskId")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                            obj.get("model")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                            obj.get("promptDigest")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                            runCatching { obj.get("savedAt")?.takeIf { !it.isJsonNull }?.asLong }.getOrNull() ?: 0L
+                        )
+                    }.getOrElse {
+                        AppLog.put("JobIdStore 加载 entry 失败（key=$k）：${it.message}")
+                        return@forEach
+                    }
+                }
             }
         }.onFailure { AppLog.put("JobIdStore 加载失败：${it.message}") }
         return map

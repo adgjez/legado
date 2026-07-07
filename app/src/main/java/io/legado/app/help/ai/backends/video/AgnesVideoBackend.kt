@@ -3,8 +3,8 @@ package io.legado.app.help.ai.backends.video
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import io.legado.app.help.ai.backends.AmbiguousSubmitError
 import io.legado.app.help.ai.backends.MediaGenerator
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
@@ -25,11 +25,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
 
 /**
  * Agnes 视频后端。
@@ -72,16 +72,29 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
 
     override suspend fun resumeVideo(jobId: String, request: VideoGenerationRequest): VideoGenerationResult {
         val client = buildClient(cfg.validPollTimeout())
-        val videoUrl = pollUntilDone(client, jobId) {}
-        VideoBackendHttp.downloadVideo(videoUrl, request.outputPath)
-        return VideoGenerationResult(
-            videoPath = request.outputPath,
-            provider = typeId,
-            model = model,
-            durationSeconds = request.durationSeconds,
-            videoUri = videoUrl,
-            taskId = jobId
-        )
+        return try {
+            val videoUrl = pollUntilDone(client, jobId) {}
+            VideoBackendHttp.downloadVideo(videoUrl, request.outputPath)
+            VideoGenerationResult(
+                videoPath = request.outputPath,
+                provider = typeId,
+                model = model,
+                durationSeconds = request.durationSeconds,
+                videoUri = videoUrl,
+                taskId = jobId,
+                // Agnes 视频恒无声（ArcReel agnes.py:440 generate_audio=False）
+                generateAudio = false
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // resume 路径：任务过期/不存在（404/task_not_found/expired）→ ResumeExpiredError
+            // 便于 worker 区分「过期」与「真错误」（对齐共享层契约，同 Ark/DashScope/NewApi/Sora）
+            if (isAgnesNotFound(e)) {
+                throw ResumeExpiredError("Agnes 任务已过期或不存在（provider=$typeId, jobId=$jobId）：${e.message}")
+            }
+            throw e
+        }
     }
 
     private suspend fun submitPollDownload(
@@ -235,14 +248,23 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
 
         val result = VideoBackendHttp.pollWithRetry(
             pollFn = { doPoll(client, pollUrl) },
-            isDone = { it.status == "completed" },
-            isFailed = { it.status in FAILED_STATUSES },
+            // 终态（completed/failed/cancelled/expired）都视为 done，由下方统一抛带 status 的错误，
+            // 便于 resumeVideo 识别 expired/404 → ResumeExpiredError（对齐 Ark）
+            isDone = { it.status == "completed" || it.status in FAILED_STATUSES },
+            isFailed = { false },
             pollInterval = interval,
             maxWait = maxWait,
-            retryIf = VideoBackendHttp::shouldRetryPoll,
+            // Agnes：poll 404 视为任务不存在（终态，不重试），让 resume 路径识别为 ResumeExpiredError
+            retryIf = { e ->
+                !e.message.orEmpty().lowercase().contains("http 404") &&
+                    VideoBackendHttp.shouldRetryPoll(e)
+            },
             label = "agnes poll taskId=$taskId",
             onProgress = onProgress
         )
+        if (result.status != "completed") {
+            error("agnes 任务失败 status=${result.status}：${result.raw}")
+        }
         return result.videoUrl ?: error("agnes poll completed 但无 url/remixed_from_video_id：${result.raw}")
     }
 
@@ -290,11 +312,21 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
 
     private data class AgnesPollResult(val status: String, val videoUrl: String?, val raw: String)
 
+    /** Agnes 任务「不存在/已过期」判定（对齐 Ark isArkNotFound）。 */
+    private fun isAgnesNotFound(e: Throwable): Boolean {
+        val msg = e.message.orEmpty().lowercase()
+        return msg.contains("http 404") ||
+            msg.contains("task_not_found") ||
+            msg.contains("tasknotfound") ||
+            msg.contains("not found") ||
+            msg.contains("expired")
+    }
+
     companion object {
         private const val DEFAULT_MODEL = "agnes-video-v2.0"
         private const val SUBMIT_PATH = "/videos"
         private const val POLL_PATH = "/videos/{taskId}"
-        private val FAILED_STATUSES = setOf("failed", "cancelled", "canceled", "error")
+        private val FAILED_STATUSES = setOf("failed", "cancelled", "canceled", "error", "expired")
         // 对齐 ArcReel agnes.py：fps=24，num_frames 须形如 8n+1，上限 441（≈18.4s）
         private const val FPS = 24
         private const val FRAME_STEP = 8
