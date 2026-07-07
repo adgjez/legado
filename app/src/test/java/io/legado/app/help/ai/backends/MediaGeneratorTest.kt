@@ -1,5 +1,6 @@
 package io.legado.app.help.ai.backends
 
+import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import io.legado.app.help.ai.backends.compress.PayloadLimits
@@ -13,6 +14,9 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -27,6 +31,8 @@ import java.io.File
  * 续档测试依赖 [ReferenceCompressor] 能成功压缩（nativeruntime 可用）。nativeruntime
  * 不可用时用 [assumeTrue] 跳过，不阻断 CI。无参考图测试不依赖压缩，始终跑。
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], application = Application::class)
 class MediaGeneratorTest {
 
     private fun synthJpeg(w: Int, h: Int): ByteArray {

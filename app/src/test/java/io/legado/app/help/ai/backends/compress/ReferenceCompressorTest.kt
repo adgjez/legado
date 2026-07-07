@@ -1,5 +1,6 @@
 package io.legado.app.help.ai.backends.compress
 
+import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import org.junit.Assert.assertEquals
@@ -28,7 +29,7 @@ import java.io.File
  * Robolectric nativeruntime 不可用时用 [assumeTrue] 跳过 JPEG 合成相关测试。
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = android.app.Application::class)
 class ReferenceCompressorTest {
 
     private val limits = PayloadLimits(totalMaxBytes = 500 * 1024L, singleMaxBytes = 300 * 1024L)

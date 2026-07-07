@@ -1,5 +1,6 @@
 package io.legado.app.help.ai.backends.compress
 
+import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -30,7 +31,7 @@ import java.io.File
  * Robolectric nativeruntime 不可用时用 [assumeTrue] 跳过压缩测试，不阻断 CI。
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = android.app.Application::class)
 class ImageCodecTest {
 
     private fun tmpFile(prefix: String, ext: String, bytes: ByteArray): File {
