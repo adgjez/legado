@@ -49,6 +49,7 @@ class ImageBackendLiveTest {
      * 用 T2I 而非 I2I 是因为 T2I 不带参考图，能更纯粹地验证 endpoint/auth 跑通；
      * 参考图的 data URI 列表编码已在 [AgnesImageBackendTest] 单测覆盖。
      */
+    @Ignore("需真实 API token + 网络，CI 不跑；本地手跑时去掉 @Ignore")
     @Test
     fun agnesTextToImageDoesNotReportIncorrectPadding() = runBlocking<Unit> {
         val key = env("AGNES_API_KEY")
@@ -102,6 +103,7 @@ class ImageBackendLiveTest {
      * 这是 P3a 头条验收的 live 证明：agnes I2I 把参考图编码成 data URI 数组（[ImageCodec.toDataUri]，
      * NO_WRAP base64）下发，验证不触发 padding 错误。
      */
+    @Ignore("需真实 API token + 网络，CI 不跑；本地手跑时去掉 @Ignore")
     @Test
     fun agnesImage2ImageDataUriNoIncorrectPadding() = runBlocking {
         val key = env("AGNES_API_KEY")
@@ -158,6 +160,7 @@ class ImageBackendLiveTest {
      * data URI 编码已在 [ArkImageBackendTest] 单测覆盖；本测试用真实 ark API
      * 验证 Seedream 端点（REST 等价 SDK）的 size 解析与同步响应解析跑通。
      */
+    @Ignore("需真实 API token + 网络，CI 不跑；本地手跑时去掉 @Ignore")
     @Test
     fun arkTextToImageDoesNotReportIncorrectPadding() = runBlocking<Unit> {
         val key = env("ARK_API_KEY")
@@ -211,6 +214,7 @@ class ImageBackendLiveTest {
      * 这是 P3a 头条验收的 live 证明：ark I2I 单张参考图编码成 data URI 字符串（[ImageCodec.toDataUri]，
      * NO_WRAP base64）下发，验证不触发 padding 错误。
      */
+    @Ignore("需真实 API token + 网络，CI 不跑；本地手跑时去掉 @Ignore")
     @Test
     fun arkImage2ImageDataUriNoIncorrectPadding() = runBlocking {
         val key = env("ARK_API_KEY")

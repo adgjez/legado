@@ -48,6 +48,7 @@ class VideoBackendLiveTest {
      * 用 T2V 而非 I2V 是因为 T2V 不带参考图，能更纯粹地验证 endpoint/auth 跑通；
      * 参考图的裸 base64 编码已在 [AgnesVideoBackendTest] 单测覆盖。
      */
+    @Ignore("需真实 API token + 网络，CI 不跑；本地手跑时去掉 @Ignore")
     @Test
     fun agnesTextToVideoDoesNotReportIncorrectPadding() = runBlocking<Unit> {
         val key = env("AGNES_API_KEY")
@@ -107,6 +108,7 @@ class VideoBackendLiveTest {
      * 这是 P2a 头条验收的 live 证明：ArcReel 注释原话「带 `data:` 前缀会在生成期触发 padding 错误」，
      * 本测试用真实 agnes API 验证裸 base64（[ImageCodec.toBareBase64]）确实修了 padding 问题。
      */
+    @Ignore("需真实 API token + 网络，CI 不跑；本地手跑时去掉 @Ignore")
     @Test
     fun agnesImageToVideoBareBase64NoIncorrectPadding() = runBlocking {
         val key = env("AGNES_API_KEY")
@@ -168,6 +170,7 @@ class VideoBackendLiveTest {
      * data URI 编码已在 [ArkVideoBackendTest] 单测覆盖；本测试用真实 ark API
      * 验证 data URI（[ImageCodec.toDataUri]）的 NO_WRAP base64 不触发 padding 错误。
      */
+    @Ignore("需真实 API token + 网络，CI 不跑；本地手跑时去掉 @Ignore")
     @Test
     fun arkTextToVideoDoesNotReportIncorrectPadding() = runBlocking {
         val key = env("ARK_API_KEY")
