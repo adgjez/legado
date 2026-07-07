@@ -14,6 +14,7 @@ import org.junit.Test
  * P2a/P2b：agnes/ark/sora/veo 注册（companion init），byConfig 可解析；其余 type 仍未实现。
  * P2c：kling/newapi/v2 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
  * P2d：dashscope/minimax/vidu/grok 注册（companion init），byConfig 可解析；剩余 type 仍未实现。
+ * P3a：agnes/ark image backend 注册（companion init），byConfig 可解析；其余 image type 仍未实现。
  * P3+：其余各家注册后逐步可解析。
  */
 class RegistryTest {
@@ -141,6 +142,26 @@ class RegistryTest {
             ImageBackendRegistry.byConfig(cfg)
         }
         assertTrue(ex.message!!.contains("未知图像 backend type"))
+    }
+
+    @Test
+    fun imageRegistryResolvesAgnesArkAfterClassLoad() {
+        // P3a：agnes/ark image backend companion init 注册到 registry。强制类加载触发 init 后 byConfig 应可解析。
+        Class.forName("io.legado.app.help.ai.backends.image.AgnesImageBackend")
+        Class.forName("io.legado.app.help.ai.backends.image.ArkImageBackend")
+        val agnesCfg = AiImageProviderConfig(
+            name = "agnes-img-test", type = AiImageProviderConfig.TYPE_AGNES,
+            baseUrl = "https://apihub.agnes-ai.com", apiKey = "k",
+            model = "agnes-image-2.1-flash"
+        )
+        val arkCfg = AiImageProviderConfig(
+            name = "ark-img-test", type = AiImageProviderConfig.TYPE_ARK,
+            baseUrl = "https://ark.cn-beijing.volces.com/api/v3", apiKey = "k",
+            model = "doubao-seedream-5-0-lite-260128"
+        )
+        // 不抛即通过
+        ImageBackendRegistry.byConfig(agnesCfg)
+        ImageBackendRegistry.byConfig(arkCfg)
     }
 
     @Test
