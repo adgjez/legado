@@ -25,7 +25,6 @@ import java.io.File
  *
  * 注：本测试会真实扣费（生成图片）。仅用于 P3a 一次性 live 验证，常规开发勿开。
  */
-@Ignore("P3a live 集成测试——需 API key + 真实扣费，CI 默认跳过")
 class ImageBackendLiveTest {
 
     private fun env(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
@@ -71,15 +70,30 @@ class ImageBackendLiveTest {
         )
 
         val result = runCatching { backend.generate(request) }
+        val err = result.exceptionOrNull()
+
+        // 1. 核心修复证明：不报 Incorrect padding
         assertTrue(
-            "agnes 图像提交不应报 Incorrect padding：${result.exceptionOrNull()?.message ?: ""}",
-            result.exceptionOrNull()?.message?.contains("padding", ignoreCase = true) != true
+            "agnes T2I 不应报 Incorrect padding" +
+                (err?.message?.let { "：$it" } ?: ""),
+            err?.message?.contains("padding", ignoreCase = true) != true
         )
-        // 成功时验证产物
-        result.getOrNull()?.let {
-            assertTrue("图片文件应存在", it.imagePath.exists())
-            assertNotNull("应有 provider", it.provider)
-        }
+
+        // 2. Live 端到端验证：调用必须真成功（仅 padding 检查会假绿——API 401/网络失败也不含 padding 字样）
+        assertTrue(
+            "agnes T2I 应端到端成功。失败：${err?.javaClass?.simpleName}: ${err?.message}" +
+                (err?.cause?.let { " | cause: ${it.javaClass.simpleName}: ${it.message}" } ?: ""),
+            result.isSuccess
+        )
+
+        // 3. 产物验证（文件存在 + 非空，防止 backend 返回空壳 Result）
+        val output = result.getOrThrow()
+        assertTrue("agnes T2I 图片文件应存在：${output.imagePath}", output.imagePath.exists())
+        assertTrue(
+            "agnes T2I 图片文件应非空（>1KB）：${output.imagePath} size=${output.imagePath.length()}",
+            output.imagePath.length() > 1024
+        )
+        assertNotNull("agnes T2I 应有 provider", output.provider)
     }
 
     /**
@@ -112,11 +126,30 @@ class ImageBackendLiveTest {
 
         val result = runCatching { backend.generate(request) }
         val err = result.exceptionOrNull()
+
+        // 1. 核心修复证明：data URI 列表不报 Incorrect padding（P3a 头条验收——I2I 编码纪律的 live 证明）
         assertTrue(
-            "agnes I2I data URI 列表提交不应报 Incorrect padding" +
+            "agnes I2I data URI 列表不应报 Incorrect padding" +
                 (err?.message?.let { "：$it" } ?: ""),
             err?.message?.contains("padding", ignoreCase = true) != true
         )
+
+        // 2. Live 端到端验证：调用必须真成功（仅 padding 检查会假绿）
+        assertTrue(
+            "agnes I2I 应端到端成功（data URI 列表须真被 agnes 接受并生成图片）。" +
+                "失败：${err?.javaClass?.simpleName}: ${err?.message}" +
+                (err?.cause?.let { " | cause: ${it.javaClass.simpleName}: ${it.message}" } ?: ""),
+            result.isSuccess
+        )
+
+        // 3. 产物验证
+        val output = result.getOrThrow()
+        assertTrue("agnes I2I 图片文件应存在：${output.imagePath}", output.imagePath.exists())
+        assertTrue(
+            "agnes I2I 图片文件应非空（>1KB）：${output.imagePath} size=${output.imagePath.length()}",
+            output.imagePath.length() > 1024
+        )
+        assertNotNull("agnes I2I 应有 provider", output.provider)
     }
 
     /**
@@ -146,15 +179,30 @@ class ImageBackendLiveTest {
         )
 
         val result = runCatching { backend.generate(request) }
+        val err = result.exceptionOrNull()
+
+        // 1. 核心修复证明：data URI 不报 Incorrect padding
         assertTrue(
-            "ark 图像提交不应报 Incorrect padding：${result.exceptionOrNull()?.message ?: ""}",
-            result.exceptionOrNull()?.message?.contains("padding", ignoreCase = true) != true
+            "ark T2I 不应报 Incorrect padding" +
+                (err?.message?.let { "：$it" } ?: ""),
+            err?.message?.contains("padding", ignoreCase = true) != true
         )
-        // 成功时验证产物
-        result.getOrNull()?.let {
-            assertTrue("图片文件应存在", it.imagePath.exists())
-            assertNotNull("应有 provider", it.provider)
-        }
+
+        // 2. Live 端到端验证：调用必须真成功
+        assertTrue(
+            "ark T2I 应端到端成功。失败：${err?.javaClass?.simpleName}: ${err?.message}" +
+                (err?.cause?.let { " | cause: ${it.javaClass.simpleName}: ${it.message}" } ?: ""),
+            result.isSuccess
+        )
+
+        // 3. 产物验证
+        val output = result.getOrThrow()
+        assertTrue("ark T2I 图片文件应存在：${output.imagePath}", output.imagePath.exists())
+        assertTrue(
+            "ark T2I 图片文件应非空（>1KB）：${output.imagePath} size=${output.imagePath.length()}",
+            output.imagePath.length() > 1024
+        )
+        assertNotNull("ark T2I 应有 provider", output.provider)
     }
 
     /**
@@ -187,10 +235,29 @@ class ImageBackendLiveTest {
 
         val result = runCatching { backend.generate(request) }
         val err = result.exceptionOrNull()
+
+        // 1. 核心修复证明：data URI 不报 Incorrect padding（P3a 头条验收——单 str 路径）
         assertTrue(
-            "ark I2I data URI 提交不应报 Incorrect padding" +
+            "ark I2I data URI 不应报 Incorrect padding" +
                 (err?.message?.let { "：$it" } ?: ""),
             err?.message?.contains("padding", ignoreCase = true) != true
         )
+
+        // 2. Live 端到端验证：调用必须真成功
+        assertTrue(
+            "ark I2I 应端到端成功（data URI 须真被 ark 接受并生成图片）。" +
+                "失败：${err?.javaClass?.simpleName}: ${err?.message}" +
+                (err?.cause?.let { " | cause: ${it.javaClass.simpleName}: ${it.message}" } ?: ""),
+            result.isSuccess
+        )
+
+        // 3. 产物验证
+        val output = result.getOrThrow()
+        assertTrue("ark I2I 图片文件应存在：${output.imagePath}", output.imagePath.exists())
+        assertTrue(
+            "ark I2I 图片文件应非空（>1KB）：${output.imagePath} size=${output.imagePath.length()}",
+            output.imagePath.length() > 1024
+        )
+        assertNotNull("ark I2I 应有 provider", output.provider)
     }
 }

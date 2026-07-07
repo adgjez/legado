@@ -24,7 +24,6 @@ import java.io.File
  *
  * 注：本测试会真实扣费（生成视频）。仅用于 P2a 一次性 live 验证，常规开发勿开。
  */
-@Ignore("P2a live 集成测试——需 API key + 真实扣费，CI 默认跳过")
 class VideoBackendLiveTest {
 
     private fun env(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
@@ -74,15 +73,32 @@ class VideoBackendLiveTest {
         )
 
         val result = runCatching { backend.generate(request) {} }
+        val err = result.exceptionOrNull()
+
+        // 1. 核心修复证明：不报 Incorrect padding（P2a 头条验收目标）
         assertTrue(
-            "agnes 提交不应报 Incorrect padding：${result.exceptionOrNull()?.message ?: ""}",
-            result.exceptionOrNull()?.message?.contains("padding", ignoreCase = true) != true
+            "agnes T2V 不应报 Incorrect padding" +
+                (err?.message?.let { "：$it" } ?: ""),
+            err?.message?.contains("padding", ignoreCase = true) != true
         )
-        // 成功时验证产物
-        result.getOrNull()?.let {
-            assertNotNull("应有 taskId", it.taskId)
-            assertTrue("视频文件应存在", it.videoPath.exists())
-        }
+
+        // 2. Live 端到端验证：调用必须真成功。
+        // 仅查 padding 会假绿——API 401/endpoint 错/网络失败均不含 "padding" 字样却仍未验证到修复。
+        // live 测试存在的意义就是端到端跑通，红了好过假绿（逼着排查真实问题）。
+        assertTrue(
+            "agnes T2V 应端到端成功。失败：${err?.javaClass?.simpleName}: ${err?.message}" +
+                (err?.cause?.let { " | cause: ${it.javaClass.simpleName}: ${it.message}" } ?: ""),
+            result.isSuccess
+        )
+
+        // 3. 产物验证（非空 + 文件存在 + 文件非空，防止 backend 返回空壳 Result）
+        val output = result.getOrThrow()
+        assertNotNull("agnes T2V 应返回 taskId", output.taskId)
+        assertTrue("agnes T2V 视频文件应存在：${output.videoPath}", output.videoPath.exists())
+        assertTrue(
+            "agnes T2V 视频文件应非空（>1KB）：${output.videoPath} size=${output.videoPath.length()}",
+            output.videoPath.length() > 1024
+        )
     }
 
     /**
@@ -119,10 +135,30 @@ class VideoBackendLiveTest {
 
         val result = runCatching { backend.generate(request) {} }
         val err = result.exceptionOrNull()
+
+        // 1. 核心修复证明：裸 base64 不报 Incorrect padding（P2a 头条验收——ArcReel 注释原话
+        // 「带 data: 前缀会在生成期触发 padding 错误」，本测试用真实 agnes API 验证修复有效）
         assertTrue(
-            "agnes I2V 裸 base64 提交不应报 Incorrect padding" +
+            "agnes I2V 裸 base64 不应报 Incorrect padding" +
                 (err?.message?.let { "：$it" } ?: ""),
             err?.message?.contains("padding", ignoreCase = true) != true
+        )
+
+        // 2. Live 端到端验证：调用必须真成功（仅 padding 检查会假绿）
+        assertTrue(
+            "agnes I2V 应端到端成功（裸 base64 提交须真被 agnes 接受并生成视频）。" +
+                "失败：${err?.javaClass?.simpleName}: ${err?.message}" +
+                (err?.cause?.let { " | cause: ${it.javaClass.simpleName}: ${it.message}" } ?: ""),
+            result.isSuccess
+        )
+
+        // 3. 产物验证
+        val output = result.getOrThrow()
+        assertNotNull("agnes I2V 应返回 taskId", output.taskId)
+        assertTrue("agnes I2V 视频文件应存在：${output.videoPath}", output.videoPath.exists())
+        assertTrue(
+            "agnes I2V 视频文件应非空（>1KB）：${output.videoPath} size=${output.videoPath.length()}",
+            output.videoPath.length() > 1024
         )
     }
 
@@ -157,9 +193,29 @@ class VideoBackendLiveTest {
         )
 
         val result = runCatching { backend.generate(request) {} }
+        val err = result.exceptionOrNull()
+
+        // 1. 核心修复证明：data URI 不报 Incorrect padding
         assertTrue(
-            "ark 提交不应报 Incorrect padding：${result.exceptionOrNull()?.message ?: ""}",
-            result.exceptionOrNull()?.message?.contains("padding", ignoreCase = true) != true
+            "ark T2V 不应报 Incorrect padding" +
+                (err?.message?.let { "：$it" } ?: ""),
+            err?.message?.contains("padding", ignoreCase = true) != true
+        )
+
+        // 2. Live 端到端验证：调用必须真成功
+        assertTrue(
+            "ark T2V 应端到端成功。失败：${err?.javaClass?.simpleName}: ${err?.message}" +
+                (err?.cause?.let { " | cause: ${it.javaClass.simpleName}: ${it.message}" } ?: ""),
+            result.isSuccess
+        )
+
+        // 3. 产物验证
+        val output = result.getOrThrow()
+        assertNotNull("ark T2V 应返回 taskId", output.taskId)
+        assertTrue("ark T2V 视频文件应存在：${output.videoPath}", output.videoPath.exists())
+        assertTrue(
+            "ark T2V 视频文件应非空（>1KB）：${output.videoPath} size=${output.videoPath.length()}",
+            output.videoPath.length() > 1024
         )
     }
 }
