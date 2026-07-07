@@ -275,7 +275,12 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             .get()
             .build()
         val respBody = client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) error("agnes poll HTTP ${resp.code} ${resp.message}")
+            if (!resp.isSuccessful) {
+                // 读 body 再抛（live 验证：Agnes 过期任务返回 HTTP 400 + body {"code":"task_not_exist"}，
+                // 需把 body 带入 error message 供 resumeVideo 的 isAgnesNotFound 识别）
+                val body = runCatching { resp.body?.string() }.getOrNull()
+                error("agnes poll HTTP ${resp.code} ${resp.message}${body?.let { " body=$it" }.orEmpty()}")
+            }
             resp.body?.string() ?: error("agnes poll 响应体为空")
         }
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
@@ -315,9 +320,12 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     /** Agnes 任务「不存在/已过期」判定（对齐 Ark isArkNotFound）。 */
     private fun isAgnesNotFound(e: Throwable): Boolean {
         val msg = e.message.orEmpty().lowercase()
+        // live 验证：Agnes 过期/不存在任务返回 HTTP 400 + body {"code":"task_not_exist"}
         return msg.contains("http 404") ||
             msg.contains("task_not_found") ||
             msg.contains("tasknotfound") ||
+            msg.contains("task_not_exist") ||
+            msg.contains("tasknotexist") ||
             msg.contains("not found") ||
             msg.contains("expired")
     }
