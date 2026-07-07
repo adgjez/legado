@@ -14,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.test.runTest
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -138,7 +139,7 @@ class ImageCodecTest {
     }
 
     @Test
-    fun compressScalesDownLongEdge() {
+    fun compressScalesDownLongEdge() = runTest {
         val src = synthJpeg(400, 200)
         assumeTrue("Robolectric nativeruntime 不可用，跳过缩尺寸验证", canDecodeJpeg(src))
         val out = ImageCodec.compress(src, maxLongEdge = 100, quality = 90)
@@ -148,7 +149,7 @@ class ImageCodecTest {
     }
 
     @Test
-    fun compressReturnsOriginalWhenUndecodable() {
+    fun compressReturnsOriginalWhenUndecodable() = runTest {
         // 不可解码字节应原样返回（压缩是优化，不得让原本能跑通的调用因压缩层新失败）
         val junk = byteArrayOf(0, 1, 2, 3, 4)
         val out = ImageCodec.compress(junk, maxLongEdge = 100, quality = 90)
@@ -156,7 +157,7 @@ class ImageCodecTest {
     }
 
     @Test
-    fun compressAppliesExifOrientation() {
+    fun compressAppliesExifOrientation() = runTest {
         // 40x20 JPEG 注入 EXIF orientation=6（rotate 90）→ 压缩后应为 20x40
         val src = synthJpeg(40, 20)
         assumeTrue("Robolectric nativeruntime 不可用，跳过 EXIF 验证", canDecodeJpeg(src))
@@ -167,7 +168,7 @@ class ImageCodecTest {
             exif.saveAttributes()
             srcFile.readBytes()
         } catch (e: Throwable) {
-            assumeNoException("ExifInterface 写入不可用", e); return
+            assumeNoException("ExifInterface 写入不可用", e); return@runTest
         }
         val out = ImageCodec.compress(oriented, maxLongEdge = 0, quality = 90)
         val (w, h) = decodeBounds(out)
