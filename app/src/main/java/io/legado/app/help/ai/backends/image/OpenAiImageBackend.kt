@@ -72,7 +72,7 @@ class OpenAiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
      * 尺寸与 quality 由 [resolveOpenAiParams] 按「比例优先、清晰度其次」算出。
      * 不下传 n 之外的 response_format（gpt-image-2 默认返 b64_json）。
      */
-    internal fun submitGenerate(client: OkHttpClient, request: ImageGenerationRequest): String {
+    internal suspend fun submitGenerate(client: OkHttpClient, request: ImageGenerationRequest): String {
         val params = resolveOpenAiParams(request.imageSize, request.aspectRatio)
         val root = JsonObject().apply {
             addProperty("model", model)
@@ -97,7 +97,7 @@ class OpenAiImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend 
      *
      * I2I 与 T2I 对称下传 size/quality（ArcReel 注释原话：「images.edit 不带 size 会丢比例」）。
      */
-    internal fun submitEdit(client: OkHttpClient, request: ImageGenerationRequest): String {
+    internal suspend fun submitEdit(client: OkHttpClient, request: ImageGenerationRequest): String {
         val params = resolveOpenAiParams(request.imageSize, request.aspectRatio)
         val refs = request.referenceImages.take(MAX_REFERENCE_IMAGES)
 
