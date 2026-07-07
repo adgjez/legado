@@ -1,7 +1,6 @@
 package io.legado.app.help.ai.backends.compress
 
 import io.legado.app.constant.AppLog
-import kotlin.math.gcd
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -37,6 +36,13 @@ object AspectSize {
 
     /** 默认比例：竖屏 9:16（短剧居多，无法解析时回退，最小惊讶）。 */
     private val DEFAULT_ASPECT = 9 to 16
+
+    /** 最大公约数（kotlin.math.gcd 在部分 stdlib 版本不可用，手写欧几里得）。 */
+    private fun gcd(a: Int, b: Int): Int {
+        var x = a; var y = b
+        while (y != 0) { val t = x % y; x = y; y = t }
+        return x
+    }
 
     /** 自定义 "宽x高" 分隔符：英文 x、X、星号、全角叉号。 */
     private val WH_RE = Regex("""^\s*(\d+)\s*[xX×*]\s*(\d+)\s*$""")

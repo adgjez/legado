@@ -286,10 +286,6 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         return numFrames.coerceIn(1, MAX_NUM_FRAMES)
     }
 
-    private fun buildClient(timeoutMs: Long): OkHttpClient = OkHttpClient.Builder()
-        .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
-        .build()
-
     private data class AgnesPollResult(val status: String, val videoUrl: String?, val raw: String)
 
     companion object {
