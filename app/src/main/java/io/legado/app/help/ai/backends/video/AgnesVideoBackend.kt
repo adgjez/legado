@@ -40,7 +40,7 @@ import kotlin.time.Duration.Companion.seconds
  * - 请求体：`{model, prompt, width, height, num_frames, frame_rate, image?, extra_body:{image:[], mode?}}`
  * - **参考图编码：裸 base64**（[ImageCodec.toBareBase64]，剥 `data:` 前缀，无换行）
  *   ← 这是修复 `Incorrect padding` 的关键
- * - 响应：`$.task_id`（回落 `$.id`）→ 轮询至 `status=completed` → 成片 URL 取 `$.remixed_from_video_id`
+ * - 响应：`$.task_id`（回落 `$.id`）→ 轮询至 `status=completed` → 成片 URL 取 `$.url`（回落 `$.remixed_from_video_id`）
  *
  * 关键纪律（ArcReel 原话）：「带 `data:` 前缀会在生成期触发 padding 错误」。
  * Android 默认 `Base64.DEFAULT` 每 76 字符插换行也触发同样错误，故 [ImageCodec.toBareBase64]
@@ -243,7 +243,7 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             label = "agnes poll taskId=$taskId",
             onProgress = onProgress
         )
-        return result.videoUrl ?: error("agnes poll completed 但无 remixed_from_video_id：${result.raw}")
+        return result.videoUrl ?: error("agnes poll completed 但无 url/remixed_from_video_id：${result.raw}")
     }
 
     private fun doPoll(client: OkHttpClient, url: String): AgnesPollResult {
@@ -259,8 +259,10 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("agnes poll 响应非 JSON：$respBody") }
         val status = root.get("status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
-        // 成片 URL 取 remixed_from_video_id（对齐 ArcReel agnes.py 第 422 行，非 video_url）
-        val videoUrl = root.get("remixed_from_video_id")?.takeIf { !it.isJsonNull }?.asString
+        // 成片 URL 优先取 url（T2V/I2V 完成后返回下载直链）；
+        // remixed_from_video_id 仅 remix 场景有值且回落（live 验证：T2V 完成态 url 有值、remixed_from_video_id=null）
+        val videoUrl = root.get("url")?.takeIf { !it.isJsonNull }?.asString
+            ?: root.get("remixed_from_video_id")?.takeIf { !it.isJsonNull }?.asString
         return AgnesPollResult(status, videoUrl, respBody)
     }
 
