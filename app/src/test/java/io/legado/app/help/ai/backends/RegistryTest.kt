@@ -11,8 +11,8 @@ import org.junit.Test
  * [VideoBackendRegistry] / [ImageBackendRegistry] 单测。
  *
  * P0：factories 空，所有 type 均报错。
- * P2a：agnes/ark 注册（companion init），byConfig 可解析；其余 type 仍未实现。
- * P2b+/P3：其余各家注册后逐步可解析。
+ * P2a/P2b：agnes/ark/sora/veo 注册（companion init），byConfig 可解析；其余 type 仍未实现。
+ * P2c+/P3：其余各家注册后逐步可解析。
  */
 class RegistryTest {
 
@@ -28,15 +28,13 @@ class RegistryTest {
 
     @Test
     fun videoRegistryByConfigThrowsForUnimplementedTypes() {
-        // P2a 后 ark/agnes 已注册（companion init）；其余 type 仍未实现，应报错。
-        // 注：不测 agnes/ark——它们的 companion init 在被任何测试类引用时即注册到全局
+        // P2a/P2b 后 ark/agnes/sora/veo 已注册（companion init）；其余 type 仍未实现，应报错。
+        // 注：不测已注册的——它们的 companion init 在被任何测试类引用时即注册到全局
         // singleton，测试顺序非确定，故只测确定性「未实现」的 type。
         listOf(
             AiVideoProviderConfig.TYPE_OPENAI,
             AiVideoProviderConfig.TYPE_JS,
             AiVideoProviderConfig.TYPE_DOUBAO,
-            AiVideoProviderConfig.TYPE_SORA,
-            AiVideoProviderConfig.TYPE_VEO,
             AiVideoProviderConfig.TYPE_KLING,
             AiVideoProviderConfig.TYPE_NEWAPI,
             AiVideoProviderConfig.TYPE_V2,
@@ -53,10 +51,12 @@ class RegistryTest {
     }
 
     @Test
-    fun videoRegistryResolvesAgnesAndArkAfterClassLoad() {
-        // P2a：agnes/ark companion init 注册到 registry。强制类加载触发 init 后 byConfig 应可解析。
+    fun videoRegistryResolvesAgnesArkSoraVeoAfterClassLoad() {
+        // P2a/P2b：agnes/ark/sora/veo companion init 注册到 registry。强制类加载触发 init 后 byConfig 应可解析。
         Class.forName("io.legado.app.help.ai.backends.video.AgnesVideoBackend")
         Class.forName("io.legado.app.help.ai.backends.video.ArkVideoBackend")
+        Class.forName("io.legado.app.help.ai.backends.video.SoraVideoBackend")
+        Class.forName("io.legado.app.help.ai.backends.video.VeoVideoBackend")
         val agnesCfg = AiVideoProviderConfig(
             name = "agnes-test", type = AiVideoProviderConfig.TYPE_AGNES,
             baseUrl = "https://x", apiKey = "k", model = "agnes-video-v2.0"
@@ -65,9 +65,19 @@ class RegistryTest {
             name = "ark-test", type = AiVideoProviderConfig.TYPE_ARK,
             baseUrl = "https://x", apiKey = "k", model = "doubao-seedance-2-0"
         )
+        val soraCfg = AiVideoProviderConfig(
+            name = "sora-test", type = AiVideoProviderConfig.TYPE_SORA,
+            baseUrl = "https://x", apiKey = "k", model = "sora-2"
+        )
+        val veoCfg = AiVideoProviderConfig(
+            name = "veo-test", type = AiVideoProviderConfig.TYPE_VEO,
+            baseUrl = "https://x", apiKey = "k", model = "veo-3.1"
+        )
         // 不抛即通过
         VideoBackendRegistry.byConfig(agnesCfg)
         VideoBackendRegistry.byConfig(arkCfg)
+        VideoBackendRegistry.byConfig(soraCfg)
+        VideoBackendRegistry.byConfig(veoCfg)
     }
 
     @Test
