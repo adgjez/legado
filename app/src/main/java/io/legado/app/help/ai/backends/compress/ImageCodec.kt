@@ -3,20 +3,24 @@ package io.legado.app.help.ai.backends.compress
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.util.Base64
 import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Base64 as JvmBase64
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
  * 共享编码工具（移植 ArcReel image_backends/base.py + image_utils.py）。
  *
- * 关键纪律：[Base64.NO_WRAP] 防 `Incorrect padding` 报错——
+ * 关键纪律：base64 编码用 [JvmBase64.getEncoder]（无换行）防 `Incorrect padding` 报错——
  * ArcReel 注释原话「带 `data:` 前缀会在生成期触发 padding 错误」，
- * Android 默认 [Base64.DEFAULT] 每 76 字符插换行也触发同样的 padding 错误，
- * 故所有 base64 编码一律用 [Base64.NO_WRAP]（无换行）。
+ * Android `Base64.DEFAULT` 每 76 字符插换行也触发同样的 padding 错误，
+ * 故所有 base64 编码一律走无换行的 JVM encoder（等价 Android `Base64.NO_WRAP`）。
+ *
+ * 用 `java.util.Base64` 而非 `android.util.Base64`：本类是纯字节工具，无 Android 运行时
+ * 依赖需求；改用 JVM 实现后可在 Robolectric/unit test 下直接运行（Android Base64 默认
+ * stub 返回 "not mocked"）。
  *
  * - [toDataUri]：ark/newapi/v2/dashscope/minimax/vidu/grok/agnes(image)/openai(T2I) 用
  * - [toBareBase64]：agnes(video)/kling(video+image) 用
@@ -24,15 +28,15 @@ import kotlin.math.roundToInt
  */
 object ImageCodec {
 
-    /** 文件 → `data:<mime>;base64,<b64>`（NO_WRAP，无换行）。 */
+    /** 文件 → `data:<mime>;base64,<b64>`（无换行）。 */
     fun toDataUri(file: File): String {
-        val b64 = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
+        val b64 = JvmBase64.getEncoder().encodeToString(file.readBytes())
         return "data:${mimeByExtension(file.extension)};base64,$b64"
     }
 
-    /** 文件 → 裸 base64（无 `data:` 前缀，NO_WRAP）。Agnes/Kling 用此形态。 */
+    /** 文件 → 裸 base64（无 `data:` 前缀，无换行）。Agnes/Kling 用此形态。 */
     fun toBareBase64(file: File): String =
-        Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
+        JvmBase64.getEncoder().encodeToString(file.readBytes())
 
     /** 文件 → 原始字节。Sora/OpenAI I2I multipart 用此形态。 */
     fun toRawBytes(file: File): ByteArray = file.readBytes()

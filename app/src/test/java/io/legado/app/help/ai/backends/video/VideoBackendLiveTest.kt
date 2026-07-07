@@ -56,7 +56,7 @@ class VideoBackendLiveTest {
         val cfg = AiVideoProviderConfig(
             name = "agnes-live",
             type = AiVideoProviderConfig.TYPE_AGNES,
-            baseUrl = "https://api.agnes-ai.com",
+            baseUrl = "https://apihub.agnes-ai.com",
             apiKey = key!!,
             model = "agnes-video-v2.0",
             submitTimeoutMillisecond = 60_000L,
@@ -115,7 +115,7 @@ class VideoBackendLiveTest {
         val cfg = AiVideoProviderConfig(
             name = "agnes-live-i2v",
             type = AiVideoProviderConfig.TYPE_AGNES,
-            baseUrl = "https://api.agnes-ai.com",
+            baseUrl = "https://apihub.agnes-ai.com",
             apiKey = key!!,
             model = "agnes-video-v2.0",
             submitTimeoutMillisecond = 60_000L,
