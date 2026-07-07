@@ -38,9 +38,9 @@ class RegistryTest {
         // 注：不测已注册的——它们的 companion init 在被任何测试类引用时即注册到全局
         // singleton，测试顺序非确定，故只测确定性「未实现」的 type。
         listOf(
-            AiVideoProviderConfig.TYPE_OPENAI,
-            AiVideoProviderConfig.TYPE_JS,
-            AiVideoProviderConfig.TYPE_DOUBAO
+            "openai_old",
+            "js_old",
+            "doubao_old"
         ).forEach { t ->
             val cfg = AiVideoProviderConfig(name = "x", type = t)
             assertThrows("$t 应报错", IllegalStateException::class.java) {

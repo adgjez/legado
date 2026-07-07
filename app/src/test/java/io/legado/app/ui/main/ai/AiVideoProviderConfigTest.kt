@@ -15,13 +15,13 @@ class AiVideoProviderConfigTest {
 
     @Test
     fun displayNameFallsBackToTypeWhenNameBlank() {
-        val provider = AiVideoProviderConfig(name = "", type = AiVideoProviderConfig.TYPE_OPENAI)
-        assertEquals(AiVideoProviderConfig.TYPE_OPENAI, provider.displayName())
+        val provider = AiVideoProviderConfig(name = "", type = AiVideoProviderConfig.TYPE_ARK)
+        assertEquals(AiVideoProviderConfig.TYPE_ARK, provider.displayName())
     }
 
     @Test
     fun displayNameReturnsNameWhenPresent() {
-        val provider = AiVideoProviderConfig(name = "Veo 3.1 Test", type = AiVideoProviderConfig.TYPE_OPENAI)
+        val provider = AiVideoProviderConfig(name = "Veo 3.1 Test", type = AiVideoProviderConfig.TYPE_ARK)
         assertEquals("Veo 3.1 Test", provider.displayName())
     }
 
