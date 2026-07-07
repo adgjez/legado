@@ -1,6 +1,5 @@
 package io.legado.app.help.ai.backends.image
 
-import android.util.Base64
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -18,6 +17,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.File
+import java.util.Base64 as JvmBase64
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
@@ -192,7 +192,9 @@ class AgnesImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         val data = root.getAsJsonArray("data") ?: return null
         for (i in 0 until data.size()) {
             val item = data[i].asJsonObject
-            val value = item.get(key)?.asString
+            // takeIf { !it.isJsonNull }：Gson 的 JsonNull.asString 抛 UnsupportedOperationException
+            // （不是返回 null），对齐 ArcReel _extract_first_str 的 isinstance(value, str) 过滤
+            val value = item.get(key)?.takeIf { !it.isJsonNull }?.asString
             if (!value.isNullOrBlank()) return value
         }
         return null
@@ -201,7 +203,9 @@ class AgnesImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
     private fun extractUsageTokens(respBody: String): Long? {
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }.getOrNull() ?: return null
         val usage = root.getAsJsonObject("usage") ?: return null
-        return runCatching { usage.get("total_tokens")?.asLong }.getOrNull()
+        return runCatching {
+            usage.get("total_tokens")?.takeIf { !it.isJsonNull }?.asLong
+        }.getOrNull()
     }
 
     /** 解码 base64 图片并写盘。容忍 data URI 前缀（剥 `data:...;base64,` 再解码）。 */
@@ -209,7 +213,8 @@ class AgnesImageBackend(private val cfg: AiImageProviderConfig) : ImageBackend {
         val payload = if (b64.startsWith("data:") && b64.contains(",")) {
             b64.substringAfter(",")
         } else b64
-        val bytes = Base64.decode(payload, Base64.NO_WRAP)
+        // 用 java.util.Base64（脱离 Android 运行时 stub，对齐 ImageCodec 的编码侧修复）
+        val bytes = JvmBase64.getDecoder().decode(payload)
         outputPath.parentFile?.mkdirs()
         outputPath.writeBytes(bytes)
     }

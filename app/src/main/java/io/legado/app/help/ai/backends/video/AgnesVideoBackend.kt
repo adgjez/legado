@@ -33,15 +33,16 @@ import kotlin.time.Duration.Companion.seconds
  * Agnes 视频后端。
  *
  * 移植 ArcReel `video_backends/agnes.py`：
- * - 端点：POST `/v1/videos/generations`（提交），GET `/v1/videos/generations/{id}`（轮询）
+ * - base 归一化为 `{host}/v1`（[normalizeBaseUrl]，对齐 ArcReel `agnes_base_url`）
+ * - 端点：POST `{base}/videos`（提交），GET `{base}/videos/{task_id}`（轮询）
  * - 请求体：`{model, prompt, width, height, num_frames, frame_rate, image?, extra_body:{image:[], mode?}}`
- * - **参考图编码：裸 base64**（[ImageCodec.toBareBase64]，剥 `data:` 前缀，NO_WRAP 无换行）
+ * - **参考图编码：裸 base64**（[ImageCodec.toBareBase64]，剥 `data:` 前缀，无换行）
  *   ← 这是修复 `Incorrect padding` 的关键
- * - 响应：`$.id` → 轮询 → `$.video_url`
+ * - 响应：`$.task_id`（回落 `$.id`）→ 轮询至 `status=completed` → 成片 URL 取 `$.remixed_from_video_id`
  *
  * 关键纪律（ArcReel 原话）：「带 `data:` 前缀会在生成期触发 padding 错误」。
  * Android 默认 `Base64.DEFAULT` 每 76 字符插换行也触发同样错误，故 [ImageCodec.toBareBase64]
- * 用 `Base64.NO_WRAP`。
+ * 用无换行 encoder（等价 `Base64.NO_WRAP`）。
  *
  * 生命周期 1a 忠实：[generate] 自管 submit+poll+download。
  */
@@ -90,7 +91,8 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     ): VideoGenerationResult {
         val client = buildClient(cfg.validSubmitTimeout())
         val body = buildSubmitBody(request, compressed)
-        val submitUrl = cfg.submitUrl.ifBlank { cfg.baseUrl.trimEnd('/') + SUBMIT_PATH }
+        val base = normalizeBaseUrl(cfg.baseUrl)
+        val submitUrl = cfg.submitUrl.ifBlank { base + SUBMIT_PATH }
 
         val taskId = VideoBackendHttp.submitPost(
             postFn = { doSubmit(client, submitUrl, body) },
@@ -174,9 +176,11 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         val respBody = resp.body?.string() ?: error("agnes submit 响应体为空")
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("agnes submit 响应非 JSON：$respBody") }
-        val id = root.get("id")?.asString
-            ?: error("agnes submit 响应缺 id：$respBody")
-        return id
+        // task_id 优先，回落 id（对齐 ArcReel _extract_task_id）
+        val taskId = root.get("task_id")?.takeIf { !it.isJsonNull }?.asString
+            ?: root.get("id")?.takeIf { !it.isJsonNull }?.asString
+            ?: error("agnes submit 响应缺 task_id/id：$respBody")
+        return taskId
     }
 
     private suspend fun pollUntilDone(
@@ -184,15 +188,16 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         taskId: String,
         onProgress: (VideoProgress) -> Unit
     ): String {
+        val base = normalizeBaseUrl(cfg.baseUrl)
         val pollUrl = cfg.resolvePollUrl(taskId).ifBlank {
-            cfg.baseUrl.trimEnd('/') + POLL_PATH.replace("{taskId}", taskId)
+            base + POLL_PATH.replace("{taskId}", taskId)
         }
         val maxWait = cfg.validPollTimeout().milliseconds
         val interval = cfg.validPollInterval().milliseconds.coerceAtLeast(1.seconds)
 
         val result = VideoBackendHttp.pollWithRetry(
             pollFn = { doPoll(client, pollUrl) },
-            isDone = { it.status == "succeeded" },
+            isDone = { it.status == "completed" },
             isFailed = { it.status in FAILED_STATUSES },
             pollInterval = interval,
             maxWait = maxWait,
@@ -200,7 +205,7 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             label = "agnes poll taskId=$taskId",
             onProgress = onProgress
         )
-        return result.videoUrl ?: error("agnes poll succeeded 但无 video_url：${result.raw}")
+        return result.videoUrl ?: error("agnes poll completed 但无 remixed_from_video_id：${result.raw}")
     }
 
     private fun doPoll(client: OkHttpClient, url: String): AgnesPollResult {
@@ -215,8 +220,9 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
         }
         val root = runCatching { JsonParser.parseString(respBody).asJsonObject }
             .getOrElse { error("agnes poll 响应非 JSON：$respBody") }
-        val status = root.get("status")?.asString ?: "unknown"
-        val videoUrl = runCatching { root.get("video_url")?.asString }.getOrNull()
+        val status = root.get("status")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
+        // 成片 URL 取 remixed_from_video_id（对齐 ArcReel agnes.py 第 422 行，非 video_url）
+        val videoUrl = root.get("remixed_from_video_id")?.takeIf { !it.isJsonNull }?.asString
         return AgnesPollResult(status, videoUrl, respBody)
     }
 
@@ -252,9 +258,20 @@ class AgnesVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
 
     companion object {
         private const val DEFAULT_MODEL = "agnes-video-v2.0"
-        private const val SUBMIT_PATH = "/v1/videos/generations"
-        private const val POLL_PATH = "/v1/videos/generations/{taskId}"
-        private val FAILED_STATUSES = setOf("failed", "cancelled", "error")
+        private const val SUBMIT_PATH = "/videos"
+        private const val POLL_PATH = "/videos/{taskId}"
+        private val FAILED_STATUSES = setOf("failed", "cancelled", "canceled", "error")
+
+        /**
+         * base 归一化为 `{host}/v1`（对齐 ArcReel `agnes_base_url`）：
+         * 用户填 host 或带 `/v1` 后缀都收敛到 `{host}/v1`，缺省回落默认 apihub host。
+         */
+        internal fun normalizeBaseUrl(configured: String): String {
+            val raw = configured.trim().trimEnd('/').ifBlank { DEFAULT_BASE_HOST }
+            return if (raw.endsWith("/v1")) raw else "$raw/v1"
+        }
+
+        private const val DEFAULT_BASE_HOST = "https://apihub.agnes-ai.com"
 
         /**
          * 参考图级能力（移植 ArcReel agnes.py）：all true, max=4, with_start_frame=false。
