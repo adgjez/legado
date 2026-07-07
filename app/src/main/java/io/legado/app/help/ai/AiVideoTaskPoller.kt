@@ -21,6 +21,9 @@ object AiVideoTaskPoller {
 
     private const val MAX_SUBMIT_RETRY = 2
 
+    /** 429 限流重试上限（不计入 MAX_SUBMIT_RETRY 放弃次数，防止服务商持续限流导致无限等待）。 */
+    private const val MAX_RATE_LIMIT_RETRY = 5
+
     /** 匹配错误消息中的 HTTP 4xx 状态码（如 " 400 "、" 401 "、" 429 "），用于判断不重试的鉴权/参数错误。 */
     private val HTTP_4XX_REGEX = Regex("\\b4\\d{2}\\b")
 
