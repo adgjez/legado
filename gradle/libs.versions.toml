@@ -81,7 +81,7 @@ robolectric = "4.14.1"
 #noinspection GradleDependency
 androidxTestCore = "1.6.1"
 #noinspection GradleDependency
-lifecycle = "2.9.4"
+lifecycle = "2.11.0"
 #noinspection GradleDependency
 work = "2.9.0"
 #noinspection GradleDependency
