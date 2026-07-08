@@ -66,10 +66,10 @@ class GenerationWorkerTest {
         db.close()
     }
 
-    /** 真实轮询等待条件成立（timeout 5s）。 */
+    /** 真实轮询等待条件成立（timeout 5s）。condition 为 suspend 以支持查 DB。 */
     private suspend fun waitForCondition(
         timeoutMs: Long = 5000,
-        condition: () -> Boolean
+        condition: suspend () -> Boolean
     ): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
