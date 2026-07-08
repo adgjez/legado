@@ -58,12 +58,20 @@ class GenerationWorkerTest {
         dao = db.novelVideoDao
         originalDaoProvider = GenerationQueue.daoProvider
         GenerationQueue.daoProvider = { dao }
+        // P6b：重置共享 orphan guard + 清空共享 capacity/slots（多 worker 共享状态需测试间隔离）
+        GenerationWorker.resetOrphanSweepGuard()
+        SharedSchedulingState.capacity.clear()
+        SharedSchedulingState.slots.clear()
     }
 
     @After
     fun tearDown() {
         originalDaoProvider?.let { GenerationQueue.daoProvider = it }
         db.close()
+        // P6b：清空共享状态避免泄漏到下一个测试
+        GenerationWorker.resetOrphanSweepGuard()
+        SharedSchedulingState.capacity.clear()
+        SharedSchedulingState.slots.clear()
     }
 
     /** 真实轮询等待条件成立（timeout 5s）。condition 为 suspend 以支持查 DB。 */

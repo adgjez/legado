@@ -163,17 +163,17 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 取消任务：当前正在跑的 job 通过 Service 取消；其他 RUNNING_STATES 直接标记 CANCELLED。
+     * 取消任务：委托 Service 取消协程（多 worker 下精确取消指定 jobId）+ 条件更新兜底。
      *
-     * R6 修复：用 Mutex 与 retryJob 串行化，避免并发覆写。
+     * P6b：不再比较 currentJobId，直接调 [NovelVideoService.cancelJob]。
+     * Service 统一处理：在 slots 中则取消协程，不在则直接标 CANCELLED。
+     * 条件更新兜底：Service 未运行时确保标 CANCELLED；Service 已标则 0-rows 安全。
      */
     suspend fun cancelJob(jobId: String) = withContext(Dispatchers.IO) {
         NovelVideoJobOps.mutex.withLock {
             val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
-            if (job.id == NovelVideoService.currentJobId) {
-                NovelVideoService.cancelCurrentJob()
-            } else if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
-                // 用条件更新：若 getJob 与写入之间状态被并发改变为终态，不覆写
+            if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
+                NovelVideoService.cancelJob(getApplication(), jobId)
                 appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
                     jobId, NovelVideoJobStatus.CANCELLED, "用户手动取消", System.currentTimeMillis()
                 )

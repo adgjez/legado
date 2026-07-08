@@ -120,14 +120,12 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
         NovelVideoService.start(getApplication())
     }
 
-    /** 取消任务。 */
+    /** 取消任务：委托 Service 取消协程 + 条件更新兜底（P6b 多 worker 精确取消）。 */
     suspend fun cancelJob(jobId: String) = withContext(Dispatchers.IO) {
         NovelVideoJobOps.mutex.withLock {
             val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
-            if (job.id == NovelVideoService.currentJobId) {
-                NovelVideoService.cancelCurrentJob()
-            } else if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
-                // 用条件更新：若 getJob 与写入之间状态被并发改变为终态，不覆写
+            if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
+                NovelVideoService.cancelJob(getApplication(), jobId)
                 appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
                     jobId, NovelVideoJobStatus.CANCELLED, "用户手动取消", System.currentTimeMillis()
                 )

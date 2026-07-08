@@ -14,74 +14,76 @@ import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.NovelVideoJobStatus
-import io.legado.app.help.ai.NovelVideoGenerator
+import io.legado.app.help.ai.scheduling.GenerationQueue
+import io.legado.app.help.ai.scheduling.GenerationWorker
+import io.legado.app.help.ai.scheduling.SharedSchedulingState
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
-import io.legado.app.utils.startService
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.ui.main.MainActivity
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import splitties.systemservices.powerManager
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 小说→视频生成的前台服务。
+ * 小说→视频生成的前台服务（P6b 多 worker 版）。
  *
- * 参照 [CacheBookService] / [ExportBookService] 的形态：
- * - 继承 [BaseService]，借助 [lifecycleScope] 管理协程
- * - 单 [pipelineJob] while 循环从 DB 拉 RUNNING_STATES 状态的 job 依次执行
- * - 通过 [IntentAction.start] 启动服务、[IntentAction.stop] 停止整个服务、[IntentAction.remove] 取消当前 job
- * - 进度通知：1 秒循环刷新当前 job 名 + 状态文案（与 CacheBookService 一致）
- * - 与 UI 通过 [EventBus.NOVEL_VIDEO_PROGRESS] 等事件通信
+ * 重构自单 pipelineJob 串行模型，改为 N 个 [GenerationWorker] 并发：
+ * - [ensurePipelineRunning] 启动 [WORKER_COUNT] 个 worker 协程，每个跑 [GenerationWorker.runLoop]
+ * - worker 共享 [SharedSchedulingState]（capacity + slots），保证全局并发上限不突破
+ * - orphan 扫描由 [GenerationWorker] companion guard 保证多 worker 下只扫一次
+ * - [cancelJob] 精确取消指定 jobId（通过共享 slots 定位协程）；[cancelCurrentJob] 取消首个活跃 job
+ * - 保留 [PARTIAL_WAKE_LOCK]、[onTimeout]、[shouldStopOnTaskRemoved]
+ * - 无 inflight job 持续 [IDLE_STOP_DELAY_MS] 后自动 stopSelf（省电）
  *
- * 进程死亡不持久化（与 CacheBookService 一致）：重启后从 DB 中 RUNNING_STATES 的 job 恢复执行；
- * 若 job 已是 SCREENPLAY_PENDING_REVIEW，会立即重新挂起等待用户审阅。
+ * 进程死亡不持久化：重启后从 DB 中 RUNNING_STATES 的 job 恢复执行（orphan sweep 兜底）。
  */
 class NovelVideoService : BaseService() {
 
     companion object {
+        /** 并发 worker 数量（受 CapacityTable per-provider 上限约束）。 */
+        const val WORKER_COUNT = 2
+
+        /** 无 inflight job 持续此时间后自动 stopSelf（15s，对齐 HEARTBEAT_INTERVAL_MS）。 */
+        private const val IDLE_STOP_DELAY_MS = 15_000L
+
+        /** Intent extra：指定要取消的 jobId（[IntentAction.remove] 用）。 */
+        private const val EXTRA_JOB_ID = "jobId"
+
         @Volatile
         var isRun = false
             private set
 
-        /** 当前正在跑的 jobId（仅用于 UI 显示和取消信号）；null 表示空闲。 */
+        /**
+         * 当前正在跑的 jobId（用于 UI 显示和取消信号）；null 表示空闲。
+         * 多 worker 下可能有多个 job 并发，这里取首个活跃 job（通知显示用）。
+         * 由通知刷新循环每秒从 [SharedSchedulingState.slots] 更新。
+         */
         @Volatile
         var currentJobId: String? = null
             private set
 
-        /** 取消信号；每个 job 启动前会重置。 */
-        private val cancelFlag = AtomicBoolean(false)
-
         /**
-         * 启动服务并尝试拉起下一个待处理 job。
-         * 调用方无需关心当前是否已有 job 在跑——服务内部会去 DB 找下一个可推进的 job。
-         *
-         * R5 修复：不再仅靠 [isRun] 短路。原实现在 isRun=true 时直接 return 不调 startService，
-         * 但 pipeline 可能在 stopSelf() 后、onDestroy() 前的窗口内 isRun 仍为 true，
-         * 此时新建/重试任务会因短路而永不触发 ensurePipelineRunning，导致任务卡死。
-         * 现在无论 isRun 状态都发 start Intent，由 [ensurePipelineRunning] 的
-         * `pipelineJob?.isActive == true` 判断保证幂等。
+         * 启动服务并拉起 worker 循环。
+         * 调用方无需关心当前是否已有 job 在跑——[ensurePipelineRunning] 的幂等判断保证安全。
          */
         fun start(@Suppress("UNUSED_PARAMETER") context: Context) {
-            // M13：用 startForegroundServiceCompat 替代 startService，
-            // 避免后台调用时 Android 8+ 抛 IllegalStateException
             val intent = Intent(appCtx, NovelVideoService::class.java).apply {
                 action = IntentAction.start
             }
             appCtx.startForegroundServiceCompat(intent)
         }
 
-        /** 停止整个服务：取消当前 job + 中止循环 + stopSelf。 */
+        /** 停止整个服务：cancel worker scope + stopSelf。 */
         fun stop(@Suppress("UNUSED_PARAMETER") context: Context) {
             if (!isRun) return
             val intent = Intent(appCtx, NovelVideoService::class.java).apply {
@@ -91,26 +93,40 @@ class NovelVideoService : BaseService() {
         }
 
         /**
-         * 取消当前正在跑的 job（不停止服务，自动接下一个）。
+         * 取消当前正在跑的 job（不停止服务，worker 会自动接下一个）。
          * 若无 job 在跑则等价于 no-op。
          */
         fun cancelCurrentJob() {
+            currentJobId?.let { cancelJob(appCtx, it) }
+        }
+
+        /**
+         * 取消指定 jobId（不停止服务）。
+         * 若 job 正在跑（在 slots 中），取消其协程；若 job 处于 RUNNING_STATES 但不在 slots 中，
+         * 直接标 CANCELLED。两路径都由 Service 统一处理，ViewModel 无需比较 currentJobId。
+         */
+        fun cancelJob(@Suppress("UNUSED_PARAMETER") context: Context, jobId: String) {
             if (!isRun) return
             val intent = Intent(appCtx, NovelVideoService::class.java).apply {
                 action = IntentAction.remove
+                putExtra(EXTRA_JOB_ID, jobId)
             }
             appCtx.startForegroundServiceCompat(intent)
         }
     }
 
-    private var pipelineJob: Job? = null
-    // 跨线程读写（IO 协程写、主线程 startForegroundNotification 读），需 @Volatile 保证可见性
+    private var workerScope: CoroutineScope? = null
+
     @Volatile
     private var notificationContent: String = appCtx.getString(R.string.service_starting)
 
+    /** 无 inflight job 的起始时间戳（0 表示当前有 inflight）。用于 idle stop 判断。 */
+    @Volatile
+    private var idleSinceMs: Long = 0L
+
     /**
      * R8：PARTIAL_WAKE_LOCK 保证息屏后 CPU 不休眠，避免 Doze 推迟 delay 导致流水线停滞。
-     * 在 [runOneJob] 开始时 acquire，finally 中 release。参考 [AiTaskKeepAliveService]。
+     * 在通知刷新循环中管理：有 inflight job 时 acquire，无 inflight 时 release。
      */
     private val wakeLock: PowerManager.WakeLock by lazy {
         powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "legado:NovelVideoService")
@@ -129,7 +145,6 @@ class NovelVideoService : BaseService() {
             getString(R.string.cancel),
             servicePendingIntent<NovelVideoService>(IntentAction.stop)
         )
-        // N2：改 PRIVATE，锁屏不显示书名和错误详情，保护用户阅读隐私
         builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
         builder
     }
@@ -137,17 +152,11 @@ class NovelVideoService : BaseService() {
     override fun onCreate() {
         super.onCreate()
         isRun = true
-        // 1 秒循环：刷新通知文案 + 通知 UI 更新（与 CacheBookService 一致）
-        // 跑在 IO：refreshNotificationContent 会查 Room
+        // 1 秒循环：刷新通知文案 + 管理 wakeLock + idle stop 检测
         lifecycleScope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(1000)
-                // 空闲时（无当前任务）跳过 DB 查询和通知刷新，降低耗电
-                if (currentJobId != null) {
-                    refreshNotificationContent()
-                    upNotification()
-                    postEvent(EventBus.NOVEL_VIDEO_PROGRESS, currentJobId.orEmpty())
-                }
+                tickNotificationAndIdle()
             }
         }
     }
@@ -157,16 +166,17 @@ class NovelVideoService : BaseService() {
             when (action) {
                 IntentAction.start -> ensurePipelineRunning()
                 IntentAction.stop -> {
-                    cancelFlag.set(true)
-                    pipelineJob?.cancel()
+                    stopAllWorkers()
                     stopSelf()
                 }
                 IntentAction.remove -> {
-                    // 取消当前 job，但保持服务运行（pipeline loop 会自动接下一个）
-                    // 注意：仅设 cancelFlag 供 generate 内部 checkCancelled 轮询；
-                    // 不调 pipelineJob?.cancel()，否则会取消整个循环导致服务停止。
-                    // 长 suspend 调用（如 chatStream）会在下一个 checkCancelled 点响应。
-                    cancelFlag.set(true)
+                    val targetJobId = intent.getStringExtra(EXTRA_JOB_ID)
+                    if (targetJobId != null) {
+                        cancelJobInternal(targetJobId)
+                    } else {
+                        // 兼容旧 cancelCurrentJob（无 EXTRA_JOB_ID）：取消 currentJobId
+                        currentJobId?.let { cancelJobInternal(it) }
+                    }
                 }
             }
         }
@@ -180,13 +190,18 @@ class NovelVideoService : BaseService() {
 
     override fun onDestroy() {
         isRun = false
+        val activeIds = SharedSchedulingState.slots.activeJobIds()
+        workerScope?.cancel()
+        workerScope = null
+        SharedSchedulingState.slots.clear()
         currentJobId = null
-        cancelFlag.set(true)
-        pipelineJob?.cancel()
-        pipelineJob = null
-        // R8：释放 WakeLock
+        idleSinceMs = 0L
         if (wakeLock.isHeld) {
             wakeLock.release()
+        }
+        // best-effort 释放 lease（orphan sweep 会兜底）
+        GlobalScope.launch(Dispatchers.IO + NonCancellable) {
+            activeIds.forEach { runCatching { GenerationQueue.releaseLease(it) } }
         }
         super.onDestroy()
         postEvent(EventBus.NOVEL_VIDEO_PROGRESS, "")
@@ -194,154 +209,114 @@ class NovelVideoService : BaseService() {
 
     /**
      * R9：用户在 Recents 划掉 App 时不停止服务（若有 job 在跑）。
-     * 原默认 true 会立即 stopSelf，当前 job 卡在 GENERATING。
-     * 参考 [WebDavTaskService] 的同名重写。
      */
     override fun shouldStopOnTaskRemoved(): Boolean {
-        // 有 job 在跑或 pipeline 活跃时保留服务；否则正常退出
-        return pipelineJob?.isActive != true && currentJobId == null
+        return workerScope?.isActive != true && currentJobId == null
     }
 
     /**
      * R10：Android 15+ dataSync 类型前台服务有 6 小时累计超时。
-     * 原 [BaseService.onTimeout] 直接 stopSelf，当前 job 卡在中间态（GENERATING/MERGING）。
-     * 这里不写 FAILED（保留中间态，让用户下次打开 App 时断点续传），仅记日志并 stopSelf。
-     * 中间态已由 NovelVideoGenerator 的条件更新落库，重启后从 DB 恢复。
+     * 保留中间态（不写 FAILED/CANCELLED），让用户下次打开 App 时断点续传。
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
         AppLog.put("NovelVideoService onTimeout startId=$startId fgsType=$fgsType，保留中间态后退出")
-        // 不调 markCancelledIfRunning —— 保留 GENERATING/MERGING 等中间态，
-        // 用户下次打开 App 触发 NovelVideoService.start 时会从 DB 恢复断点续传
-        cancelFlag.set(true)
-        pipelineJob?.cancel()
+        stopAllWorkers()
         stopSelf()
     }
 
     // ============================================================
-    // 流水线循环
+    // Worker 生命周期
     // ============================================================
 
     /**
-     * 启动 pipeline 循环（若未启动）。
-     * 循环体每次从 DB 取一个 RUNNING_STATES 状态的 job，调 [NovelVideoGenerator.generate] 推进。
-     * 取空则 stopSelf 退出。
+     * 启动 worker 循环（若未启动）。
+     * 创建 [WORKER_COUNT] 个 [GenerationWorker]，每个跑独立 runLoop。
+     * SupervisorJob 保证单个 worker 异常不影响其他 worker。
      */
     private fun ensurePipelineRunning() {
-        if (pipelineJob?.isActive == true) return
-        pipelineJob = lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                while (isActive) {
-                    val nextJobId = pickNextJob() ?: run {
-                        // 无任务可做
-                        notificationContent = getString(R.string.novel_video_no_pending)
-                        upNotification()
-                        stopSelf()
-                        return@launch
-                    }
-                    runOneJob(nextJobId)
-                }
-            } finally {
-                isRun = false
-                postEvent(EventBus.NOVEL_VIDEO_PROGRESS, "")
-            }
+        if (workerScope?.isActive == true) return
+        // 重置 orphan guard：每次启动都扫一次（进程重启恢复）
+        GenerationWorker.resetOrphanSweepGuard()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        workerScope = scope
+        repeat(WORKER_COUNT) { i ->
+            val worker = GenerationWorker(workerId = "worker-$i")
+            scope.launch { worker.runLoop(scope) { !scope.isActive } }
         }
     }
 
     /**
-     * 取下一个该跑的 job。
-     *
-     * M8 修复：跳过 SCREENPLAY_PENDING_REVIEW 状态的 job，避免它阻塞调度。
-     * 原实现在只有 PENDING_REVIEW job 时会取它并进入 awaitReviewConfirmation 长期挂起，
-     * 导致后续新建的 DRAFTING job 无法推进。现在仅返回可立即推进的 job，
-     * PENDING_REVIEW 由用户审阅后调 confirmScreenplay 触发 start 来推进。
+     * 停止所有 worker：cancel scope + 清空 slots。
+     * lease 释放由 onDestroy 的 best-effort 路径或 orphan sweep 兜底。
      */
-    private suspend fun pickNextJob(): String? {
-        val running = appDb.novelVideoDao.getRunningJobs()
-        if (running.isEmpty()) return null
-        // 仅返回可立即推进的 job（排除等待审阅和已暂停）
-        return running.firstOrNull {
-            it.status != NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW &&
-                it.status != NovelVideoJobStatus.PAUSED
-        }?.id
+    private fun stopAllWorkers() {
+        workerScope?.cancel()
+        workerScope = null
+        SharedSchedulingState.slots.clear()
+        idleSinceMs = 0L
     }
 
     /**
-     * 跑单个 job：重置 cancelFlag、调 Generator、捕获异常落库失败状态。
-     * R8：在 job 执行期间持有 WakeLock，避免 Doze 下 CPU 休眠导致流水线停滞。
+     * 取消指定 job（IntentAction.remove 处理）。
+     * - 若 job 在 slots 中（正在跑）：cancel 协程，GenerationWorker.processTask 会 markCancelled
+     * - 若 job 不在 slots 中但处于 RUNNING_STATES：直接标 CANCELLED
      */
-    private suspend fun runOneJob(jobId: String) {
-        currentJobId = jobId
-        cancelFlag.set(false)
-        // R8：获取 WakeLock，保证 job 执行期间 CPU 不休眠
-        if (!wakeLock.isHeld) {
-            wakeLock.acquire()
-        }
-        postEvent(EventBus.NOVEL_VIDEO_PROGRESS, jobId)
-
-        try {
-            NovelVideoGenerator.generate(
-                jobId = jobId,
-                isCancelled = { cancelFlag.get() || pipelineJob?.isActive != true }
-            )
-        } catch (e: CancellationException) {
-            // 取消：把 job 标记为 CANCELLED（若尚未终结）
-            // 协程已处于 cancelling 态，suspend 调用会立即抛 CancellationException，
-            // 必须用 NonCancellable 包裹才能完成 DB 写入
-            withContext(NonCancellable) { markCancelledIfRunning(jobId, e.message) }
-            // 不重新抛出 —— 让 while 循环判断是否继续取下一个 job
-            if (pipelineJob?.isActive != true) {
-                // 整个 pipeline 已被取消（IntentAction.stop），退出循环
-                throw e
-            }
-        } catch (e: Throwable) {
-            AppLog.put("小说→视频任务失败 jobId=$jobId", e)
-            // 用条件更新：若 job 已被并发写入终态（如用户已取消），不覆写，
-            // 避免 CANCELLED 被改成 FAILED。取代旧的 getJob+check 两步（有 TOCTOU 窗口）
+    private fun cancelJobInternal(jobId: String) {
+        // 先尝试取消协程（如果 job 正在跑）
+        SharedSchedulingState.slots.getJob(jobId)?.cancel()
+        // 异步标 CANCELLED（条件更新：若 processTask 已 mark 则 0-rows 安全）
+        lifecycleScope.launch(Dispatchers.IO) {
             val affected = appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
                 jobId,
-                NovelVideoJobStatus.FAILED,
-                e.message,
+                NovelVideoJobStatus.CANCELLED,
+                "用户取消",
                 System.currentTimeMillis()
             )
             if (affected > 0) {
-                postEvent(EventBus.NOVEL_VIDEO_FAILED, jobId)
-            } else {
-                AppLog.put("jobId=$jobId 已处于终态，不覆写为 FAILED")
+                postEvent(EventBus.NOVEL_VIDEO_PROGRESS, jobId)
             }
-        } finally {
-            currentJobId = null
-            // R8：job 结束后释放 WakeLock（下一个 job 会重新获取）
+        }
+    }
+
+    // ============================================================
+    // 通知 + idle 管理
+    // ============================================================
+
+    /**
+     * 每秒 tick：更新 currentJobId + 管理 wakeLock + 刷新通知 + idle stop 检测。
+     */
+    private suspend fun tickNotificationAndIdle() {
+        val activeIds = SharedSchedulingState.slots.activeJobIds()
+        currentJobId = activeIds.firstOrNull()
+
+        if (currentJobId != null) {
+            // 有 inflight job：acquire wakeLock + 刷新通知 + 重置 idle 计时
+            idleSinceMs = 0L
+            if (!wakeLock.isHeld) {
+                wakeLock.acquire()
+            }
+            refreshNotificationContent()
+            upNotification()
+            postEvent(EventBus.NOVEL_VIDEO_PROGRESS, currentJobId.orEmpty())
+        } else {
+            // 无 inflight job：release wakeLock + idle stop 检测
             if (wakeLock.isHeld) {
                 wakeLock.release()
             }
-            postEvent(EventBus.NOVEL_VIDEO_PROGRESS, "")
+            if (idleSinceMs == 0L) {
+                idleSinceMs = System.currentTimeMillis()
+            }
+            val idleDuration = System.currentTimeMillis() - idleSinceMs
+            if (idleDuration >= IDLE_STOP_DELAY_MS && workerScope?.isActive == true) {
+                // 连续无 inflight 超过阈值：停止服务
+                notificationContent = getString(R.string.novel_video_no_pending)
+                upNotification()
+                workerScope?.cancel()
+                workerScope = null
+                stopSelf()
+            }
         }
     }
-
-    /**
-     * 若 job 仍处于运行态，标记为 CANCELLED。
-     *
-     * 用条件更新（WHERE status NOT IN FINISHED_STATES）替代先查后写，
-     * 把"检查 + 写入"合并为原子 SQL，消除 TOCTOU 窗口：
-     * 旧实现在 getJob 与 updateJobStatusWithError 之间，finalizeJob 可能已写 COMPLETED，
-     * 随后本方法会覆写为 CANCELLED。
-     */
-    private suspend fun markCancelledIfRunning(jobId: String, reason: String?) {
-        val affected = appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
-            jobId,
-            NovelVideoJobStatus.CANCELLED,
-            reason ?: "用户取消",
-            System.currentTimeMillis()
-        )
-        if (affected > 0) {
-            // 用户主动取消不应弹"失败"通知；发 PROGRESS 让 UI 刷新列表看到 CANCELLED 状态
-            postEvent(EventBus.NOVEL_VIDEO_PROGRESS, jobId)
-        }
-    }
-
-    // ============================================================
-    // 通知
-    // ============================================================
 
     private suspend fun refreshNotificationContent() {
         val jobId = currentJobId
@@ -372,8 +347,7 @@ class NovelVideoService : BaseService() {
     }
 
     private fun upNotification() {
-        // M12：POST_NOTIFICATIONS 被拒时部分 OEM 会对 notify() 抛 SecurityException，
-        // 不捕获会导致 1 秒刷新循环崩溃终止整个服务。仿 AudioPlayService 加 try/catch。
+        // M12：POST_NOTIFICATIONS 被拒时部分 OEM 会对 notify() 抛 SecurityException
         try {
             notificationBuilder.setContentText(notificationContent)
             notificationManager.notify(

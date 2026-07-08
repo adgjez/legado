@@ -1,11 +1,13 @@
 package io.legado.app.help.ai.scheduling
 
+import androidx.annotation.VisibleForTesting
 import io.legado.app.help.ai.NovelVideoGenerator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -28,9 +30,17 @@ import kotlin.coroutines.coroutineContext
  * - 删除 `_ORPHAN_RESCAN_LEASE_LOST_MULT` lease flap 重扫（单进程无 flap）
  * - 保留 orphan 一次性扫描（进程重启时触发）
  *
+ * **P6b 多 worker 支持**：
+ * - [capacity] / [slots] 默认指向 [SharedSchedulingState] 的共享单例，
+ *   多 worker 共享同一份容量/槽位台账，保证全局并发上限不突破。
+ * - orphan 扫描用 companion 共享 [orphanSweepDone] guard，多 worker 下只扫一次；
+ *   Service 每次 [ensurePipelineRunning] 调 [resetOrphanSweepGuard] 重置以支持重启。
+ *
  * @param workerId worker 标识（单进程可用 "default"，多 worker 用 "worker-0"/"worker-1"）
  * @param generator 新任务处理入口（默认 [NovelVideoGenerator.generate]；测试可注入 mock）
  * @param resumeJob orphan 恢复入口（默认 [NovelVideoGenerator.resumeJob]；测试可注入 mock）
+ * @param capacity 并发容量表（默认共享 [SharedSchedulingState.capacity]；测试可注入独立实例）
+ * @param slots 槽位台账（默认共享 [SharedSchedulingState.slots]；测试可注入独立实例）
  * @see <a href="file:///tmp/arcreel/lib/generation_worker.py">ArcReel generation_worker.py</a>
  */
 class GenerationWorker(
@@ -38,12 +48,10 @@ class GenerationWorker(
     private val generator: suspend (jobId: String, isCancelled: () -> Boolean) -> Unit =
         { id, cancelled -> NovelVideoGenerator.generate(id, cancelled) },
     private val resumeJob: suspend (jobId: String, isCancelled: () -> Boolean) -> Unit =
-        { id, cancelled -> NovelVideoGenerator.resumeJob(id, cancelled) }
+        { id, cancelled -> NovelVideoGenerator.resumeJob(id, cancelled) },
+    private val capacity: CapacityTable = SharedSchedulingState.capacity,
+    private val slots: SlotTable = SharedSchedulingState.slots
 ) {
-    private val capacity = CapacityTable()
-    private val slots = SlotTable()
-    private var orphanHandledOnce = false
-
     /**
      * 运行 worker 主循环。阻塞直到 [isCancelled] 返回 true 或协程被取消。
      *
@@ -53,10 +61,10 @@ class GenerationWorker(
     suspend fun runLoop(scope: CoroutineScope, isCancelled: () -> Boolean) {
         while (!isCancelled() && coroutineContext.isActive) {
             try {
-                // 首次启动时扫一次 orphan（进程重启恢复）
-                if (!orphanHandledOnce) {
+                // 首次启动时扫一次 orphan（进程重启恢复）。
+                // 用 companion 共享 guard：多 worker 下只第一个进入的 worker 扫一次。
+                if (orphanSweepDone.compareAndSet(false, true)) {
                     handleOrphanTasksOnStart()
-                    orphanHandledOnce = true
                 }
 
                 val claimed = claimAndProcess(scope)
@@ -190,7 +198,36 @@ class GenerationWorker(
     fun requestCancel(jobId: String) {
         slots.getJob(jobId)?.cancel()
     }
+
+    companion object {
+        /**
+         * orphan 扫描共享 guard（多 worker 下只扫一次）。
+         * Service 每次 ensurePipelineRunning 调 [resetOrphanSweepGuard] 重置。
+         */
+        @VisibleForTesting
+        internal val orphanSweepDone = AtomicBoolean(false)
+
+        /** 重置 orphan 扫描 guard（Service 重启 / 测试 setUp 调用）。 */
+        @VisibleForTesting
+        internal fun resetOrphanSweepGuard() {
+            orphanSweepDone.set(false)
+        }
+    }
 }
 
 /** NonCancellable 上下文别名（与 ArcReel `asyncio.shield` 等价）。 */
 private val NonCancellableCtx = kotlinx.coroutines.NonCancellable
+
+/**
+ * 进程级共享调度状态（P6b）。
+ *
+ * 持有 [CapacityTable] / [SlotTable] 的单例，供多 [GenerationWorker] 共享，
+ * 保证全局并发上限不因每个 worker 各自独立台账而突破。
+ *
+ * 测试若需隔离状态，可在 setUp 中调 `SharedSchedulingState.capacity.clear()` /
+ * `SharedSchedulingState.slots.clear()`，或向 [GenerationWorker] 注入独立实例。
+ */
+object SharedSchedulingState {
+    val capacity: CapacityTable = CapacityTable()
+    val slots: SlotTable = SlotTable()
+}

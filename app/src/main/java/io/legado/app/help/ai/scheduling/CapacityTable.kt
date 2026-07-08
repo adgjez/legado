@@ -36,6 +36,7 @@ class CapacityTable {
      *
      * @return 上限值（0 表示该 provider 不支持此 media 类型）
      */
+    @Synchronized
     fun get(providerId: String, mediaType: String): Int {
         // 已知 provider + 已知 media → 登记值
         _limits[providerId to mediaType]?.let { return it }
@@ -45,13 +46,14 @@ class CapacityTable {
         return DEFAULTS[mediaType] ?: 0
     }
 
-    /** provider 是否已登记（至少有一个 media_type 配置）。 */
+    /** provider 是否已登记（至少有一个 media_type 配置）。调用方需持锁。 */
     private fun isProviderKnown(providerId: String): Boolean =
         _limits.keys.any { it.first == providerId }
 
     /**
      * 设置单个 provider × media 的上限。
      */
+    @Synchronized
     fun set(providerId: String, mediaType: String, limit: Int) {
         require(limit >= 0) { "limit 必须 >= 0，得到 $limit" }
         _limits[providerId to mediaType] = limit
@@ -60,6 +62,7 @@ class CapacityTable {
     /**
      * 批量替换配置（配置变更时整表换）。
      */
+    @Synchronized
     fun replace(limits: Map<Pair<String, String>, Int>) {
         _limits.clear()
         limits.forEach { (k, v) ->
@@ -69,6 +72,7 @@ class CapacityTable {
     }
 
     /** 清空所有配置（测试用）。 */
+    @Synchronized
     fun clear() = _limits.clear()
 
     companion object {
