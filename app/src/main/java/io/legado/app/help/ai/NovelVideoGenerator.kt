@@ -313,8 +313,11 @@ object NovelVideoGenerator {
                 System.currentTimeMillis()
             )
             dao.clearSegmentProviderJobId(segment.id)
-            // providerConfig.type == providerType（lookup 匹配条件），用非空的 config.type
-            JobIdStore.clear(providerConfig.type, providerJobId)
+            // best-effort 清理 JobIdStore：视频已落库成功，此处失败仅记日志，
+            // 不得被下方 catch(Throwable) 捕获而回退已成功的 VIDEO_COMPLETED
+            // （如 Robolectric 下 appCtx 未初始化、或文件 IO 异常）
+            runCatching { JobIdStore.clear(providerConfig.type, providerJobId) }
+                .onFailure { AppLog.put("JobIdStore.clear 失败（segment=${segment.id}）：${it.message}") }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ResumeExpiredError) {
