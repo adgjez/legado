@@ -1,5 +1,6 @@
 package io.legado.app.help.ai
 
+import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.dao.NovelVideoDao
 import io.legado.app.data.entities.NovelVideoCompilation
@@ -34,6 +35,15 @@ object NovelVideoCompiler {
     sealed class CompileResult {
         data class Success(val compilation: NovelVideoCompilation) : CompileResult()
         data class Failed(val reason: String) : CompileResult()
+    }
+
+    /**
+     * 安全日志：[AppLog.put] 内部触发 [io.legado.app.help.config.AppConfig] 静态初始化，
+     * 在 Robolectric（appCtx 未初始化）下抛 ExceptionInInitializerError。
+     * 用 runCatching 吞掉，保证日志失败不影响业务流程（对齐 OrphanRecoveryWorker 模式 + cae22457 修复）。
+     */
+    private fun log(msg: String, throwable: Throwable? = null) {
+        runCatching { AppLog.put(msg, throwable) }
     }
 
     /**
@@ -74,8 +84,10 @@ object NovelVideoCompiler {
         mediaMerger: suspend (inputPaths: List<String>, outputPath: String) -> MediaMergeOutcome = ::defaultMediaMerger,
         outputDir: File? = null
     ): CompileResult = withContext(Dispatchers.IO) {
+        log("NovelVideoCompiler 开始编译：${jobIds.size} 个任务")
         // ===== 校验链（spec §5.2，按顺序短路）=====
         if (jobIds.size < 2) {
+            log("NovelVideoCompiler 拒绝：任务数 < 2")
             return@withContext CompileResult.Failed("至少选择 2 个任务才能拼成整部视频")
         }
         val jobs = mutableListOf<NovelVideoJob>()
@@ -121,11 +133,13 @@ object NovelVideoCompiler {
             val outcome = mediaMerger(inputPaths, outputFile.absolutePath)
             when (outcome) {
                 is MediaMergeOutcome.FormatInconsistent -> {
+                    log("NovelVideoCompiler 格式不一致：${outcome.rawError}")
                     return@withContext CompileResult.Failed(
                         wrapFormatErrorWithJobContext(outcome.rawError, sortedJobs)
                     )
                 }
                 is MediaMergeOutcome.Failed -> {
+                    log("NovelVideoCompiler 媒体合并失败：${outcome.message}")
                     return@withContext CompileResult.Failed("视频拼接失败：${outcome.message}")
                 }
                 is MediaMergeOutcome.Merged -> {
@@ -146,19 +160,30 @@ object NovelVideoCompiler {
                         createdAt = now,
                         updatedAt = now
                     )
-                    val inserted = runCatching { dao.insertCompilation(compilation) }
-                    if (inserted.isFailure) {
+                    val inserted = try {
+                        dao.insertCompilation(compilation)
+                        true
+                    } catch (e: CancellationException) {
+                        // 协程取消必须向上传播，不能误判为 DB 写入失败并删除已产出的 mp4
+                        throw e
+                    } catch (e: Throwable) {
+                        log("NovelVideoCompiler 整部视频记录写入数据库失败：${compilation.id}", e)
+                        false
+                    }
+                    if (!inserted) {
                         // Room 写入失败（极罕见）：清理已产出的 mp4 文件
                         outputFile.delete()
                         outDir.delete()
-                        return@withContext CompileResult.Failed("整部视频记录写入数据库失败：${inserted.exceptionOrNull()?.message}")
+                        return@withContext CompileResult.Failed("整部视频记录写入数据库失败")
                     }
+                    log("NovelVideoCompiler 编译成功：${compilation.id}，${compilation.segmentCount} 段，${compilation.totalDurationMs ?: 0}ms")
                     return@withContext CompileResult.Success(compilation)
                 }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
+            log("NovelVideoCompiler 编译异常", e)
             return@withContext CompileResult.Failed("视频拼接发生异常：${e.message}")
         } finally {
             // 失败/异常时清理空产出目录（成功时目录非空，delete() 无效，安全）
