@@ -65,7 +65,13 @@ data class NovelVideoSegment(
     @ColumnInfo
     val errorMessage: String? = null,
     @ColumnInfo(defaultValue = "0")
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    /** Stage 6 视频任务的 provider 端 ID（resume 用）。P0 引入。 */
+    @ColumnInfo
+    val providerJobId: String? = null,
+    /** Stage 6 使用的 video provider（NON_RESUMABLE 分流）。P0 引入。 */
+    @ColumnInfo
+    val providerId: String? = null
 ) : Parcelable {
 
     val isCompleted: Boolean

@@ -26,6 +26,7 @@ object DatabaseMigrations {
             migration_103_104, migration_104_105, migration_105_106,
             migration_106_107, migration_107_108, migration_108_109,
             migration_109_110,
+            migration_110_111,
         )
     }
 
@@ -128,6 +129,29 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_character_sheets_jobId` ON `novel_video_character_sheets` (`jobId`)")
             // 实体声明 unique = true，迁移必须用 UNIQUE INDEX，否则 Room schema 校验失败
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_novel_video_character_sheets_jobId_characterId` ON `novel_video_character_sheets` (`jobId`, `characterId`)")
+        }
+    }
+
+    /**
+     * v110 → v111：novel_video_jobs / novel_video_segments 加列，支撑调度层强化（子项目 B+）。
+     *
+     * - novel_video_jobs: workerId / workerHeartbeatAt / providerJobId / providerId / attempts / availableAt
+     * - novel_video_segments: providerJobId / providerId
+     *
+     * 详见 docs/superpowers/specs/2026-07-07-novel-video-scheduling-hardening-design.md
+     */
+    private val migration_110_111 = object : Migration(110, 111) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // novel_video_jobs 加 6 列
+            db.execSQL("ALTER TABLE `novel_video_jobs` ADD COLUMN `workerId` TEXT")
+            db.execSQL("ALTER TABLE `novel_video_jobs` ADD COLUMN `workerHeartbeatAt` INTEGER")
+            db.execSQL("ALTER TABLE `novel_video_jobs` ADD COLUMN `providerJobId` TEXT")
+            db.execSQL("ALTER TABLE `novel_video_jobs` ADD COLUMN `providerId` TEXT")
+            db.execSQL("ALTER TABLE `novel_video_jobs` ADD COLUMN `attempts` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `novel_video_jobs` ADD COLUMN `availableAt` INTEGER NOT NULL DEFAULT 0")
+            // novel_video_segments 加 2 列
+            db.execSQL("ALTER TABLE `novel_video_segments` ADD COLUMN `providerJobId` TEXT")
+            db.execSQL("ALTER TABLE `novel_video_segments` ADD COLUMN `providerId` TEXT")
         }
     }
 

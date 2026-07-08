@@ -58,7 +58,25 @@ data class NovelVideoJob(
     @ColumnInfo(defaultValue = "0")
     val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "1")
-    val attachToBookChapter: Boolean = true
+    val attachToBookChapter: Boolean = true,
+    /** 认领该 job 的 worker 标识（单进程固定 "default"）。null=未被认领。P0 引入。 */
+    @ColumnInfo
+    val workerId: String? = null,
+    /** worker 最近心跳时间（epoch ms）。null=未被认领。P0 引入。 */
+    @ColumnInfo
+    val workerHeartbeatAt: Long? = null,
+    /** Stage 6 提交后从 backend 返回的 provider 端任务 ID（job 级，跨 stage resume 用）。P0 引入。 */
+    @ColumnInfo
+    val providerJobId: String? = null,
+    /** 入队时派生的 video provider ID（NON_RESUMABLE 分流 + resume 锁定）。P0 引入。 */
+    @ColumnInfo
+    val providerId: String? = null,
+    /** 尝试次数（默认 0）。P0 引入。 */
+    @ColumnInfo(defaultValue = "0")
+    val attempts: Int = 0,
+    /** 下次可调度时间（epoch ms，默认 0 立即可调度，回队延迟用）。P0 引入。 */
+    @ColumnInfo(defaultValue = "0")
+    val availableAt: Long = 0
 ) : Parcelable {
 
     val isRunning: Boolean
