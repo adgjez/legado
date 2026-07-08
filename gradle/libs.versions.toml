@@ -74,7 +74,7 @@ gsyvideoplayer = "11.3.0"
 #noinspection GradleDependency
 webkit = "1.14.0"
 #noinspection GradleDependency
-activity = "1.11.0"
+activity = "1.13.0"
 
 # Robolectric 单元测试框架（在 JVM 上模拟 Android 框架，用于 DAO 集成测试）
 robolectric = "4.14.1"
