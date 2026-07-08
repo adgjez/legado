@@ -200,11 +200,15 @@ class NovelVideoServiceMultiWorkerTest {
         assertTrue("应等到 job_1 被认领", waitForCondition { job1Started.get() })
         assertEquals("job_1 应 GENERATING", NovelVideoJobStatus.GENERATING, dao.getJob("job_1")?.status)
 
-        // 等一段时间，验证 job_2 没被认领（capacity=1 阻塞）
-        delay(500)
-        assertTrue("capacity=1 时 job_2 不应被认领", !job2Started.get())
-        assertEquals("job_2 应仍 DRAFTING（被 capacity 阻塞）",
-            NovelVideoJobStatus.DRAFTING, dao.getJob("job_2")?.status)
+        // 验证 job_2 被 capacity=1 阻塞：generator 未被调用 + 最终稳定回 DRAFTING。
+        // 注意：job_2 可能短暂处于 GENERATING（PoolFullCalculator 在 synchronized 外计算，
+        // worker2 可在 worker1 注册 slot 前 claim job_2，随后 requeue 回 DRAFTING）。
+        // 用 waitForCondition 等待 claim/requeue 振荡收敛，而非依赖 delay(500) 的脆弱时序。
+        assertTrue("capacity=1 时 job_2 不应被认领（generator 未调用），且 job_2 应回到 DRAFTING",
+            waitForCondition {
+                !job2Started.get() &&
+                    dao.getJob("job_2")?.status == NovelVideoJobStatus.DRAFTING
+            })
         assertEquals("峰值并发应 <=1（job_1 占住，job_2 被阻塞）", 1, inflightPeak.get())
 
         // 释放 job_1，slot 空出，job_2 应被认领
