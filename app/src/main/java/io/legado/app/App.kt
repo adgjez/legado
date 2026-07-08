@@ -48,6 +48,7 @@ import io.legado.app.help.http.Cronet
 import io.legado.app.help.http.ObsoleteUrlFactory
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.rhino.NativeBaseSource
+import io.legado.app.help.ai.scheduling.NovelVideoScheduler
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.RestoreJournal
@@ -79,6 +80,8 @@ class App : Application() {
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
+        // P5：注册 WorkManager 周期孤儿巡检（15min，KEEP 幂等，重复调用安全）
+        NovelVideoScheduler.schedulePeriodicOrphanSweep(this)
         Coroutine.async {
             RestoreJournal.recoverIfNeeded("应用启动检测到上次恢复未完成")
             RestoreJournal.markStableIfPending()

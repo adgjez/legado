@@ -249,6 +249,8 @@ dependencies {
     //lifecycle
     implementation(libs.lifecycle.common.java8)
     implementation(libs.lifecycle.service)
+    //work（P5：孤儿 job 周期巡检）
+    implementation(libs.androidx.work.runtime.ktx)
 
     //media
     implementation(libs.media.media)
