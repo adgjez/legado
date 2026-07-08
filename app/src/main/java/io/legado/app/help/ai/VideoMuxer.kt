@@ -261,36 +261,63 @@ object VideoMuxer {
      * @return null 表示一致；非空字符串为错误描述（以「第 N 段」索引描述）
      */
     fun checkFormatConsistency(inputPaths: List<String>): String? {
-        data class TrackKey(val mime: String?, val width: Int?, val height: Int?)
-        fun readKey(path: String): TrackKey? {
-            val ex = MediaExtractor()
-            return runCatching {
-                ex.setDataSource(path)
-                for (i in 0 until ex.trackCount) {
-                    val f = ex.getTrackFormat(i)
-                    val mime = f.getString(MediaFormat.KEY_MIME).orEmpty()
-                    if (mime.startsWith("video/")) {
-                        val w = if (f.containsKey(MediaFormat.KEY_WIDTH)) f.getInteger(MediaFormat.KEY_WIDTH) else null
-                        val h = if (f.containsKey(MediaFormat.KEY_HEIGHT)) f.getInteger(MediaFormat.KEY_HEIGHT) else null
-                        return@runCatching TrackKey(mime, w, h)
-                    }
-                }
-                null
-            }.getOrNull().also { runCatching { ex.release() } }
-        }
-
-        val first = readKey(inputPaths[0]) ?: return "首个文件无 video 轨道：${inputPaths[0]}"
+        val first = readTrackKey(inputPaths[0]) ?: return "首个文件无 video 轨道：${inputPaths[0]}"
         for (i in 1 until inputPaths.size) {
-            val cur = readKey(inputPaths[i]) ?: return "第 ${i + 1} 段无 video 轨道：${inputPaths[i]}"
-            if (cur.mime != first.mime) {
-                return "第 ${i + 1} 段编码与首段不一致（${cur.mime} vs ${first.mime}），无法无损合并"
-            }
-            if (cur.width != first.width || cur.height != first.height) {
-                return "第 ${i + 1} 段分辨率 ${cur.width}x${cur.height} 与首段 ${first.width}x${first.height} 不一致，无法无损合并"
-            }
+            val cur = readTrackKey(inputPaths[i]) ?: return "第 ${i + 1} 段无 video 轨道：${inputPaths[i]}"
+            val err = compareTrackKeys(first, cur, i + 1)
+            if (err != null) return err
         }
         return null
     }
+
+    /**
+     * 用 [MediaExtractor] 读取单个文件 video 轨道的关键字段（mime/width/height）。
+     * @return 文件无 video 轨道或解析失败时返回 null
+     */
+    private fun readTrackKey(path: String): TrackKey? {
+        val ex = MediaExtractor()
+        return runCatching {
+            ex.setDataSource(path)
+            for (i in 0 until ex.trackCount) {
+                val f = ex.getTrackFormat(i)
+                val mime = f.getString(MediaFormat.KEY_MIME).orEmpty()
+                if (mime.startsWith("video/")) {
+                    val w = if (f.containsKey(MediaFormat.KEY_WIDTH)) f.getInteger(MediaFormat.KEY_WIDTH) else null
+                    val h = if (f.containsKey(MediaFormat.KEY_HEIGHT)) f.getInteger(MediaFormat.KEY_HEIGHT) else null
+                    return@runCatching TrackKey(mime, w, h)
+                }
+            }
+            null
+        }.getOrNull().also { runCatching { ex.release() } }
+    }
+
+    /**
+     * 比较两段视频轨道的关键字段（mime/width/height），不一致时返回带「第 N 段」索引的错误描述。
+     *
+     * 抽为独立纯函数便于单测覆盖三个分支（一致 / mime 不同 / 分辨率不同）——
+     * [checkFormatConsistency] 依赖 [MediaExtractor] 解析真实 mp4，
+     * Robolectric 下 ShadowMediaExtractor 无法解析 mp4 文件，
+     * 故核心比对逻辑经此拆分后可在纯 JVM 单测中验证。
+     *
+     * @param first 首段轨道键
+     * @param cur 当前段轨道键
+     * @param curIndex 当前段序号（1-based，用于错误描述）
+     * @return null 表示一致；非空为错误描述
+     */
+    internal fun compareTrackKeys(first: TrackKey, cur: TrackKey, curIndex: Int): String? {
+        if (cur.mime != first.mime) {
+            return "第 $curIndex 段编码与首段不一致（${cur.mime} vs ${first.mime}），无法无损合并"
+        }
+        if (cur.width != first.width || cur.height != first.height) {
+            return "第 $curIndex 段分辨率 ${cur.width}x${cur.height} 与首段 ${first.width}x${first.height} 不一致，无法无损合并"
+        }
+        return null
+    }
+
+    /**
+     * 视频轨道的关键字段（mime/width/height）。[readTrackKey] 与 [compareTrackKeys] 共用。
+     */
+    internal data class TrackKey(val mime: String?, val width: Int?, val height: Int?)
 
     /**
      * 用 MediaExtractor 估算视频时长（毫秒）。
