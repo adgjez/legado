@@ -1,7 +1,5 @@
 package io.legado.app.help.ai.scheduling
 
-import org.json.JSONObject
-
 /**
  * 结构化任务失败码编码/渲染（移植 ArcReel `lib/task_failure.py`）。
  *
@@ -49,21 +47,26 @@ object TaskFailure {
     fun encodeFailure(code: String, params: Map<String, Any?>? = null): String {
         require(code in FAILURE_CODE_KEYS) { "unknown failure code: $code" }
         if (params.isNullOrEmpty()) return "[$code]"
-        // 按 key 字母序逐个 put，保证 JSON 字符串确定性（与 ArcReel sort_keys=True 等价）。
-        // JSONObject.put 只接受基本类型，非基本类型先 toString 兜底。
-        val json = JSONObject()
-        params.keys.sortedBy { it }.forEach { k ->
-            val v = params[k] ?: return@forEach
-            when (v) {
-                is String -> json.put(k, v)
-                is Int -> json.put(k, v)
-                is Long -> json.put(k, v)
-                is Double -> json.put(k, v)
-                is Boolean -> json.put(k, v)
-                else -> json.put(k, v.toString())
+        // 按 key 字母序拼接 JSON（与 ArcReel sort_keys=True 等价）。
+        // 不用 JSONObject 避免 unit test 环境 stub 问题；手动转义保证确定性。
+        val parts = params.entries
+            .filter { it.value != null }
+            .sortedBy { it.key }
+            .joinToString(",") { (k, v) ->
+                "\"" + escapeJson(k) + "\":" + jsonValue(v)
             }
-        }
-        return "[$code] $json"
+        return "[$code] {$parts}"
+    }
+
+    /** JSON 字符串转义（仅处理常见特殊字符）。 */
+    private fun escapeJson(s: String): String =
+        s.replace("\\", "\\\\").replace("\"", "\\\"")
+
+    /** 值 → JSON 字面量（字符串加引号转义，其他类型直接 toString）。 */
+    private fun jsonValue(v: Any?): String = when (v) {
+        is String -> "\"" + escapeJson(v) + "\""
+        is Boolean, is Int, is Long, is Double -> v.toString()
+        else -> "\"" + escapeJson(v.toString()) + "\""
     }
 
     /**
@@ -79,22 +82,30 @@ object TaskFailure {
         val code = match.groupValues[1]
         val key = FAILURE_CODE_KEYS[code] ?: return errorMessage
         val rawParams = match.groupValues[2]
-        val params: Map<String, Any?> = if (rawParams.isNotEmpty()) {
-            runCatching {
-                val parsed = JSONObject(rawParams)
-                buildMap {
-                    for (k in parsed.keys()) {
-                        put(k, parsed.get(k))
-                    }
-                }
-            }.getOrNull() ?: return errorMessage
+        // 从 rawParams 提取简单字段值（避免 JSONObject stub 问题）。
+        // 仅支持 renderByLocale 实际用到的字段：provider / detail。
+        val params: Map<String, String> = if (rawParams.isNotEmpty()) {
+            extractSimpleParams(rawParams)
         } else emptyMap()
         return renderByLocale(key, params)
     }
 
+    /** 从 JSON 字符串提取简单 `"key":"value"` 或 `"key":value` 对（不处理嵌套对象）。 */
+    private fun extractSimpleParams(json: String): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        // 匹配 "key":"value" 或 "key":非字符串值
+        val regex = Regex("\"(\\w+)\":\"([^\"]*)\"|\"(\\w+)\":([^,}]+)")
+        for (m in regex.findAll(json)) {
+            val k = m.groupValues[1].ifEmpty { m.groupValues[3] }
+            val v = m.groupValues[2].ifEmpty { m.groupValues[4].trim() }
+            if (k.isNotEmpty()) result[k] = v
+        }
+        return result
+    }
+
     /** 按 locale 渲染文案（中文模板，其他 locale 暂用中文兜底）。 */
-    private fun renderByLocale(key: String, params: Map<String, Any?>): String {
-        val template = when (key) {
+    private fun renderByLocale(key: String, params: Map<String, String>): String {
+        return when (key) {
             "task_fail_provider_unsupported_media" ->
                 "该 provider 不支持此 media 类型"
             "task_fail_restart_lost_image" ->
@@ -113,8 +124,7 @@ object TaskFailure {
                 "该 backend 未实现 resume_video：${params["detail"] ?: ""}"
             "task_fail_resume_expired_detail" ->
                 "provider 端任务已过期或不存在：${params["detail"] ?: ""}"
-            else -> return key
+            else -> key
         }
-        return template
     }
 }
