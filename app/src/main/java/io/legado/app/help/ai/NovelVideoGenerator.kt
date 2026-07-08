@@ -1,9 +1,11 @@
 package io.legado.app.help.ai
 
 import android.util.Base64
+import androidx.annotation.VisibleForTesting
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
+import io.legado.app.data.dao.NovelVideoDao
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.NovelVideoCharacterSheet
@@ -15,9 +17,15 @@ import io.legado.app.data.entities.NovelVideoSegmentStatus
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.help.ai.AiImageGalleryManager.ImageMetadata
 import io.legado.app.help.ai.backends.ImageGenerationRequest
+import io.legado.app.help.ai.backends.JobIdStore
 import io.legado.app.help.ai.backends.ReferenceImage
+import io.legado.app.help.ai.backends.ResumeExpiredError
+import io.legado.app.help.ai.backends.VideoBackend
+import io.legado.app.help.ai.backends.VideoBackendRegistry
 import io.legado.app.help.ai.backends.VideoGenerationRequest
 import io.legado.app.help.ai.backends.VideoGenerationResult
+import io.legado.app.help.ai.scheduling.NonResumableProviders
+import io.legado.app.help.ai.scheduling.TaskFailure
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
@@ -58,6 +66,23 @@ object NovelVideoGenerator {
      * 用户仍可在 UI 看到 segment 的 FAILED 状态和 errorMessage，需删除任务重建才能重置。
      */
     private const val MAX_SEGMENT_JOB_RETRY = 3
+
+    /**
+     * P4：DAO 注入 hook（resume 路径用）。默认走 [appDb.novelVideoDao]；
+     * 测试可替换为 in-memory Room，隔离 [appDb] 的 bookDao/bookChapterDao 依赖。
+     */
+    @VisibleForTesting
+    internal var daoProvider: () -> NovelVideoDao = { appDb.novelVideoDao }
+
+    /**
+     * P4：video provider 配置查找 hook（resume 路径用）。默认按 type 从 [AppConfig] 启用列表查；
+     * 测试可注入直接返回 fake [AiVideoProviderConfig]，避免 SharedPreferences 依赖。
+     */
+    @VisibleForTesting
+    internal var videoProviderLookup: (String?) -> AiVideoProviderConfig? = { type ->
+        if (type.isNullOrBlank()) null
+        else AppConfig.aiEnabledVideoProviders.firstOrNull { it.type == type }
+    }
 
     // ============================================================
     // 对外入口
@@ -116,21 +141,209 @@ object NovelVideoGenerator {
     }
 
     /**
-     * Resume 路径入口（P3 占位，P4 实现）。
+     * Resume 路径入口（P4 实现，移植 ArcReel `generation_worker.py:800-945` 的 orphan 恢复）。
      *
      * 与 [generate] 的区别：generate 对 GENERATING/MERGING 状态会重走 Stage 4-8（重新提交视频任务），
      * 而 resumeJob 优先调 `VideoBackend.resumeVideo(providerJobId)` 续传已提交的任务，
      * 避免重复扣费。
      *
-     * P3 阶段抛 [NotImplementedError]，由 [io.legado.app.help.ai.scheduling.GenerationWorker]
-     * 的 orphan handler 捕获并 markFailed（结构化失败码 resume_unsupported_detail）。
-     * P4 替换为真实实现。
+     * 流程：
+     * 1. 读 job + segments（用 [daoProvider]，可测试注入）
+     * 2. 对每个 VIDEO_GENERATING segment：
+     *    - providerId ∈ [NonResumableProviders.NON_RESUMABLE_VIDEO_PROVIDERS] → markFailed[resume_unsupported_provider]
+     *    - providerJobId == null → markFailed[restart_lost_no_job_id]
+     *    - 有 providerJobId → resumeVideo → 成功下载落库 / ResumeExpiredError→markFailed[resume_expired_detail] / 其他→markFailed
+     * 3. 对每个 IMAGE_GENERATING segment → markFailed[restart_lost_image]（image 无 resume，重生成由后续 stage 处理）
+     * 4. 调 [generate] 继续未完成 stage（Stage 7 合并 / Stage 8 入库）
+     *
+     * 注意：步骤 4 调 [generate] 走 [appDb]（非 [daoProvider]），因 generate 内部读 bookDao 等。
+     * 生产环境 [daoProvider] 默认即 [appDb.novelVideoDao]，二者一致；测试若只验证步骤 1-3 的 segment
+     * 级 resume，可直接调 [resumeVideoSegments]（internal，不触发 generate）。
      */
     suspend fun resumeJob(
         jobId: String,
         isCancelled: () -> Boolean = { false }
     ) {
-        throw NotImplementedError("resumeJob 将在 P4 实现")
+        resumeVideoSegments(jobId, isCancelled)
+        // 继续未完成的 stage（Stage 7 合并 / Stage 8 入库）。generate 内部用 appDb，
+        // 生产环境与 daoProvider 一致；测试隔离场景请直接测 resumeVideoSegments。
+        generate(jobId, isCancelled)
+    }
+
+    /**
+     * P4：对 job 下所有需要 resume 的 segment 执行恢复（不触发后续 generate）。
+     *
+     * 拆出为 internal 便于单测：测试注入 [daoProvider] + 注册 fake backend 即可验证
+     * segment 级 resume 行为，无需跑完整 [generate]（依赖 bookDao/bookChapterDao）。
+     */
+    @VisibleForTesting
+    internal suspend fun resumeVideoSegments(
+        jobId: String,
+        isCancelled: () -> Boolean
+    ) {
+        val dao = daoProvider()
+        val job = dao.getJob(jobId)
+            ?: throw IllegalStateException("任务不存在：$jobId")
+        val params = NovelVideoParams.fromJob(job)
+        val segments = dao.getSegmentsByJob(jobId)
+
+        for (segment in segments) {
+            checkCancelled(isCancelled, jobId)
+            when (segment.status) {
+                NovelVideoSegmentStatus.VIDEO_GENERATING -> {
+                    resumeVideoSegment(job, segment, params, dao, isCancelled)
+                }
+                NovelVideoSegmentStatus.IMAGE_GENERATING -> {
+                    // image 无 resume，标 failed；后续 generate 的 Stage 5 会重生成
+                    dao.markSegmentFailed(
+                        segment.id,
+                        NovelVideoSegmentStatus.FAILED,
+                        TaskFailure.encodeFailure("restart_lost_image"),
+                        System.currentTimeMillis()
+                    )
+                }
+                // PENDING/IMAGE_COMPLETED/VIDEO_COMPLETED/FAILED：交给后续 generate 处理
+                else -> Unit
+            }
+        }
+    }
+
+    /**
+     * P4：恢复单个 VIDEO_GENERATING segment。
+     *
+     * 分流（对齐 ArcReel `_recover_segment`）：
+     * - NON_RESUMABLE provider（grok/vidu 同步型）→ markFailed[resume_unsupported_provider]
+     * - providerJobId 为空（未持久化 / 同步型无 taskId）→ markFailed[restart_lost_no_job_id]
+     * - 有 providerJobId → [VideoBackend.resumeVideo] 续传下载
+     *   - ResumeExpiredError → markFailed[resume_expired_detail]
+     *   - NotImplementedError → markFailed[resume_unsupported_detail]
+     *   - 其他异常 → markFailed（透传 message）
+     *   - 成功 → updateSegmentVideo + clearSegmentProviderJobId
+     */
+    private suspend fun resumeVideoSegment(
+        job: NovelVideoJob,
+        segment: NovelVideoSegment,
+        params: NovelVideoParams,
+        dao: NovelVideoDao,
+        isCancelled: () -> Boolean
+    ) {
+        val providerType = segment.providerId
+        val providerJobId = segment.providerJobId
+
+        // 1. NON_RESUMABLE 分流
+        if (NonResumableProviders.isNonResumable(providerType)) {
+            dao.markSegmentFailed(
+                segment.id,
+                NovelVideoSegmentStatus.FAILED,
+                TaskFailure.encodeFailure(
+                    "resume_unsupported_provider",
+                    mapOf("provider" to (providerType ?: "unknown"))
+                ),
+                System.currentTimeMillis()
+            )
+            return
+        }
+
+        // 2. 无 providerJobId → 无法 resume
+        if (providerJobId.isNullOrBlank()) {
+            dao.markSegmentFailed(
+                segment.id,
+                NovelVideoSegmentStatus.FAILED,
+                TaskFailure.encodeFailure("restart_lost_no_job_id"),
+                System.currentTimeMillis()
+            )
+            return
+        }
+
+        // 3. 查 provider config（按 segment.providerId=type 匹配 AppConfig 启用的 provider）
+        val providerConfig = videoProviderLookup(providerType)
+        if (providerConfig == null) {
+            // provider 配置已被删除/禁用 → 视为不支持 resume
+            dao.markSegmentFailed(
+                segment.id,
+                NovelVideoSegmentStatus.FAILED,
+                TaskFailure.encodeFailure(
+                    "resume_unsupported_provider",
+                    mapOf("provider" to providerType)
+                ),
+                System.currentTimeMillis()
+            )
+            return
+        }
+
+        // 4. 构造 resume request（resumeVideo 只需 outputPath 下载 + 元数据，不需参考图）
+        checkCancelled(isCancelled, job.id)
+        val videoPrompt = NovelVideoPromptBuilder.buildSceneVideoPrompt(segment)
+        val sanitizedPrompt = NovelVideoPromptBuilder.sanitizeVideoPrompt(videoPrompt)
+        val resumeRequest = VideoGenerationRequest(
+            prompt = sanitizedPrompt,
+            outputPath = File.createTempFile("video_seg_${segment.id}_resume", ".mp4"),
+            durationSeconds = params.sceneDurationSeconds,
+            resolution = params.resolution,
+            taskId = providerJobId
+        )
+
+        // 5. 调 backend.resumeVideo
+        val backend: VideoBackend = try {
+            VideoBackendRegistry.byConfig(providerConfig)
+        } catch (e: Throwable) {
+            if (e is CancellationException) throw e
+            dao.markSegmentFailed(
+                segment.id,
+                NovelVideoSegmentStatus.FAILED,
+                TaskFailure.encodeFailure(
+                    "resume_unsupported_detail",
+                    mapOf("detail" to (e.message ?: e::class.simpleName))
+                ),
+                System.currentTimeMillis()
+            )
+            return
+        }
+
+        try {
+            checkCancelled(isCancelled, job.id)
+            val result = backend.resumeVideo(providerJobId, resumeRequest)
+            // 成功：下载落库 + 清理 providerJobId
+            dao.updateSegmentVideo(
+                segment.id,
+                result.videoUri ?: result.videoPath.absolutePath,
+                result.videoPath.absolutePath,
+                params.sceneDurationSeconds * 1000L,
+                NovelVideoSegmentStatus.VIDEO_COMPLETED,
+                System.currentTimeMillis()
+            )
+            dao.clearSegmentProviderJobId(segment.id)
+            JobIdStore.clear(providerType, providerJobId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ResumeExpiredError) {
+            dao.markSegmentFailed(
+                segment.id,
+                NovelVideoSegmentStatus.FAILED,
+                TaskFailure.encodeFailure(
+                    "resume_expired_detail",
+                    mapOf("detail" to (e.message ?: "expired"))
+                ),
+                System.currentTimeMillis()
+            )
+        } catch (e: NotImplementedError) {
+            dao.markSegmentFailed(
+                segment.id,
+                NovelVideoSegmentStatus.FAILED,
+                TaskFailure.encodeFailure(
+                    "resume_unsupported_detail",
+                    mapOf("detail" to (e.message ?: "resumeVideo 未实现"))
+                ),
+                System.currentTimeMillis()
+            )
+        } catch (e: Throwable) {
+            dao.markSegmentFailed(
+                segment.id,
+                NovelVideoSegmentStatus.FAILED,
+                e.message ?: e::class.simpleName,
+                System.currentTimeMillis()
+            )
+        }
     }
 
     // ============================================================
@@ -705,6 +918,9 @@ object NovelVideoGenerator {
                         referenceImages = videoRefs.map { File(it) }
                     )
                     success = AiVideoService.generate(videoRequest, videoProvider) { /* onProgress 忽略 */ }
+                    // P4：generate 返回即提交+下载完成。持久化 providerJobId，覆盖此后
+                    // （updateSegmentVideo 前）崩溃的恢复窗口——resumeJob 可凭它调 resumeVideo 重下载。
+                    persistSegmentProviderJobId(segment.id, success, videoProvider)
                     break
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
@@ -728,10 +944,46 @@ object NovelVideoGenerator {
                         NovelVideoSegmentStatus.VIDEO_COMPLETED,
                         System.currentTimeMillis()
                     )
+                    // P4：视频已落库，清理 providerJobId（无需 resume）+ JobIdStore
+                    clearSegmentProviderJobId(segment.id, success, videoProvider)
                 }
             }
             postEvent(EventBus.NOVEL_VIDEO_SEGMENT_UPDATED, segment.id)
         }
+    }
+
+    /**
+     * P4：Stage 6 提交后持久化 segment 的 providerJobId + providerId，并登记到 [JobIdStore]。
+     *
+     * 仅当 backend 返回非空 taskId 且 provider 类型已知时写入。grok/vidu 等同步型 backend
+     * 返回 taskId=null，此处跳过（resume 路径会按 NON_RESUMABLE 分流）。
+     */
+    private suspend fun persistSegmentProviderJobId(
+        segmentId: String,
+        result: VideoGenerationResult,
+        videoProvider: AiVideoProviderConfig?
+    ) {
+        val taskId = result.taskId ?: return
+        val providerType = videoProvider?.type ?: return
+        if (taskId.isBlank() || providerType.isBlank()) return
+        appDb.novelVideoDao.updateSegmentProviderJobId(segmentId, taskId, providerType)
+        // promptDigest 仅作 JobIdStore 元数据（去重标识），用 segmentId 保证唯一可追溯
+        JobIdStore.save(providerType, taskId, videoProvider.model, segmentId)
+    }
+
+    /**
+     * P4：视频落库后清理 segment 的 providerJobId + [JobIdStore]（防 store 膨胀）。
+     */
+    private suspend fun clearSegmentProviderJobId(
+        segmentId: String,
+        result: VideoGenerationResult,
+        videoProvider: AiVideoProviderConfig?
+    ) {
+        val taskId = result.taskId ?: return
+        val providerType = videoProvider?.type ?: return
+        if (taskId.isBlank() || providerType.isBlank()) return
+        appDb.novelVideoDao.clearSegmentProviderJobId(segmentId)
+        JobIdStore.clear(providerType, taskId)
     }
 
     /**
