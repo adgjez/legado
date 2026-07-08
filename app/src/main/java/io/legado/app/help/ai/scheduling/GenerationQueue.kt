@@ -18,6 +18,11 @@ import io.legado.app.data.entities.NovelVideoJobStatus
  * 单进程前台服务模型下无需多 worker lease 互斥（ArcReel 的 `worker_lease` 表删除），
  * 但保留 workerId + workerHeartbeatAt 作为「worker 存活证明」，供 orphan 检测判定。
  *
+ * **调用线程约定**：本 facade 的 suspend 方法不自包 `withContext(Dispatchers.IO)`，
+ * 约定由调用方（[GenerationWorker] 前台服务 scope）保证在 IO 线程调用。
+ * 不自包的理由：GenerationWorker.runLoop 高频调 claim/renew，每次冗余 Dispatcher 切换有开销；
+ * 且 Room suspend DAO 内部已用 ArchComponent IO 调度器，即使误从 main 调也会切到 IO，不阻塞 main。
+ *
  * @see <a href="file:///tmp/arcreel/lib/generation_queue.py">ArcReel generation_queue.py</a>
  * @see <a href="file:///tmp/arcreel/lib/db/repositories/task_repo.py">ArcReel task_repo.py</a>
  */

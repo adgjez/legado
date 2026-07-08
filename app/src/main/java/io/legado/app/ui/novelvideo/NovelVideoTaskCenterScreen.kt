@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.widget.Toast
 import io.legado.app.R
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoJobStatus
@@ -125,9 +126,21 @@ fun NovelVideoTaskCenterScreen(
                 },
                 actions = {
                     if (inMultiSelect() && selectedTab == 1) {
+                        // spec §7.1：选中 ≥2 且全部同 bookUrl 才可拼接；不同书时点击 toast 提示原因
+                        val selectedJobs = completedJobs.filter { it.id in selectedJobIds }
+                        val allSameBook = selectedJobs.size >= 2 &&
+                            selectedJobs.all { it.bookUrl == selectedJobs.first().bookUrl }
                         TextButton(
                             enabled = selectedJobIds.size >= 2,
                             onClick = {
+                                if (!allSameBook) {
+                                    Toast.makeText(
+                                        context,
+                                        R.string.novel_video_compile_mixed_books,
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@TextButton
+                                }
                                 compiling = true
                                 val ids = selectedJobIds.toList()
                                 scope.launch {

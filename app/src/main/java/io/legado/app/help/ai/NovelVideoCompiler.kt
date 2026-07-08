@@ -196,15 +196,31 @@ object NovelVideoCompiler {
     /**
      * 把 `checkFormatConsistency` 返回的「第 N 段」索引错误信息包装为含 job 标识的描述。
      *
+     * spec §5.2 要求错误格式：`任务 <X> 与 <Y> 的视频格式不一致（<detail>）`，
+     * 故把原始错误中的「第 N 段」替换为对应 job 的 bookName + chapterRange，
+     * 「首段」「首个文件」替换为首个 job 的标识，精确到具体不一致的两章。
+     *
      * 例：原始「第 2 段分辨率 1280x720 与首段 1920x1080 不一致，无法无损合并」
-     *   → 「任务「<bookName> 第 X-Y 章」与「<bookName> 第 X-Y 章」的视频格式不一致...」
+     *   → 「任务「甲书 第0-1章」与「甲书 第2-3章」的视频格式不一致（分辨率 1280x720 与 1920x1080 不一致），无法无损拼接...」
      */
     private fun wrapFormatErrorWithJobContext(rawError: String, jobs: List<NovelVideoJob>): String {
-        // 简单策略：把原始错误透传，但前缀拼接所有候选 job 的标识，便于用户定位。
-        val jobLabels = jobs.joinToString("、") {
-            "「${it.bookName.ifBlank { "未命名" }} 第${it.chapterStartIndex}-${it.chapterEndIndex}章」"
+        if (jobs.isEmpty()) return rawError
+        val firstLabel = jobLabel(jobs[0])
+        // 「第 N 段」的 N 是 1-based 索引，对应 jobs[N-1]
+        var resolved = rawError
+        resolved = resolved.replace("首个文件", firstLabel)
+        resolved = resolved.replace("首段", firstLabel)
+        // 正则匹配「第 N 段」并替换为对应 job 标识
+        val segmentPattern = Regex("第 (\\d+) 段")
+        resolved = segmentPattern.replace(resolved) { m ->
+            val idx = m.groupValues[1].toIntOrNull()
+            if (idx != null && idx in 1..jobs.size) jobLabel(jobs[idx - 1]) else m.value
         }
-        return "任务 $jobLabels 之间存在格式不一致（$rawError），无法无损拼接，请用相同 provider/分辨率重新生成"
+        return "任务的视频格式不一致（$resolved），无法无损拼接，请用相同 provider/分辨率重新生成"
+    }
+
+    private fun jobLabel(job: NovelVideoJob): String {
+        return "「${job.bookName.ifBlank { "未命名" }} 第${job.chapterStartIndex}-${job.chapterEndIndex}章」"
     }
 
     /** 默认媒体合并：[VideoMuxer.checkFormatConsistency] + [VideoMuxer.merge]。 */

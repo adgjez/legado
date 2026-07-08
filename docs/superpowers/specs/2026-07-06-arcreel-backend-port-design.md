@@ -43,7 +43,7 @@ Legado 现有视频/图像生成 backend 存在结构性问题：
 | Backend 范围 | 忠实全量移植（11 video + 9 image） | 务实重构 / 最小修复 |
 | 现有配置处理 | 删除（老 type 配置丢弃，用户重设） | 门面映射 / 并行共存 |
 | JS backend | 一并删除 | 保留 |
-| 抽象架构 | 方案 1：sealed interface + 每家一个类 | abstract class / 函数式 registry |
+| 抽象架构 | 方案 1：普通 interface + 每家一个类（动态分发经 VideoBackendRegistry） | abstract class / 函数式 registry / sealed interface |
 | 生命周期模型 | 1a 忠实：backend.generate() 自管 submit+poll+download | 1b 适配：backend 只管请求+解析 |
 
 ## 4. 架构总览
@@ -96,7 +96,7 @@ app/src/main/java/io/legado/app/help/ai/backends/
 ### 5.1 VideoBackend
 
 ```kotlin
-sealed interface VideoBackend {
+interface VideoBackend {
     val typeId: String                          // "ark"/"agnes"/...
     val model: String
     val capabilities: Set<VideoCapability>      // 端点级
@@ -108,6 +108,8 @@ sealed interface VideoBackend {
     suspend fun resumeVideo(jobId: String, request: VideoGenerationRequest): VideoGenerationResult
 }
 ```
+
+> 实现注：用普通 `interface` 而非 `sealed interface`。各 backend 实现在 `backends/video/` 子包，Kotlin sealed 跨包不允许；动态分发经 `VideoBackendRegistry`（按 typeId 查表），无需 exhaustive when，故 sealed 无收益。
 
 ### 5.2 双能力模型（移植 `video_backends/base.py:378-405`）
 
@@ -160,7 +162,8 @@ data class VideoGenerationRequest(
     val serviceTier: String = "default",
     val seed: Long? = null
 ) {
-    fun withCompressedRefs(refs: List<CompressedRef>): VideoGenerationRequest
+    // 实现为扩展函数：internal fun VideoGenerationRequest.withCompressedRefs(refs)
+    // 放在 AiVideoService.kt，便于 MediaGenerator 调用时与 buildSpecs 串联
 }
 
 data class VideoGenerationResult(

@@ -776,6 +776,7 @@
     <string name="novel_video_confirm_delete_compilation">确认删除该整部视频？对应的视频文件也会被删除。</string>
     <string name="novel_video_compilation_segments">段数</string>
     <string name="novel_video_cancel_selection">取消选择</string>
+    <string name="novel_video_compile_mixed_books">只能拼接同一本书的任务</string>
     <string name="novel_video_job_detail">任务详情</string>
     <string name="novel_video_screenplay_review">剧本审阅</string>
     <string name="novel_video_review_hint">请审阅 AI 生成的剧本，可在确认前手动编辑各场景。</string>

@@ -163,8 +163,11 @@ class NovelVideoCompilerTest {
         val r = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = merger, outputDir = tempDir)
         assertTrue(r is NovelVideoCompiler.CompileResult.Failed)
         val reason = (r as NovelVideoCompiler.CompileResult.Failed).reason
-        assertTrue("应含原始错误：$reason", reason.contains("1280x720"))
-        assertTrue("应含 job 章节标识：$reason", reason.contains("第0-1章") && reason.contains("第2-3章"))
+        assertTrue("应含原始分辨率：$reason", reason.contains("1280x720"))
+        assertTrue("应含首段 job 标识：$reason", reason.contains("第0-1章"))
+        assertTrue("应含不一致段 job 标识：$reason", reason.contains("第2-3章"))
+        assertTrue("「第 2 段」索引应已被替换为 job 标识：$reason", !reason.contains("第 2 段"))
+        assertTrue("「首段」应已被替换为 job 标识：$reason", !reason.contains("首段"))
     }
 
     // ============================================================

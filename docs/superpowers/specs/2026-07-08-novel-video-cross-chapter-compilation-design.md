@@ -104,7 +104,7 @@ val MIGRATION_111_112 = object : Migration(111, 112) {
 }
 ```
 
-`AppDatabase.kt` 的 `@Database(entities = [...])` 列表新增 `NovelVideoCompilation::class`，`version = 112`，`exportedSchema = true`（继续生成 `schemas/io.legado.app.data.AppDatabase/112.json`）。
+`AppDatabase.kt` 的 `@Database(entities = [...])` 列表新增 `NovelVideoCompilation::class`，`version = 112`。schema 文件遵循项目惯例不纳入版本控制（git 跟踪止于 109.json，110/111/112 均未提交，CI 不校验 schema），本地由 KSP 编译自动生成。
 
 ## 5. 编译操作
 
@@ -137,10 +137,14 @@ object NovelVideoCompiler {
     suspend fun compile(
         jobIds: List<String>,
         title: String? = null,
-        dao: NovelVideoDao = appDb.novelVideoDao
+        dao: NovelVideoDao = appDb.novelVideoDao,
+        mediaMerger: suspend (inputPaths: List<String>, outputPath: String) -> MediaMergeOutcome = ::defaultMediaMerger,
+        outputDir: File? = null
     ): CompileResult
 }
 ```
+
+`mediaMerger` / `outputDir` 为测试注入参数（默认值兼容生产调用）：`mediaMerger` 隔离 `VideoMuxer.merge`（Robolectric 下无法产出真实 mp4），`outputDir` 隔离 `appCtx.filesDir`（普通 `Application` 下未初始化）。另定义 `sealed class MediaMergeOutcome { FormatInconsistent, Merged, Failed }` 把 `checkFormatConsistency` 与 `merge` 两步合一，便于测试注入与错误归类。
 
 ### 5.2 校验规则（按顺序短路）
 
@@ -155,13 +159,15 @@ object NovelVideoCompiler {
 
 校验通过后按 `chapterStartIndex` 升序排序源 job（同 index 按 `createdAt` 兜底，理论上不会同 index）。
 
-> 注：`VideoMuxer.checkFormatConsistency` 原始返回的错误信息以「第 N 段」索引描述（不含 job 标识）。编译层在调用前已建立 `index → job` 映射，对原始错误信息做包装：把「第 N 段」替换为对应 job 的 `bookName + chapterRange`，再返回 `CompileResult.Failed`。这是 §5.3 提为 public 的核心动机——让编译层能在 `merge` 前拿到一致性错误并附加 job 上下文。
+> 注：`VideoMuxer.checkFormatConsistency` 原始返回的错误信息以「第 N 段」「首段」「首个文件」索引描述（不含 job 标识）。编译层在调用前已建立 `index → job` 映射，对原始错误信息做包装：用正则把「第 N 段」替换为 `jobs[N-1]` 的 `bookName + chapterRange`，「首段」「首个文件」替换为 `jobs[0]` 的标识，精确到具体不一致的两章，再返回 `CompileResult.Failed`。这是 §5.3 提为 public 的核心动机——让编译层能在 `merge` 前拿到一致性错误并附加 job 上下文。
 
 ### 5.3 `VideoMuxer.checkFormatConsistency` 提为 public
 
 当前 `VideoMuxer.checkFormatConsistency` 是 `private`（仅 `merge` 内部调用）。`NovelVideoCompiler` 需在 `merge` 前做预检以给出更精确的错误信息（`merge` 失败时返回的 `Failed.message` 不含 job 标识，不便用户定位是哪两章不一致）。
 
 改动：`private fun checkFormatConsistency` → `fun checkFormatConsistency`（签名不变，返回 `String?` 错误描述或 `null` 表示一致）。`merge` 内部调用点不变。
+
+> 实现补充（P2 收尾）：核心比对逻辑抽为 `internal fun compareTrackKeys(first: TrackKey, cur: TrackKey, curIndex: Int): String?` 纯函数 + `internal data class TrackKey(mime, width, height)`。Robolectric 下 `ShadowMediaExtractor` 不解析 mp4（`trackCount` 恒 0），`checkFormatConsistency` 的完整路径无法在 JVM 单测覆盖；拆分纯函数后，三分支（一致 / mime 不同 / 分辨率不同）可单测真覆盖。
 
 ### 5.4 文件路径与清理
 
@@ -202,8 +208,8 @@ fun getCompilationsByBookFlow(bookUrl: String): Flow<List<NovelVideoCompilation>
 `NovelVideoTaskCenterScreen.kt` 已完成 Tab 增加：
 - 长按 JobCard 进入多选模式（顶部 ActionBar 显示选中数 + 「拼成整部视频」按钮 + 取消）。
 - 多选模式下继续点按切换选中态。
-- 「拼成整部视频」按钮启用条件：选中 ≥2 且全部同 `bookUrl`（不同 bookUrl 时按钮置灰并 toast 提示）。
-- 点击按钮 → 弹进度对话框（`CircularProgressIndicator` + "正在拼接整部视频..."）→ `lifecycleScope.launch` 调 `NovelVideoCompiler.compile` → 成功 toast + 跳转整部视频 Tab；失败弹 AlertDialog 显示错误原因。
+- 「拼成整部视频」按钮启用条件：选中 ≥2。点击时若选中 job 不全同 `bookUrl`，toast 提示「只能拼接同一本书的任务」并阻止拼接（混合 bookUrl 仍允许点击以便给出反馈）。
+- 点击按钮 → 弹进度对话框（`CircularProgressIndicator` + "正在拼接整部视频..."）→ `lifecycleScope.launch` 调 `NovelVideoCompiler.compile` → 成功后清空选中 + 跳转整部视频 Tab（跳 Tab 即暗示成功，未额外 toast）；失败弹 AlertDialog 显示错误原因。
 
 ### 7.2 整部视频入口
 
@@ -247,7 +253,7 @@ fun getCompilationsByBookFlow(bookUrl: String): Flow<List<NovelVideoCompilation>
 
 ### 9.2 迁移测试
 
-`DatabaseMigrationsTest`（如已存在）补 v111→v112 用例：迁移后 `novel_video_compilations` 表存在、索引存在、可插入/查询。Room 的 `MigrationTestHelper` 自动校验 schema 与 `112.json` 一致。
+迁移正确性通过 in-memory Room 集成测试验证（`NovelVideoDaoRobolectricTest` / `GenerationQueueDaoTest` 的 in-memory DB 含 `NovelVideoCompilation` 实体，可插入/查询 compilations 表）。未使用 `MigrationTestHelper`（项目惯例不提交 schema json，`MigrationTestHelper` 依赖 schema 文件做一致性校验，不适用）；migration SQL 为简单 `CREATE TABLE` + 2 索引，in-memory DB 覆盖足够。
 
 ### 9.3 VideoMuxer 可见性变更回归
 
@@ -279,4 +285,4 @@ fun getCompilationsByBookFlow(bookUrl: String): Flow<List<NovelVideoCompilation>
 | 不同 provider 生成的 mp4 格式不一致（如 Ark 1080p vs Kling 720p）→ 用户跨 provider 拼接频繁失败 | 错误信息明确指引「用相同 provider/分辨率重新生成」；未来可在 job 创建时记录 provider/resolution，UI 多选时预先过滤同 provider 的 job |
 | 大量章节拼接产物文件占磁盘 | UI 展示 compilation 时长 + 文件大小；删除入口显眼 |
 | MediaMuxer 对某些 mp4 容器（如 HEVC + 特定 profile）remux 兼容性问题 | 复用现有 `VideoMuxer.merge` 已验证的 `checkFormatConsistency` + 时间戳重基准逻辑；若 merge 失败，错误透传给用户 |
-| Room schema 导出文件 `112.json` 未提交导致 CI 失败 | 实现时 `exportedSchema = true` 已开，编译自动生成，提交时一并 `git add` |
+| Room schema 导出文件 `112.json` 未提交导致 CI 失败 | 项目惯例 schema 不纳入版本控制（110/111 均未提交，CI 不校验 schema）；本地由 KSP 编译自动生成，迁移正确性由 in-memory Room 集成测试覆盖 |
