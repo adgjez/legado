@@ -11,12 +11,14 @@ import io.legado.app.data.entities.NovelVideoJobStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,9 +35,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * - 共享 slots 保证全局并发上限不突破
  * - cancel 通过共享 slots 精确取消指定 job
  *
- * 技术要点（与 [GenerationWorkerTest] 一致）：
- * - runBlocking + Dispatchers.Default（真实线程，非 runTest 虚拟时间）
- * - waitForCondition 真实轮询等待终态
+ * **设计要点（避免时序 flaky）：**
+ * - 用 [awaitCancellation] 让 generator 挂起，测试显式控制 job 何时完成
+ * - 断言基于「job 被认领」(started flag) 而非 status==GENERATING（markSucceeded 可能在断言前完成）
+ * - capacity 阻塞验证：job_1 占住 slot，等一段时间确认 job_2 没被认领，再 cancel job_1 释放 slot
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [33], application = Application::class)
@@ -84,7 +87,7 @@ class NovelVideoServiceMultiWorkerTest {
         CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // ============================================================
-    // 两 worker 同时认领不同 provider 的 job
+    // 两 worker 同时认领不同 provider 的 job（不互相阻塞）
     // ============================================================
 
     @Test
@@ -93,16 +96,31 @@ class NovelVideoServiceMultiWorkerTest {
         dao.insertJob(NovelVideoJob(id = "job_grok", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000, providerId = "grok"))
         dao.insertJob(NovelVideoJob(id = "job_agnes", status = NovelVideoJobStatus.DRAFTING, createdAt = 2000, providerId = "agnes"))
 
-        val bothGenerating = AtomicInteger(0)
-        val grokDone = AtomicBoolean(false)
-        val agnesDone = AtomicBoolean(false)
+        val grokStarted = AtomicBoolean(false)
+        val agnesStarted = AtomicBoolean(false)
+        val bothInflightSeen = AtomicBoolean(false)
+        val inflightCount = AtomicInteger(0)
+        val inflightPeak = AtomicInteger(0)
 
-        // generator 挂起直到两个 job 都进入 GENERATING，然后各自完成
+        // 两个 generator 都挂起，直到测试观察到并发后释放
+        val releaseGrok = AtomicBoolean(false)
+        val releaseAgnes = AtomicBoolean(false)
+
         val generator: suspend (String, () -> Boolean) -> Unit = { jobId, _ ->
-            bothGenerating.incrementAndGet()
-            // 等两个 job 都被 claim（bothGenerating=2）才继续，验证并发
-            waitForCondition { bothGenerating.get() >= 2 }
-            if (jobId == "job_grok") grokDone.set(true) else agnesDone.set(true)
+            val count = inflightCount.incrementAndGet()
+            synchronized(inflightPeak) { if (count > inflightPeak.get()) inflightPeak.set(count) }
+            when (jobId) {
+                "job_grok" -> {
+                    grokStarted.set(true)
+                    // 等待释放信号
+                    waitForCondition { releaseGrok.get() }
+                }
+                "job_agnes" -> {
+                    agnesStarted.set(true)
+                    waitForCondition { releaseAgnes.get() }
+                }
+            }
+            inflightCount.decrementAndGet()
         }
 
         val worker1 = GenerationWorker(workerId = "worker-1", generator = generator)
@@ -110,17 +128,29 @@ class NovelVideoServiceMultiWorkerTest {
 
         val scope1 = newScope()
         val scope2 = newScope()
-        scope1.launch { worker1.runLoop(scope1) { grokDone.get() && agnesDone.get() } }
-        scope2.launch { worker2.runLoop(scope2) { grokDone.get() && agnesDone.get() } }
+        scope1.launch { worker1.runLoop(scope1) { false } }
+        scope2.launch { worker2.runLoop(scope2) { false } }
+
+        // 等两个 job 都被认领（started flag，不依赖 status==GENERATING）
+        assertTrue("应等到 job_grok 被认领", waitForCondition { grokStarted.get() })
+        assertTrue("应等到 job_agnes 被认领", waitForCondition { agnesStarted.get() })
+
+        // 观察到并发（两个都在 inflight）
+        assertTrue("应观察到两 job 同时 inflight（并发）",
+            waitForCondition { inflightCount.get() == 2 })
+        bothInflightSeen.set(inflightCount.get() == 2)
+
+        // 释放两个 job，让它们完成
+        releaseGrok.set(true)
+        releaseAgnes.set(true)
 
         assertTrue("应等到 job_grok COMPLETED", waitForCondition { dao.getJob("job_grok")?.status == NovelVideoJobStatus.COMPLETED })
         assertTrue("应等到 job_agnes COMPLETED", waitForCondition { dao.getJob("job_agnes")?.status == NovelVideoJobStatus.COMPLETED })
         scope1.cancel()
         scope2.cancel()
 
-        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_grok")?.status)
-        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_agnes")?.status)
-        assertEquals("两个 job 应同时进入 GENERATING（并发）", 2, bothGenerating.get())
+        assertTrue("两 job 应同时 inflight（并发执行）", bothInflightSeen.get())
+        assertEquals("峰值并发应达到 2", 2, inflightPeak.get())
     }
 
     // ============================================================
@@ -133,25 +163,27 @@ class NovelVideoServiceMultiWorkerTest {
         dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000, providerId = "grok"))
         dao.insertJob(NovelVideoJob(id = "job_2", status = NovelVideoJobStatus.DRAFTING, createdAt = 2000, providerId = "grok"))
 
+        val job1Started = AtomicBoolean(false)
+        val job2Started = AtomicBoolean(false)
+        val inflightCount = AtomicInteger(0)
         val inflightPeak = AtomicInteger(0)
-        val currentInflight = AtomicInteger(0)
-        val job1Done = AtomicBoolean(false)
-        val job2Done = AtomicBoolean(false)
+        val releaseJob1 = AtomicBoolean(false)
 
         val generator: suspend (String, () -> Boolean) -> Unit = { jobId, _ ->
-            val count = currentInflight.incrementAndGet()
-            // 更新峰值并发
-            synchronized(inflightPeak) {
-                if (count > inflightPeak.get()) inflightPeak.set(count)
+            val count = inflightCount.incrementAndGet()
+            synchronized(inflightPeak) { if (count > inflightPeak.get()) inflightPeak.set(count) }
+            when (jobId) {
+                "job_1" -> {
+                    job1Started.set(true)
+                    // job_1 占住 slot，直到测试释放
+                    waitForCondition { releaseJob1.get() }
+                }
+                "job_2" -> {
+                    job2Started.set(true)
+                    // job_2 立即完成
+                }
             }
-            if (jobId == "job_1") {
-                // job_1 占住 slot 不返回，等一会儿验证 job_2 不会被同时认领
-                delay(500)
-                job1Done.set(true)
-            } else {
-                job2Done.set(true)
-            }
-            currentInflight.decrementAndGet()
+            inflightCount.decrementAndGet()
         }
 
         val worker1 = GenerationWorker(workerId = "worker-1", generator = generator)
@@ -159,11 +191,24 @@ class NovelVideoServiceMultiWorkerTest {
 
         val scope1 = newScope()
         val scope2 = newScope()
-        scope1.launch { worker1.runLoop(scope1) { job1Done.get() && job2Done.get() } }
-        scope2.launch { worker2.runLoop(scope2) { job1Done.get() && job2Done.get() } }
+        scope1.launch { worker1.runLoop(scope1) { false } }
+        scope2.launch { worker2.runLoop(scope2) { false } }
 
+        // 等 job_1 被认领并占住 slot
+        assertTrue("应等到 job_1 被认领", waitForCondition { job1Started.get() })
+        assertEquals("job_1 应 GENERATING", NovelVideoJobStatus.GENERATING, dao.getJob("job_1")?.status)
+
+        // 等一段时间，验证 job_2 没被认领（capacity=1 阻塞）
+        delay(500)
+        assertTrue("capacity=1 时 job_2 不应被认领", !job2Started.get())
+        assertEquals("job_2 应仍 DRAFTING（被 capacity 阻塞）",
+            NovelVideoJobStatus.DRAFTING, dao.getJob("job_2")?.status)
+        assertEquals("峰值并发应 <=1（job_1 占住，job_2 被阻塞）", 1, inflightPeak.get())
+
+        // 释放 job_1，slot 空出，job_2 应被认领
+        releaseJob1.set(true)
         assertTrue("应等到 job_1 COMPLETED", waitForCondition { dao.getJob("job_1")?.status == NovelVideoJobStatus.COMPLETED })
-        // 等 job_2 也完成（job_1 完成后释放 slot，job_2 才能被认领）
+        assertTrue("应等到 job_2 被认领（slot 释放后）", waitForCondition { job2Started.get() })
         assertTrue("应等到 job_2 COMPLETED", waitForCondition { dao.getJob("job_2")?.status == NovelVideoJobStatus.COMPLETED })
         scope1.cancel()
         scope2.cancel()
@@ -177,21 +222,24 @@ class NovelVideoServiceMultiWorkerTest {
 
     @Test
     fun cancelViaSharedSlotsCancelsSpecifiedJob() = runBlocking {
-        dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000))
+        dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000, providerId = "grok"))
         dao.insertJob(NovelVideoJob(id = "job_2", status = NovelVideoJobStatus.DRAFTING, createdAt = 2000, providerId = "agnes"))
 
         val job1Started = AtomicBoolean(false)
         val job2Started = AtomicBoolean(false)
-        val job2Done = AtomicBoolean(false)
+        val releaseJob2 = AtomicBoolean(false)
 
+        // 两个 job 都挂起，测试显式控制完成
         val generator: suspend (String, () -> Boolean) -> Unit = { jobId, _ ->
-            if (jobId == "job_1") {
-                job1Started.set(true)
-                // 挂起直到被取消
-                kotlinx.coroutines.awaitCancellation()
-            } else {
-                job2Started.set(true)
-                job2Done.set(true)
+            when (jobId) {
+                "job_1" -> {
+                    job1Started.set(true)
+                    awaitCancellation() // 挂起直到被取消
+                }
+                "job_2" -> {
+                    job2Started.set(true)
+                    waitForCondition { releaseJob2.get() }
+                }
             }
         }
 
@@ -201,25 +249,33 @@ class NovelVideoServiceMultiWorkerTest {
         val scope1 = newScope()
         val scope2 = newScope()
         scope1.launch { worker1.runLoop(scope1) { false } }
-        scope2.launch { worker2.runLoop(scope2) { job2Done.get() } }
+        scope2.launch { worker2.runLoop(scope2) { false } }
 
-        // 等两个 job 都进入 GENERATING
-        assertTrue("应等到 job_1 GENERATING", waitForCondition {
-            dao.getJob("job_1")?.status == NovelVideoJobStatus.GENERATING && job1Started.get()
-        })
-        assertTrue("应等到 job_2 GENERATING", waitForCondition {
-            dao.getJob("job_2")?.status == NovelVideoJobStatus.GENERATING && job2Started.get()
-        })
+        // 等两个 job 都被认领（started flag，不依赖 status==GENERATING）
+        assertTrue("应等到 job_1 被认领", waitForCondition { job1Started.get() })
+        assertTrue("应等到 job_2 被认领", waitForCondition { job2Started.get() })
+
+        // 确认两个 job 都在 GENERATING（cancel 前）
+        assertEquals("job_1 应 GENERATING", NovelVideoJobStatus.GENERATING, dao.getJob("job_1")?.status)
+        assertEquals("job_2 应 GENERATING", NovelVideoJobStatus.GENERATING, dao.getJob("job_2")?.status)
 
         // 通过共享 slots 取消 job_1（模拟 Service.cancelJobInternal 路径）
         SharedSchedulingState.slots.getJob("job_1")?.cancel()
 
         assertTrue("应等到 job_1 CANCELLED", waitForCondition { dao.getJob("job_1")?.status == NovelVideoJobStatus.CANCELLED })
-        assertTrue("应等到 job_2 COMPLETED（不受 job_1 取消影响）", waitForCondition { dao.getJob("job_2")?.status == NovelVideoJobStatus.COMPLETED })
+
+        // job_2 不受影响，仍 GENERATING（还没释放）
+        assertEquals("job_2 应仍 GENERATING（不受 job_1 取消影响）",
+            NovelVideoJobStatus.GENERATING, dao.getJob("job_2")?.status)
+
+        // 释放 job_2，验证它能正常完成
+        releaseJob2.set(true)
+        assertTrue("应等到 job_2 COMPLETED", waitForCondition { dao.getJob("job_2")?.status == NovelVideoJobStatus.COMPLETED })
         scope1.cancel()
         scope2.cancel()
 
         assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob("job_1")?.status)
         assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_2")?.status)
+        assertNotEquals("job_1 不应为 COMPLETED", NovelVideoJobStatus.COMPLETED, dao.getJob("job_1")?.status)
     }
 }
