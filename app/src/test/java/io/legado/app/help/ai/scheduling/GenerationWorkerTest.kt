@@ -11,6 +11,7 @@ import io.legado.app.data.entities.NovelVideoJobStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -19,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -32,6 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *   绕过 `NovelVideoGenerator` object 不可 mock 的问题
  * - `backgroundScope`（SupervisorJob）跑 runLoop，processTask 子协程异常不互相影响
  * - `advanceUntilIdle()` 推进虚拟时间让挂起协程跑完
+ * - isCancelled 用 [AtomicBoolean] 跟踪状态（非 suspend lambda 不能调 suspend dao）
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [33], application = Application::class)
@@ -48,7 +51,6 @@ class GenerationWorkerTest {
             .allowMainThreadQueries()
             .build()
         dao = db.novelVideoDao
-        // 注入测试 dao（@After 恢复，避免污染其他测试类）
         originalDaoProvider = GenerationQueue.daoProvider
         GenerationQueue.daoProvider = { dao }
     }
@@ -65,7 +67,6 @@ class GenerationWorkerTest {
 
     @Test
     fun runLoopNoJobExitsCleanlyWhenCancelled() = runTest {
-        // 无 job 时 runLoop 应进入 idle sleep，isCancelled=true 后正常退出
         val counter = AtomicInteger(0)
         val worker = GenerationWorker(workerId = "test", generator = { _, _ -> })
 
@@ -84,14 +85,18 @@ class GenerationWorkerTest {
     @Test
     fun claimProcessMarkSucceededFlow() = runTest {
         dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000))
+        val completed = AtomicBoolean(false)
         val generatorCalls = AtomicInteger(0)
         val worker = GenerationWorker(
             workerId = "test",
-            generator = { _, _ -> generatorCalls.incrementAndGet() }
+            generator = { _, _ ->
+                generatorCalls.incrementAndGet()
+                completed.set(true)
+            }
         )
 
         backgroundScope.launch {
-            worker.runLoop(backgroundScope) { dao.getJob("job_1")?.status == NovelVideoJobStatus.COMPLETED }
+            worker.runLoop(backgroundScope) { completed.get() }
         }
         advanceUntilIdle()
 
@@ -108,13 +113,17 @@ class GenerationWorkerTest {
     @Test
     fun processTaskThrowsExceptionMarksFailed() = runTest {
         dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000))
+        val failed = AtomicBoolean(false)
         val worker = GenerationWorker(
             workerId = "test",
-            generator = { _, _ -> throw RuntimeException("boom") }
+            generator = { _, _ ->
+                failed.set(true)
+                throw RuntimeException("boom")
+            }
         )
 
         backgroundScope.launch {
-            worker.runLoop(backgroundScope) { dao.getJob("job_1")?.status == NovelVideoJobStatus.FAILED }
+            worker.runLoop(backgroundScope) { failed.get() }
         }
         advanceUntilIdle()
 
@@ -130,20 +139,21 @@ class GenerationWorkerTest {
     @Test
     fun processTaskZeroRowsFallbackKeepsCancelled() = runTest {
         dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000))
-        // generator 执行时并发把 job 标 CANCELLED，markSucceeded 应 0-rows → markCancelled 兜底
+        val done = AtomicBoolean(false)
+        // generator 执行时并发把 job 标 CANCELLED，markSucceeded 应 false → markCancelled 兜底
         val worker = GenerationWorker(
             workerId = "test",
             generator = { id, _ ->
                 dao.markJobCancelledIfActive(id)
+                done.set(true)
             }
         )
 
         backgroundScope.launch {
-            worker.runLoop(backgroundScope) { dao.getJob("job_1")?.status == NovelVideoJobStatus.CANCELLED }
+            worker.runLoop(backgroundScope) { done.get() }
         }
         advanceUntilIdle()
 
-        // job 应保持 CANCELLED（markSucceeded 0-rows，markCancelled 也 0-rows，最终 CANCELLED）
         assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob("job_1")?.status)
     }
 
@@ -154,13 +164,17 @@ class GenerationWorkerTest {
     @Test
     fun processTaskCancellationExceptionMarksCancelled() = runTest {
         dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000))
+        val cancelled = AtomicBoolean(false)
         val worker = GenerationWorker(
             workerId = "test",
-            generator = { _, _ -> throw CancellationException("simulated cancel") }
+            generator = { _, _ ->
+                cancelled.set(true)
+                throw CancellationException("simulated cancel")
+            }
         )
 
         backgroundScope.launch {
-            worker.runLoop(backgroundScope) { dao.getJob("job_1")?.status == NovelVideoJobStatus.CANCELLED }
+            worker.runLoop(backgroundScope) { cancelled.get() }
         }
         advanceUntilIdle()
 
@@ -173,7 +187,6 @@ class GenerationWorkerTest {
 
     @Test
     fun handleOrphanTasksOnStartCallsResumeJob() = runTest {
-        // 插入 orphan：generating + 心跳超时
         val staleHeartbeat = System.currentTimeMillis() - GenerationQueue.ORPHAN_HEARTBEAT_TIMEOUT_MS - 1000
         dao.insertJob(NovelVideoJob(
             id = "orphan_1",
@@ -182,14 +195,18 @@ class GenerationWorkerTest {
             workerHeartbeatAt = staleHeartbeat,
             createdAt = 1000
         ))
+        val resumeDone = AtomicBoolean(false)
         val resumeCalls = AtomicInteger(0)
         val worker = GenerationWorker(
             workerId = "test",
-            resumeJob = { _, _ -> resumeCalls.incrementAndGet() }
+            resumeJob = { _, _ ->
+                resumeCalls.incrementAndGet()
+                resumeDone.set(true)
+            }
         )
 
         backgroundScope.launch {
-            worker.runLoop(backgroundScope) { resumeCalls.get() >= 1 }
+            worker.runLoop(backgroundScope) { resumeDone.get() }
         }
         advanceUntilIdle()
 
@@ -199,7 +216,6 @@ class GenerationWorkerTest {
 
     @Test
     fun handleOrphanTasksOnStartResumeThrowsMarksFailed() = runTest {
-        // orphan resume 抛 NotImplementedError（P3 占位行为）→ markFailed
         val staleHeartbeat = System.currentTimeMillis() - GenerationQueue.ORPHAN_HEARTBEAT_TIMEOUT_MS - 1000
         dao.insertJob(NovelVideoJob(
             id = "orphan_1",
@@ -208,13 +224,17 @@ class GenerationWorkerTest {
             workerHeartbeatAt = staleHeartbeat,
             createdAt = 1000
         ))
+        val failed = AtomicBoolean(false)
         val worker = GenerationWorker(
             workerId = "test",
-            resumeJob = { _, _ -> throw NotImplementedError("P4 未实现") }
+            resumeJob = { _, _ ->
+                failed.set(true)
+                throw NotImplementedError("P4 未实现")
+            }
         )
 
         backgroundScope.launch {
-            worker.runLoop(backgroundScope) { dao.getJob("orphan_1")?.status == NovelVideoJobStatus.FAILED }
+            worker.runLoop(backgroundScope) { failed.get() }
         }
         advanceUntilIdle()
 
@@ -235,6 +255,7 @@ class GenerationWorkerTest {
         dao.insertJob(NovelVideoJob(id = "job_agnes", status = NovelVideoJobStatus.DRAFTING, createdAt = 2000, providerId = "agnes"))
 
         val processed = mutableSetOf<String>()
+        val agnesDone = AtomicBoolean(false)
         val worker = GenerationWorker(
             workerId = "test",
             generator = { id, _ ->
@@ -242,13 +263,14 @@ class GenerationWorkerTest {
                 if (id == "job_grok") {
                     // 占住 grok slot 不返回，模拟长任务
                     awaitCancellation()
+                } else {
+                    agnesDone.set(true)
                 }
-                // agnes 立即返回，markSucceeded
             }
         )
 
         backgroundScope.launch {
-            worker.runLoop(backgroundScope) { dao.getJob("job_agnes")?.status == NovelVideoJobStatus.COMPLETED }
+            worker.runLoop(backgroundScope) { agnesDone.get() }
         }
         advanceUntilIdle()
 
@@ -268,7 +290,6 @@ class GenerationWorkerTest {
             workerId = "test",
             generator = { _, _ -> awaitCancellation() } // 挂起直到被取消
         )
-        // 用计数器让 runLoop 跑 1 轮后退出（避免 claim SQL 重复认领 GENERATING job）
         val roundCounter = AtomicInteger(0)
         backgroundScope.launch {
             worker.runLoop(backgroundScope) { roundCounter.incrementAndGet() >= 2 }
