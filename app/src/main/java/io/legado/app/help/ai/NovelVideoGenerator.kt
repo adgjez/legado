@@ -313,7 +313,8 @@ object NovelVideoGenerator {
                 System.currentTimeMillis()
             )
             dao.clearSegmentProviderJobId(segment.id)
-            JobIdStore.clear(providerType, providerJobId)
+            // providerConfig.type == providerType（lookup 匹配条件），用非空的 config.type
+            JobIdStore.clear(providerConfig.type, providerJobId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: ResumeExpiredError) {
