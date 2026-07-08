@@ -160,7 +160,7 @@ class NovelVideoCompilerTest {
         val merger: suspend (List<String>, String) -> NovelVideoCompiler.MediaMergeOutcome = { _, _ ->
             NovelVideoCompiler.MediaMergeOutcome.FormatInconsistent(rawErr)
         }
-        val r = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = merger)
+        val r = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = merger, outputDir = tempDir)
         assertTrue(r is NovelVideoCompiler.CompileResult.Failed)
         val reason = (r as NovelVideoCompiler.CompileResult.Failed).reason
         assertTrue("应含原始错误：$reason", reason.contains("1280x720"))
@@ -175,7 +175,7 @@ class NovelVideoCompilerTest {
     fun compileSucceedsAndPersists() = runTest {
         completedJob("job_1", bookName = "成功书", chapterStart = 0, chapterEnd = 1)
         completedJob("job_2", bookName = "成功书", chapterStart = 2, chapterEnd = 3)
-        val r = NovelVideoCompiler.compile(listOf("job_1", "job_2"), title = "我的整部视频", dao = dao, mediaMerger = ::successMerger)
+        val r = NovelVideoCompiler.compile(listOf("job_1", "job_2"), title = "我的整部视频", dao = dao, mediaMerger = ::successMerger, outputDir = tempDir)
         assertTrue(r is NovelVideoCompiler.CompileResult.Success)
         val c = (r as NovelVideoCompiler.CompileResult.Success).compilation
         assertEquals("我的整部视频", c.title)
@@ -196,7 +196,7 @@ class NovelVideoCompilerTest {
         completedJob("job_B", bookName = "顺序书", chapterStart = 0, chapterEnd = 2)
         completedJob("job_C", bookName = "顺序书", chapterStart = 5, chapterEnd = 7)
         // 传入乱序
-        val r = NovelVideoCompiler.compile(listOf("job_A", "job_C", "job_B"), dao = dao, mediaMerger = ::successMerger)
+        val r = NovelVideoCompiler.compile(listOf("job_A", "job_C", "job_B"), dao = dao, mediaMerger = ::successMerger, outputDir = tempDir)
         assertTrue(r is NovelVideoCompiler.CompileResult.Success)
         val c = (r as NovelVideoCompiler.CompileResult.Success).compilation
         val ids = GSON.fromJson(c.sourceJobIdsJson, List::class.java)
@@ -210,25 +210,22 @@ class NovelVideoCompilerTest {
         val merger: suspend (List<String>, String) -> NovelVideoCompiler.MediaMergeOutcome = { _, _ ->
             NovelVideoCompiler.MediaMergeOutcome.Failed("磁盘满")
         }
-        val r = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = merger)
+        val r = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = merger, outputDir = tempDir)
         assertTrue(r is NovelVideoCompiler.CompileResult.Failed)
         // 失败不应落库
         assertEquals(0, dao.getCompilations().size)
         // 失败不应残留产出目录（nvc_* 目录被 finally 清理）
-        val compilationsDir = File(ApplicationProvider.getApplicationContext<Context>().filesDir, "novel_video/compilations")
-        if (compilationsDir.exists()) {
-            val leftover = compilationsDir.listFiles { f -> f.name.startsWith("nvc_") && (f.listFiles()?.isEmpty() ?: true) }
-            leftover?.forEach { it.delete() }
-            assertEquals("失败不应残留空 nvc_ 目录", 0, leftover?.size ?: 0)
-        }
+        val leftover = tempDir.listFiles { f -> f.name.startsWith("nvc_") } ?: emptyArray()
+        leftover.forEach { it.deleteRecursively() }
+        assertEquals("失败不应残留 nvc_ 目录", 0, leftover.size)
     }
 
     @Test
     fun compileIsIdempotentNewIdEachTime() = runTest {
         completedJob("job_1", chapterStart = 0, chapterEnd = 1)
         completedJob("job_2", chapterStart = 2, chapterEnd = 3)
-        val r1 = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = ::successMerger)
-        val r2 = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = ::successMerger)
+        val r1 = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = ::successMerger, outputDir = tempDir)
+        val r2 = NovelVideoCompiler.compile(listOf("job_1", "job_2"), dao = dao, mediaMerger = ::successMerger, outputDir = tempDir)
         assertTrue(r1 is NovelVideoCompiler.CompileResult.Success)
         assertTrue(r2 is NovelVideoCompiler.CompileResult.Success)
         val c1 = (r1 as NovelVideoCompiler.CompileResult.Success).compilation

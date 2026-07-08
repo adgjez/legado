@@ -63,13 +63,16 @@ object NovelVideoCompiler {
      * @param title 可选标题；缺省由 bookName + 时间戳生成
      * @param dao NovelVideoDao（默认 appDb；测试注入 in-memory）
      * @param mediaMerger 媒体合并步骤（默认 [defaultMediaMerger]，测试可注入 stub）
+     * @param outputDir 产物父目录（默认 `appCtx.filesDir/novel_video/compilations`，内部再建 `<nvc_id>/full.mp4`）；
+     *                  测试注入临时目录以隔离 [appCtx]（普通 Application 下未初始化）
      * @return [CompileResult]；失败时不留半成品文件
      */
     suspend fun compile(
         jobIds: List<String>,
         title: String? = null,
         dao: NovelVideoDao = appDb.novelVideoDao,
-        mediaMerger: suspend (inputPaths: List<String>, outputPath: String) -> MediaMergeOutcome = ::defaultMediaMerger
+        mediaMerger: suspend (inputPaths: List<String>, outputPath: String) -> MediaMergeOutcome = ::defaultMediaMerger,
+        outputDir: File? = null
     ): CompileResult = withContext(Dispatchers.IO) {
         // ===== 校验链（spec §5.2，按顺序短路）=====
         if (jobIds.size < 2) {
@@ -108,7 +111,8 @@ object NovelVideoCompiler {
 
         // ===== 编译产物路径 =====
         val compilationId = "nvc_${UUID.randomUUID()}"
-        val outDir = File(appCtx.filesDir, "novel_video/compilations/$compilationId")
+        val baseDir = outputDir ?: File(appCtx.filesDir, "novel_video/compilations")
+        val outDir = File(baseDir, compilationId)
         val outputFile = File(outDir, "full.mp4")
         outDir.mkdirs()
 
