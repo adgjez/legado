@@ -19,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -283,6 +284,9 @@ class NovelVideoServiceMultiWorkerTest {
         assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob("job_1")?.status)
         assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_2")?.status)
         assertNotEquals("job_1 不应为 COMPLETED", NovelVideoJobStatus.COMPLETED, dao.getJob("job_1")?.status)
+        // 第五轮审查 R13：cancel 后 workerId 应被清空（markJobCancelledIfActive 清空 workerId）
+        assertNull("job_1 CANCELLED 后 workerId 应清空", dao.getJob("job_1")?.workerId)
+        assertNull("job_2 COMPLETED 后 workerId 应清空", dao.getJob("job_2")?.workerId)
     }
 
     // ============================================================

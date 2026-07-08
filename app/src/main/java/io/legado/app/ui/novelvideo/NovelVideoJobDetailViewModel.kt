@@ -120,14 +120,20 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
         NovelVideoService.start(getApplication())
     }
 
-    /** 取消任务：委托 Service 取消协程 + 条件更新兜底（P6b 多 worker 精确取消）。 */
+    /**
+     * 取消任务：委托 Service 取消协程 + 条件更新兜底（P6b 多 worker 精确取消）。
+     *
+     * 第五轮审查 R13 修复：改用 [NovelVideoDao.markJobCancelledIfActive]（清空 workerId/heartbeat），
+     * 原 [NovelVideoDao.updateJobFinalStatusWithErrorIfNotFinished] 不清空 workerId，导致终态 job
+     * 残留 workerId 数据不一致。
+     */
     suspend fun cancelJob(jobId: String) = withContext(Dispatchers.IO) {
         NovelVideoJobOps.mutex.withLock {
             val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
             if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
                 NovelVideoService.cancelJob(getApplication(), jobId)
-                appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
-                    jobId, NovelVideoJobStatus.CANCELLED, "用户手动取消", System.currentTimeMillis()
+                appDb.novelVideoDao.markJobCancelledIfActive(
+                    jobId, NovelVideoJobStatus.CANCELLED, System.currentTimeMillis()
                 )
             }
         }

@@ -281,16 +281,20 @@ class NovelVideoService : BaseService() {
      * 取消指定 job（IntentAction.remove 处理）。
      * - 若 job 在 slots 中（正在跑）：cancel 协程，GenerationWorker.processTask 会 markCancelled
      * - 若 job 不在 slots 中但处于 RUNNING_STATES：直接标 CANCELLED
+     *
+     * 第五轮审查 R13 修复：改用 [NovelVideoDao.markJobCancelledIfActive]（清空 workerId/heartbeat），
+     * 原 [NovelVideoDao.updateJobFinalStatusWithErrorIfNotFinished] 不清空 workerId，导致终态 job
+     * 残留 workerId 数据不一致。两条 cancel 路径（协程 cancel 触发 processTask mark + 本方法 mark）
+     * 都用 markJobCancelledIfActive，WHERE 守卫保证 0-rows 安全，且都清空 workerId。
      */
     private fun cancelJobInternal(jobId: String) {
         // 先尝试取消协程（如果 job 正在跑）
         SharedSchedulingState.slots.getJob(jobId)?.cancel()
         // 异步标 CANCELLED（条件更新：若 processTask 已 mark 则 0-rows 安全）
         lifecycleScope.launch(Dispatchers.IO) {
-            val affected = appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+            val affected = appDb.novelVideoDao.markJobCancelledIfActive(
                 jobId,
                 NovelVideoJobStatus.CANCELLED,
-                "用户取消",
                 System.currentTimeMillis()
             )
             if (affected > 0) {

@@ -168,14 +168,18 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
      * P6b：不再比较 currentJobId，直接调 [NovelVideoService.cancelJob]。
      * Service 统一处理：在 slots 中则取消协程，不在则直接标 CANCELLED。
      * 条件更新兜底：Service 未运行时确保标 CANCELLED；Service 已标则 0-rows 安全。
+     *
+     * 第五轮审查 R13 修复：改用 [NovelVideoDao.markJobCancelledIfActive]（清空 workerId/heartbeat），
+     * 原 [NovelVideoDao.updateJobFinalStatusWithErrorIfNotFinished] 不清空 workerId，导致终态 job
+     * 残留 workerId 数据不一致。
      */
     suspend fun cancelJob(jobId: String) = withContext(Dispatchers.IO) {
         NovelVideoJobOps.mutex.withLock {
             val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
             if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
                 NovelVideoService.cancelJob(getApplication(), jobId)
-                appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
-                    jobId, NovelVideoJobStatus.CANCELLED, "用户手动取消", System.currentTimeMillis()
+                appDb.novelVideoDao.markJobCancelledIfActive(
+                    jobId, NovelVideoJobStatus.CANCELLED, System.currentTimeMillis()
                 )
             }
         }
