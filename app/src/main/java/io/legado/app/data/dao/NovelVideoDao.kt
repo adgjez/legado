@@ -346,6 +346,32 @@ interface NovelVideoDao {
     ): Int
 
     /**
+     * 第五轮审查 R14 修复：条件写入终态并清空 workerId/heartbeat（保留 outputPath/coverPath/durationMs）。
+     *
+     * 与 [updateJobFinalStatusWithErrorIfNotFinished] 的区别：本方法清空 workerId/heartbeat，
+     * 适用于 [io.legado.app.help.ai.NovelVideoGenerator.finalizeJob] 等终态写入场景——
+     * 终态 job 不应残留 workerId。中间态写入（GENERATING/MERGING）仍用
+     * [updateJobFinalStatusWithErrorIfNotFinished]（不清空 workerId，job 仍在运行）。
+     *
+     * @return 受影响行数（0 表示已被并发覆写为终态）
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET status = :status, errorMessage = :err, workerId = NULL, workerHeartbeatAt = NULL,
+            updatedAt = :time
+        WHERE id = :jobId
+          AND status NOT IN ('completed','failed','partial_failed','cancelled')
+        """
+    )
+    suspend fun markJobFinalStatusClearingLease(
+        jobId: String,
+        status: String,
+        err: String?,
+        time: Long = System.currentTimeMillis()
+    ): Int
+
+    /**
      * 回队：把 running job 翻回 drafting（池满场景）。
      * 清空 workerId/heartbeat，设 availableAt 延迟重试。
      */

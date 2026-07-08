@@ -1071,9 +1071,11 @@ object NovelVideoGenerator {
             else -> NovelVideoJobStatus.COMPLETED
         }
         // 用条件部分更新避免 TOCTOU 覆写终态：
-        // 若期间 markCancelledIfRunning 已把 status 写成 CANCELLED，此处不覆写
-        val updated = appDb.novelVideoDao.updateJobFinalStatusIfNotFinished(
-            job.id, finalStatus, System.currentTimeMillis()
+        // 若期间 markCancelledIfRunning 已把 status 写成 CANCELLED，此处不覆写。
+        // R14 修复：用 markJobFinalStatusClearingLease 清空 workerId（终态 job 不应残留 workerId），
+        // 保留 outputPath/coverPath/durationMs（由 mergeCompletedSegments 写入）。
+        val updated = appDb.novelVideoDao.markJobFinalStatusClearingLease(
+            job.id, finalStatus, null, System.currentTimeMillis()
         )
         if (updated == 0) {
             AppLog.put("jobId=${job.id} 已被并发置为终态，finalizeJob 跳过")
@@ -1143,8 +1145,15 @@ object NovelVideoGenerator {
     /**
      * 条件写入终态（COMPLETED/FAILED/CANCELLED/PARTIAL_FAILED）：仅当 job 尚未终结时才更新。
      *
-     * 与 [updateJobStatus] 的区别：用 SQL WHERE 子句保证不覆写已存在的终态，
-     * 避免 TOCTOU 竞态（如取消已写 CANCELLED 后，失败路径不应再覆写为 FAILED）。
+     * 与 [updateJobStatus] 的区别：
+     * - 用 SQL WHERE 子句保证不覆写已存在的终态，避免 TOCTOU 竞态
+     *   （如取消已写 CANCELLED 后，失败路径不应再覆写为 FAILED）
+     * - 清空 workerId/heartbeat（第五轮审查 R14 修复）：终态 job 不应残留 workerId。
+     *   [updateJobStatus] 写中间态时不清空（job 仍在运行，workerId 供心跳续约）。
+     *
+     * 注意：本方法保留 outputPath/coverPath/durationMs（由 [mergeCompletedSegments] 写入，
+     * finalizeJob 写 COMPLETED 时不应覆写为 null）。
+     *
      * @return true 表示成功写入；false 表示已被并发置为终态，调用方应跳过后续动作
      */
     private suspend fun updateJobFinalStatus(
@@ -1152,7 +1161,7 @@ object NovelVideoGenerator {
         status: String,
         message: String? = null
     ): Boolean {
-        val affected = appDb.novelVideoDao.updateJobFinalStatusWithErrorIfNotFinished(
+        val affected = appDb.novelVideoDao.markJobFinalStatusClearingLease(
             jobId, status, message, System.currentTimeMillis()
         )
         return affected > 0

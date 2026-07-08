@@ -255,6 +255,46 @@ class GenerationQueueDaoTest {
     }
 
     // ============================================================
+    // markJobFinalStatusClearingLease —— 第五轮审查 R14
+    // ============================================================
+
+    @Test
+    fun markJobFinalStatusClearingLeaseClearsWorkerId() = runTest {
+        dao.insertJob(NovelVideoJob(
+            id = "job_1",
+            status = NovelVideoJobStatus.MERGING,
+            workerId = "worker-1",
+            workerHeartbeatAt = 1000,
+            outputPath = "/tmp/merged.mp4",
+            totalDurationMs = 5000
+        ))
+
+        val affected = dao.markJobFinalStatusClearingLease(
+            "job_1", NovelVideoJobStatus.COMPLETED, null
+        )
+        assertEquals("MERGING → COMPLETED 应 1-rows", 1, affected)
+
+        val reloaded = dao.getJob("job_1")
+        assertEquals(NovelVideoJobStatus.COMPLETED, reloaded?.status)
+        assertNull("R14：终态 workerId 应清空", reloaded?.workerId)
+        assertNull("R14：终态 heartbeat 应清空", reloaded?.workerHeartbeatAt)
+        assertEquals("outputPath 应保留（由 mergeCompletedSegments 写入）",
+            "/tmp/merged.mp4", reloaded?.outputPath)
+        assertEquals("totalDurationMs 应保留",
+            5000L, reloaded?.totalDurationMs)
+    }
+
+    @Test
+    fun markJobFinalStatusClearingLeaseReturnsZeroForTerminalJob() = runTest {
+        dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.FAILED))
+
+        val affected = dao.markJobFinalStatusClearingLease(
+            "job_1", NovelVideoJobStatus.COMPLETED, null
+        )
+        assertEquals("终态不应被覆写", 0, affected)
+    }
+
+    // ============================================================
     // requeueJob —— 池满回队
     // ============================================================
 
