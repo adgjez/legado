@@ -69,8 +69,8 @@ class GenerationWorker(
 
                 val claimed = claimAndProcess(scope)
                 if (!claimed) {
-                    // 无可认领 job，idle sleep
-                    delay(GenerationQueue.HEARTBEAT_INTERVAL_MS)
+                    // 无可认领 job，idle sleep（P6b：1s 轮询，避免多 worker 下 slot 释放后延迟过久）
+                    delay(GenerationQueue.IDLE_POLL_INTERVAL_MS)
                 } else {
                     // claim 成功，短暂 sleep 后继续下一轮
                     delay(50)
@@ -109,21 +109,28 @@ class GenerationWorker(
             return true
         }
 
-        // 池满 → 回队（不 mark_failed，避免误杀）
-        if (!slots.hasRoom(providerId, mediaType, cap)) {
-            GenerationQueue.requeue(job.id)
-            return true
-        }
-
-        // 登记 slot + 启动 processTask 子协程
-        val processJob = scope.launch {
-            try {
-                processTask(job.id)
-            } finally {
-                slots.release(providerId, mediaType, job.id)
+        // P6b：hasRoom + register 原子化，避免多 worker 竞态突破 capacity。
+        // synchronized(slots) 与 SlotTable 的 @Synchronized 方法共用同一把锁（SlotTable 实例），
+        // 保证 hasRoom 检查与 register 之间无其他 worker 插入。
+        // scope.launch 在锁内调用但不阻塞（仅调度协程），processTask 内对 slots 的访问会重入同一锁。
+        var needRequeue = false
+        synchronized(slots) {
+            if (slots.hasRoom(providerId, mediaType, cap)) {
+                val processJob = scope.launch {
+                    try {
+                        processTask(job.id)
+                    } finally {
+                        slots.release(providerId, mediaType, job.id)
+                    }
+                }
+                slots.register(providerId, mediaType, job.id, processJob)
+            } else {
+                needRequeue = true
             }
         }
-        slots.register(providerId, mediaType, job.id, processJob)
+        if (needRequeue) {
+            GenerationQueue.requeue(job.id)
+        }
         return true
     }
 

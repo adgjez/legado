@@ -202,8 +202,18 @@ interface NovelVideoDao {
     /**
      * 原子认领下一个可调度 job（移植 ArcReel task_repo.py:213-247 的 SELECT+UPDATE 模式）。
      *
-     * SQL 语义：在 RUNNING_STATES 中按 createdAt ASC 取最早的一个，原子 UPDATE 设
-     * status='generating' + workerId + workerHeartbeatAt + attempts++，返回受影响行数。
+     * SQL 语义：在「未被任何 worker 占用」的待处理状态中按 createdAt ASC 取最早的一个，
+     * 原子 UPDATE 设 status='generating' + workerId + workerHeartbeatAt + attempts++，
+     * 返回受影响行数。
+     *
+     * **P6b 多 worker 修复**：claim 只选 `drafting` / `screenplay_confirmed`（尚未开始生成的 job），
+     * 不选 `generating` / `merging`（已有 worker 在处理）。
+     * - 单 worker 时代 claim 包含 generating 是为了重启 resume，但 P3 已用 [getOrphanJobs]
+     *   + [GenerationWorker.handleOrphanTasksOnStart] 独立处理心跳超时的 generating/merging job，
+     *   claim 不再需要捡起 generating 的 job。
+     * - 多 worker 下若 claim 仍含 generating，worker B 会重复 claim worker A 正在处理的 job
+     *   （UPDATE workerId=B），随后 hasRoom 二次校验失败 → requeue 把 job 翻回 drafting，
+     *   导致 worker A 的 markSucceeded 0-rows → markCancelled 兜底，job 错误变 CANCELLED。
      * - 排除 SCREENPLAY_PENDING_REVIEW / PAUSED（不可立即推进）
      * - availableAt <= now（回队延迟生效）
      *
@@ -216,7 +226,7 @@ interface NovelVideoDao {
             attempts = attempts + 1, updatedAt = :now
         WHERE id = (
             SELECT id FROM novel_video_jobs
-            WHERE status IN ('drafting','screenplay_confirmed','generating','merging')
+            WHERE status IN ('drafting','screenplay_confirmed')
               AND availableAt <= :now
             ORDER BY createdAt ASC
             LIMIT 1
@@ -228,6 +238,8 @@ interface NovelVideoDao {
     /**
      * 原子认领下一个可调度 job（带 provider 黑名单过滤，池满场景）。
      * 排除 pool_full_providers 列表中的 provider。
+     *
+     * P6b：同 [claimNextJob]，只选 drafting/screenplay_confirmed（见其注释）。
      */
     @Query(
         """
@@ -236,7 +248,7 @@ interface NovelVideoDao {
             attempts = attempts + 1, updatedAt = :now
         WHERE id = (
             SELECT id FROM novel_video_jobs
-            WHERE status IN ('drafting','screenplay_confirmed','generating','merging')
+            WHERE status IN ('drafting','screenplay_confirmed')
               AND availableAt <= :now
               AND (providerId IS NULL OR providerId NOT IN (:excludeProviders))
             ORDER BY createdAt ASC

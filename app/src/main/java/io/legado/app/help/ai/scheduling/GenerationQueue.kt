@@ -29,6 +29,15 @@ object GenerationQueue {
     /** 心跳间隔：worker 主循环每轮续约（10s，ArcReel 3s）。 */
     const val HEARTBEAT_INTERVAL_MS = 10_000L
 
+    /**
+     * 无可认领 job 时的 idle 轮询间隔（1s）。
+     *
+     * P6b：从 [HEARTBEAT_INTERVAL_MS]（10s）解耦。多 worker 下，某 worker 池满回队后
+     * 可能短暂 idle，10s 轮询会让 job 在 slot 释放后延迟 10s 才被认领，影响响应性。
+     * 1s 轮询对 SQLite in-memory 查询开销可忽略（~ms），前台服务 + wakeLock 下耗电可控。
+     */
+    const val IDLE_POLL_INTERVAL_MS = 1_000L
+
     /** 孤儿判定阈值：心跳超时此时间即算孤儿（LEASE_TTL × 5 = 2.5 min，容忍短暂卡顿）。 */
     const val ORPHAN_HEARTBEAT_TIMEOUT_MS = LEASE_TTL_MS * 5
 
