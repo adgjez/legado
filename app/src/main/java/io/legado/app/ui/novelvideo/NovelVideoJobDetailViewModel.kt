@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -80,7 +79,7 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
      * M1：同时清理磁盘上的分镜视频与合并产物文件。
      */
     suspend fun deleteJob(jobId: String) = withContext(Dispatchers.IO) {
-        jobOpMutex.withLock {
+        NovelVideoJobOps.mutex.withLock {
             appDb.novelVideoDao.deleteJob(jobId)
             runCatching {
                 java.io.File(appCtx.filesDir, "novel_video/$jobId").deleteRecursively()
@@ -95,7 +94,7 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
      *        状态推进改用条件更新，避免覆写并发的 CANCELLED。
      */
     suspend fun retryJob(jobId: String) = withContext(Dispatchers.IO) {
-        jobOpMutex.withLock {
+        NovelVideoJobOps.mutex.withLock {
             val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
             if (job.status == NovelVideoJobStatus.FAILED ||
                 job.status == NovelVideoJobStatus.PARTIAL_FAILED ||
@@ -110,7 +109,7 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
                         } else {
                             io.legado.app.data.entities.NovelVideoSegmentStatus.PENDING
                         }
-                        appDb.novelVideoDao.updateSegmentStatus(seg.id, newStatus, null)
+                        appDb.novelVideoDao.updateSegmentStatusIfNotTerminal(seg.id, newStatus, null)
                     }
                 // N1 修复：用 updateJobStatusForRetry 从终态转换回 GENERATING
                 appDb.novelVideoDao.updateJobStatusForRetry(
@@ -123,7 +122,7 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 取消任务。 */
     suspend fun cancelJob(jobId: String) = withContext(Dispatchers.IO) {
-        jobOpMutex.withLock {
+        NovelVideoJobOps.mutex.withLock {
             val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
             if (job.id == NovelVideoService.currentJobId) {
                 NovelVideoService.cancelCurrentJob()
@@ -137,8 +136,7 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
-        /** R6：对同一 job 的 retry/cancel/delete 操作串行化，避免并发覆写状态。 */
-        private val jobOpMutex = Mutex()
+        // P6：jobOpMutex 已上移至 NovelVideoJobOps 共享单例（修复双 ViewModel 并发覆写）。
     }
 
     /**
