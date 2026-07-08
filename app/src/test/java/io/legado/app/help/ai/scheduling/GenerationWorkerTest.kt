@@ -311,16 +311,25 @@ class GenerationWorkerTest {
     @Test
     fun requestCancelCancelsInflightJob() = runBlocking {
         dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000))
+        val generatorStarted = AtomicBoolean(false)
         val worker = GenerationWorker(
             workerId = "test",
-            generator = { _, _ -> awaitCancellation() } // 挂起直到被取消
+            generator = { _, _ ->
+                generatorStarted.set(true)
+                awaitCancellation() // 挂起直到被取消
+            }
         )
-        val roundCounter = AtomicInteger(0)
         val scope = newScope()
-        scope.launch { worker.runLoop(scope) { roundCounter.incrementAndGet() >= 2 } }
+        // isCancelled 恒 false：runLoop 不自行退出，靠 requestCancel 取消 inflight job
+        scope.launch { worker.runLoop(scope) { false } }
 
-        // 等 runLoop 跑 1 轮退出 + job 进入 GENERATING（claim 成功）
-        assertTrue("应等到 job GENERATING", waitForCondition { dao.getJob("job_1")?.status == NovelVideoJobStatus.GENERATING })
+        // 等 job GENERATING 且 generator 已启动。
+        // generator 在 processTask 内执行，而 slots.register 在 processTask 启动前同步完成，
+        // 故 generatorStarted=true 保证 slot 已登记，避免 requestCancel 查不到 slot 的竞态。
+        assertTrue("应等到 job GENERATING 且 generator 启动",
+            waitForCondition {
+                dao.getJob("job_1")?.status == NovelVideoJobStatus.GENERATING && generatorStarted.get()
+            })
 
         worker.requestCancel("job_1")
         assertTrue("应等到 job CANCELLED", waitForCondition { dao.getJob("job_1")?.status == NovelVideoJobStatus.CANCELLED })
