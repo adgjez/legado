@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import io.legado.app.data.entities.NovelVideoCharacterSheet
 import io.legado.app.data.entities.NovelVideoJob
+import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.data.entities.NovelVideoSegment
 import io.legado.app.data.entities.NovelVideoSegmentStatus
 import kotlinx.coroutines.flow.Flow
@@ -195,6 +196,206 @@ interface NovelVideoDao {
 
     @Query("UPDATE novel_video_character_sheets SET status = :status, errorMessage = :err, updatedAt = :time WHERE id = :id")
     suspend fun updateCharacterSheetStatus(id: String, status: String, err: String?, time: Long = System.currentTimeMillis())
+
+    /* --------------------- P1 调度层：claim/lease/mark --------------------- */
+
+    /**
+     * 原子认领下一个可调度 job（移植 ArcReel task_repo.py:213-247 的 SELECT+UPDATE 模式）。
+     *
+     * SQL 语义：在 RUNNING_STATES 中按 createdAt ASC 取最早的一个，原子 UPDATE 设
+     * status='generating' + workerId + workerHeartbeatAt + attempts++，返回受影响行数。
+     * - 排除 SCREENPLAY_PENDING_REVIEW / PAUSED（不可立即推进）
+     * - availableAt <= now（回队延迟生效）
+     *
+     * @return 受影响行数（0=无可认领 job 或被并发抢走）
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET status = 'generating', workerId = :workerId, workerHeartbeatAt = :now,
+            attempts = attempts + 1, updatedAt = :now
+        WHERE id = (
+            SELECT id FROM novel_video_jobs
+            WHERE status IN ('drafting','screenplay_confirmed','generating','merging')
+              AND availableAt <= :now
+            ORDER BY createdAt ASC
+            LIMIT 1
+        )
+        """
+    )
+    suspend fun claimNextJob(workerId: String, now: Long): Int
+
+    /**
+     * 原子认领下一个可调度 job（带 provider 黑名单过滤，池满场景）。
+     * 排除 pool_full_providers 列表中的 provider。
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET status = 'generating', workerId = :workerId, workerHeartbeatAt = :now,
+            attempts = attempts + 1, updatedAt = :now
+        WHERE id = (
+            SELECT id FROM novel_video_jobs
+            WHERE status IN ('drafting','screenplay_confirmed','generating','merging')
+              AND availableAt <= :now
+              AND (providerId IS NULL OR providerId NOT IN (:excludeProviders))
+            ORDER BY createdAt ASC
+            LIMIT 1
+        )
+        """
+    )
+    suspend fun claimNextJobExcludingProviders(
+        workerId: String,
+        now: Long,
+        excludeProviders: List<String>
+    ): Int
+
+    /**
+     * 续约 lease（心跳）。仅当 workerId 匹配且 job 未进入终态时才更新。
+     * @return 受影响行数（0=已失 lease 或已终态，worker 应停止处理该 job）
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET workerHeartbeatAt = :now, updatedAt = :now
+        WHERE id = :jobId
+          AND workerId = :workerId
+          AND status NOT IN ('completed','failed','partial_failed','cancelled')
+        """
+    )
+    suspend fun renewLease(jobId: String, workerId: String, now: Long): Int
+
+    /**
+     * 释放 lease（worker 主动放弃 job）。清空 workerId / workerHeartbeatAt。
+     * 不改 status——让 job 保持当前运行态，下次可被重新 claim。
+     */
+    @Query("UPDATE novel_video_jobs SET workerId = NULL, workerHeartbeatAt = NULL, updatedAt = :now WHERE id = :jobId")
+    suspend fun releaseLease(jobId: String, now: Long = System.currentTimeMillis())
+
+    /**
+     * 标记 job 成功（条件：当前在 running 态）。0-rows 表示已被并发终态覆写。
+     * @return 受影响行数
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET status = :status, outputPath = :outputPath, coverPath = :coverPath,
+            totalDurationMs = :durationMs, workerId = NULL, workerHeartbeatAt = NULL,
+            updatedAt = :time
+        WHERE id = :jobId
+          AND status IN ('generating','merging','screenplay_confirmed','drafting')
+        """
+    )
+    suspend fun markJobSucceededIfRunning(
+        jobId: String,
+        status: String,
+        outputPath: String?,
+        coverPath: String?,
+        durationMs: Long?,
+        time: Long = System.currentTimeMillis()
+    ): Int
+
+    /**
+     * 标记 job 失败（条件：尚未进入终态）。0-rows 表示已被并发终态覆写。
+     * @return 受影响行数
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET status = :status, errorMessage = :err, workerId = NULL, workerHeartbeatAt = NULL,
+            updatedAt = :time
+        WHERE id = :jobId
+          AND status NOT IN ('completed','failed','partial_failed','cancelled')
+        """
+    )
+    suspend fun markJobFailedIfRunning(
+        jobId: String,
+        status: String,
+        err: String?,
+        time: Long = System.currentTimeMillis()
+    ): Int
+
+    /**
+     * 标记 job 取消（条件：当前在活跃态）。0-rows 表示已终态。
+     * @return 受影响行数
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET status = :status, workerId = NULL, workerHeartbeatAt = NULL, updatedAt = :time
+        WHERE id = :jobId
+          AND status IN ('drafting','generating','merging','screenplay_confirmed','screenplay_pending_review')
+        """
+    )
+    suspend fun markJobCancelledIfActive(
+        jobId: String,
+        status: String = NovelVideoJobStatus.CANCELLED,
+        time: Long = System.currentTimeMillis()
+    ): Int
+
+    /**
+     * 回队：把 running job 翻回 drafting（池满场景）。
+     * 清空 workerId/heartbeat，设 availableAt 延迟重试。
+     */
+    @Query(
+        """
+        UPDATE novel_video_jobs
+        SET status = 'drafting', workerId = NULL, workerHeartbeatAt = NULL,
+            availableAt = :availableAt, updatedAt = :now
+        WHERE id = :jobId AND status = 'generating'
+        """
+    )
+    suspend fun requeueJob(
+        jobId: String,
+        availableAt: Long,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    /**
+     * 查孤儿 job：状态在 running 但心跳超时（worker 已死）。
+     */
+    @Query(
+        """
+        SELECT * FROM novel_video_jobs
+        WHERE status IN ('generating','merging')
+          AND (workerHeartbeatAt IS NULL OR workerHeartbeatAt < :heartbeatTimeoutBefore)
+        ORDER BY updatedAt ASC
+        """
+    )
+    suspend fun getOrphanJobs(heartbeatTimeoutBefore: Long): List<NovelVideoJob>
+
+    /** P0 segment provider_job_id 更新（Stage 6 提交后持久化）。 */
+    @Query("UPDATE novel_video_segments SET providerJobId = :providerJobId, providerId = :providerId, updatedAt = :time WHERE id = :segmentId")
+    suspend fun updateSegmentProviderJobId(
+        segmentId: String,
+        providerJobId: String?,
+        providerId: String?,
+        time: Long = System.currentTimeMillis()
+    )
+
+    /** P0 segment provider_job_id 清空（resume 完成后）。 */
+    @Query("UPDATE novel_video_segments SET providerJobId = NULL, updatedAt = :time WHERE id = :segmentId")
+    suspend fun clearSegmentProviderJobId(segmentId: String, time: Long = System.currentTimeMillis())
+
+    /**
+     * 条件更新 segment 状态：仅当 segment 未进入终态（video_completed/failed）时才更新。
+     * P6 用于修复双 ViewModel 并发 retry+cancel 覆写问题。
+     * @return 受影响行数
+     */
+    @Query(
+        """
+        UPDATE novel_video_segments
+        SET status = :status, errorMessage = :err, updatedAt = :time
+        WHERE id = :segmentId
+          AND status NOT IN ('video_completed','failed')
+        """
+    )
+    suspend fun updateSegmentStatusIfNotTerminal(
+        segmentId: String,
+        status: String,
+        err: String?,
+        time: Long = System.currentTimeMillis()
+    ): Int
 }
 
 /** 任务进度统计。 */
