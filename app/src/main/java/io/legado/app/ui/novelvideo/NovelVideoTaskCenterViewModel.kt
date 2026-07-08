@@ -9,10 +9,19 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.data.entities.NovelVideoSegmentStatus
+import io.legado.app.data.entities.NovelVideoCompilation
+import io.legado.app.help.ai.NovelVideoCompiler
 import io.legado.app.help.ai.NovelVideoParams
 import io.legado.app.service.NovelVideoService
+import io.legado.app.constant.AppConst
 import io.legado.app.utils.GSON
+import io.legado.app.utils.openFileUri
+import io.legado.app.utils.share
 import splitties.init.appCtx
+import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,11 +52,16 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
     private val _allBooks = MutableStateFlow<List<Book>>(emptyList())
     val allBooks: StateFlow<List<Book>> = _allBooks.asStateFlow()
 
+    /** 整部视频（跨章节拼接产物）列表。子项目 E。 */
+    private val _compilations = MutableStateFlow<List<NovelVideoCompilation>>(emptyList())
+    val compilations: StateFlow<List<NovelVideoCompilation>> = _compilations.asStateFlow()
+
     init {
         viewModelScope.launch { appDb.novelVideoDao.getRunningJobsFlow().collectLatest { _runningJobs.value = it } }
         viewModelScope.launch { appDb.novelVideoDao.getCompletedJobsFlow().collectLatest { _completedJobs.value = it } }
         viewModelScope.launch { appDb.novelVideoDao.getFailedJobsFlow().collectLatest { _failedJobs.value = it } }
         viewModelScope.launch { appDb.bookDao.flowAll().collectLatest { _allBooks.value = it } }
+        viewModelScope.launch { appDb.novelVideoDao.getCompilationsFlow().collectLatest { _compilations.value = it } }
         _serviceRunning.value = NovelVideoService.isRun
     }
 
@@ -183,6 +197,59 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+    }
+
+    /**
+     * 拼接多个已完成 job 为整部视频（子项目 E）。
+     *
+     * 本地无损 mux、秒级完成，不进调度队列，直接调 [NovelVideoCompiler.compile]。
+     * 成功后 `_compilations` Flow 会自动收到新条目（Room Flow 通知）。
+     *
+     * @return 成功的 [NovelVideoCompilation]；失败返回错误信息。
+     */
+    suspend fun compileJobs(jobIds: List<String>, title: String? = null): Result<NovelVideoCompilation> =
+        withContext(Dispatchers.IO) {
+            when (val r = NovelVideoCompiler.compile(jobIds, title)) {
+                is NovelVideoCompiler.CompileResult.Success -> Result.success(r.compilation)
+                is NovelVideoCompiler.CompileResult.Failed -> Result.failure(IllegalStateException(r.reason))
+            }
+        }
+
+    /**
+     * 删除整部视频（清文件 + DB 行）。子项目 E。
+     * 复用 [NovelVideoJobOps.mutex] 避免与 job 删除并发。
+     */
+    suspend fun deleteCompilation(id: String) = withContext(Dispatchers.IO) {
+        NovelVideoJobOps.mutex.withLock {
+            val c = appDb.novelVideoDao.getCompilation(id) ?: return@withLock
+            runCatching {
+                java.io.File(appCtx.filesDir, "novel_video/compilations/$id").deleteRecursively()
+            }
+            appDb.novelVideoDao.deleteCompilation(id)
+        }
+    }
+
+    /** 用系统播放器打开整部视频。 */
+    fun openCompilation(context: Context, c: NovelVideoCompilation?): Boolean {
+        val path = c?.outputPath?.takeIf { it.isNotBlank() } ?: return false
+        val file = File(path)
+        if (!file.isFile) return false
+        return runCatching {
+            val uri = FileProvider.getUriForFile(context, AppConst.authority, file)
+            context.openFileUri(uri, "video/*")
+            true
+        }.getOrElse { false }
+    }
+
+    /** 分享整部视频。 */
+    fun shareCompilation(context: Context, c: NovelVideoCompilation?): Boolean {
+        val path = c?.outputPath?.takeIf { it.isNotBlank() } ?: return false
+        val file = File(path)
+        if (!file.isFile) return false
+        return runCatching {
+            context.share(file, "video/*")
+            true
+        }.getOrElse { false }
     }
 
     companion object {

@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import io.legado.app.data.entities.NovelVideoCharacterSheet
+import io.legado.app.data.entities.NovelVideoCompilation
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.data.entities.NovelVideoSegment
@@ -434,6 +435,27 @@ interface NovelVideoDao {
         err: String?,
         time: Long = System.currentTimeMillis()
     ): Int
+
+    /* ---------------------- NovelVideoCompilation ---------------------- */
+    // 子项目 E（跨章节拼接成整部视频）。详见 2026-07-08 design spec §6。
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCompilation(c: NovelVideoCompilation)
+
+    @Query("SELECT * FROM novel_video_compilations ORDER BY createdAt DESC")
+    fun getCompilationsFlow(): Flow<List<NovelVideoCompilation>>
+
+    @Query("SELECT * FROM novel_video_compilations ORDER BY createdAt DESC")
+    suspend fun getCompilations(): List<NovelVideoCompilation>
+
+    @Query("SELECT * FROM novel_video_compilations WHERE id = :id LIMIT 1")
+    suspend fun getCompilation(id: String): NovelVideoCompilation?
+
+    @Query("DELETE FROM novel_video_compilations WHERE id = :id")
+    suspend fun deleteCompilation(id: String)
+
+    @Query("SELECT * FROM novel_video_compilations WHERE bookUrl = :bookUrl ORDER BY createdAt DESC")
+    fun getCompilationsByBookFlow(bookUrl: String): Flow<List<NovelVideoCompilation>>
 }
 
 /** 任务进度统计。 */

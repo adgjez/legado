@@ -72,6 +72,7 @@ import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.NovelVideoCharacterSheet
+import io.legado.app.data.entities.NovelVideoCompilation
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoSegment
 import io.legado.app.data.entities.ParagraphRule
@@ -110,7 +111,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 111,
+    version = 112,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -128,7 +129,8 @@ val appDb by lazy {
         AiReadAloudUsageRecord::class,
         AiAgentSession::class, AiAgentJob::class, AiAgentTrace::class,
         AiMemoryItem::class, AiMemoryFragment::class, AiMemoryItemFts::class, AiMemoryFragmentFts::class,
-        NovelVideoJob::class, NovelVideoSegment::class, NovelVideoCharacterSheet::class],
+        NovelVideoJob::class, NovelVideoSegment::class, NovelVideoCharacterSheet::class,
+        NovelVideoCompilation::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),

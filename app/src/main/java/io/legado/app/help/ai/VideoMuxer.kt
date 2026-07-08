@@ -254,9 +254,13 @@ object VideoMuxer {
      * 不比对 profile/level 等次级字段：同编码不同 profile 的样本通常仍可被同一解码器播放，
      * 比对过严会导致原本可用的合并被误判失败。
      *
-     * @return 不一致时返回错误描述；一致时返回 null
+     * 子项目 E 提为 public：[io.legado.app.help.ai.NovelVideoCompiler] 需在 [merge] 前做
+     * 预检，拿到一致性错误后附加 job 上下文（[merge] 内部校验返回的错误不含 job 标识，
+     * 不便用户定位是哪两章不一致）。
+     *
+     * @return null 表示一致；非空字符串为错误描述（以「第 N 段」索引描述）
      */
-    private fun checkFormatConsistency(inputPaths: List<String>): String? {
+    fun checkFormatConsistency(inputPaths: List<String>): String? {
         data class TrackKey(val mime: String?, val width: Int?, val height: Int?)
         fun readKey(path: String): TrackKey? {
             val ex = MediaExtractor()

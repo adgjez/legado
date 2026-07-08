@@ -891,7 +891,8 @@ class NovelVideoDaoRobolectricTest {
     entities = [
         NovelVideoJob::class,
         NovelVideoSegment::class,
-        NovelVideoCharacterSheet::class
+        NovelVideoCharacterSheet::class,
+        io.legado.app.data.entities.NovelVideoCompilation::class
     ],
     version = 1,
     exportSchema = false

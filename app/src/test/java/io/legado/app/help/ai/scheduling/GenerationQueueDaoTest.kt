@@ -411,7 +411,8 @@ class GenerationQueueDaoTest {
     entities = [
         NovelVideoJob::class,
         io.legado.app.data.entities.NovelVideoSegment::class,
-        io.legado.app.data.entities.NovelVideoCharacterSheet::class
+        io.legado.app.data.entities.NovelVideoCharacterSheet::class,
+        io.legado.app.data.entities.NovelVideoCompilation::class
     ],
     version = 1,
     exportSchema = false

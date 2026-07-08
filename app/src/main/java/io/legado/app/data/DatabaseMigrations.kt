@@ -27,6 +27,7 @@ object DatabaseMigrations {
             migration_106_107, migration_107_108, migration_108_109,
             migration_109_110,
             migration_110_111,
+            migration_111_112,
         )
     }
 
@@ -152,6 +153,35 @@ object DatabaseMigrations {
             // novel_video_segments 加 2 列
             db.execSQL("ALTER TABLE `novel_video_segments` ADD COLUMN `providerJobId` TEXT")
             db.execSQL("ALTER TABLE `novel_video_segments` ADD COLUMN `providerId` TEXT")
+        }
+    }
+
+    /**
+     * v111 → v112：新增 `novel_video_compilations` 表，支撑跨章节拼接成整部视频（子项目 E）。
+     *
+     * 详见 docs/superpowers/specs/2026-07-08-novel-video-cross-chapter-compilation-design.md
+     */
+    private val migration_111_112 = object : Migration(111, 112) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `novel_video_compilations` (
+                    `id` TEXT NOT NULL,
+                    `title` TEXT NOT NULL DEFAULT '',
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `bookName` TEXT NOT NULL DEFAULT '',
+                    `sourceJobIdsJson` TEXT NOT NULL DEFAULT '[]',
+                    `outputPath` TEXT,
+                    `totalDurationMs` INTEGER,
+                    `segmentCount` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_compilations_bookUrl` ON `novel_video_compilations` (`bookUrl`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_video_compilations_createdAt` ON `novel_video_compilations` (`createdAt`)")
         }
     }
 
