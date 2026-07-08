@@ -315,9 +315,14 @@ object NovelVideoGenerator {
             dao.clearSegmentProviderJobId(segment.id)
             // best-effort 清理 JobIdStore：视频已落库成功，此处失败仅记日志，
             // 不得被下方 catch(Throwable) 捕获而回退已成功的 VIDEO_COMPLETED
-            // （如 Robolectric 下 appCtx 未初始化、或文件 IO 异常）
-            runCatching { JobIdStore.clear(providerConfig.type, providerJobId) }
-                .onFailure { AppLog.put("JobIdStore.clear 失败（segment=${segment.id}）：${it.message}") }
+            // （如 appCtx 未初始化、AppConfig/LogUtils 静态初始化失败、或文件 IO 异常）
+            try {
+                JobIdStore.clear(providerConfig.type, providerJobId)
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                // 日志本身也可能在无 appCtx 环境失败（AppLog→AppConfig.<clinit>），再包一层
+                runCatching { AppLog.put("JobIdStore.clear 失败（segment=${segment.id}）：${e.message}") }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ResumeExpiredError) {
