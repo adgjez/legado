@@ -44,7 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -92,7 +92,7 @@ fun NovelVideoTaskCenterScreen(
 
     // 子项目 E：已完成 Tab 多选拼接整部视频
     val selectedJobIds = remember { mutableStateListOf<String>() }
-    val inMultiSelect get() = selectedJobIds.isNotEmpty()
+    fun inMultiSelect() = selectedJobIds.isNotEmpty()
     var compiling by remember { mutableStateOf(false) }
     var compileError by remember { mutableStateOf<String?>(null) }
     var deleteCompilation by remember { mutableStateOf<NovelVideoCompilation?>(null) }
@@ -102,7 +102,7 @@ fun NovelVideoTaskCenterScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (inMultiSelect && selectedTab == 1) {
+                        if (inMultiSelect() && selectedTab == 1) {
                             "已选 ${selectedJobIds.size}"
                         } else {
                             stringResource(R.string.novel_video_task_center)
@@ -110,7 +110,7 @@ fun NovelVideoTaskCenterScreen(
                     )
                 },
                 navigationIcon = {
-                    if (inMultiSelect && selectedTab == 1) {
+                    if (inMultiSelect() && selectedTab == 1) {
                         IconButton(onClick = { selectedJobIds.clear() }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_arrow_back),
@@ -124,7 +124,7 @@ fun NovelVideoTaskCenterScreen(
                     }
                 },
                 actions = {
-                    if (inMultiSelect && selectedTab == 1) {
+                    if (inMultiSelect() && selectedTab == 1) {
                         TextButton(
                             enabled = selectedJobIds.size >= 2,
                             onClick = {
@@ -175,7 +175,7 @@ fun NovelVideoTaskCenterScreen(
             )
         },
         floatingActionButton = {
-            if (!inMultiSelect) {
+            if (!inMultiSelect()) {
                 FloatingActionButton(onClick = { showConfigSheet = true }) {
                     Icon(painter = painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.novel_video_new_task))
                 }
@@ -256,9 +256,9 @@ fun NovelVideoTaskCenterScreen(
                                 JobCard(
                                     job = job,
                                     selected = selectedJobIds.contains(job.id),
-                                    inMultiSelect = inMultiSelect && selectedTab == 1,
+                                    inMultiSelect = inMultiSelect() && selectedTab == 1,
                                     onClick = {
-                                        if (inMultiSelect && selectedTab == 1) {
+                                        if (inMultiSelect() && selectedTab == 1) {
                                             if (selectedJobIds.contains(job.id)) {
                                                 selectedJobIds.remove(job.id)
                                             } else {
