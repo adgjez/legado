@@ -31,7 +31,7 @@ object GenerationQueue {
     /** 孤儿判定阈值：心跳超时此时间即算孤儿（LEASE_TTL × 5 = 2.5 min，容忍短暂卡顿）。 */
     const val ORPHAN_HEARTBEAT_TIMEOUT_MS = LEASE_TTL_MS * 5
 
-    private val dao: NovelVideoDao get() = appDb.novelVideoDao()
+    private val dao: NovelVideoDao get() = appDb.novelVideoDao
 
     /**
      * 原子认领下一个可调度 job。
