@@ -84,21 +84,32 @@ object TaskFailure {
         val rawParams = match.groupValues[2]
         // 从 rawParams 提取简单字段值（避免 JSONObject stub 问题）。
         // 仅支持 renderByLocale 实际用到的字段：provider / detail。
+        // 解析失败（非合法 JSON）原样透传，与 ArcReel json.loads ValueError 行为一致。
         val params: Map<String, String> = if (rawParams.isNotEmpty()) {
-            extractSimpleParams(rawParams)
+            extractSimpleParams(rawParams) ?: return errorMessage
         } else emptyMap()
         return renderByLocale(key, params)
     }
 
-    /** 从 JSON 字符串提取简单 `"key":"value"` 或 `"key":value` 对（不处理嵌套对象）。 */
-    private fun extractSimpleParams(json: String): Map<String, String> {
+    /**
+     * 从 JSON 字符串提取简单 `"key":"value"` 或 `"key":value` 对（不处理嵌套对象）。
+     * @return null 表示非合法 JSON（原样透传）；空 map 表示合法但无字段。
+     */
+    private fun extractSimpleParams(json: String): Map<String, String>? {
+        // 严格校验：必须是 { 开头 } 结尾，且整体只含 "key":value 对（逗号分隔）。
+        val trimmed = json.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
+        val inner = trimmed.substring(1, trimmed.length - 1).trim()
+        if (inner.isEmpty()) return emptyMap()
         val result = mutableMapOf<String, String>()
-        // 匹配 "key":"value" 或 "key":非字符串值
-        val regex = Regex("\"(\\w+)\":\"([^\"]*)\"|\"(\\w+)\":([^,}]+)")
-        for (m in regex.findAll(json)) {
-            val k = m.groupValues[1].ifEmpty { m.groupValues[3] }
-            val v = m.groupValues[2].ifEmpty { m.groupValues[4].trim() }
-            if (k.isNotEmpty()) result[k] = v
+        // 按逗号分割（简化处理，不嵌套对象/数组）
+        val parts = inner.split(",")
+        val pairRegex = Regex("\"(\\w+)\":(\"([^\"]*)\"|([^,}]+))")
+        for (part in parts) {
+            val m = pairRegex.matchEntire(part.trim()) ?: return null
+            val k = m.groupValues[1]
+            val v = m.groupValues[3].ifEmpty { m.groupValues[4].trim() }
+            result[k] = v
         }
         return result
     }
