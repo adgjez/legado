@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.MediaGenerator
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
@@ -18,6 +19,7 @@ import io.legado.app.help.ai.backends.compress.PayloadLimits
 import io.legado.app.help.ai.backends.compress.RefRole
 import io.legado.app.help.ai.backends.compress.ReferenceSpec
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
+import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -79,20 +81,46 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     override suspend fun resumeVideo(jobId: String, request: VideoGenerationRequest): VideoGenerationResult {
         // jobId 编码了 subpath:task_id:audio（submit 时持久化）——可灵查询端点按生成类型分路径，
         // resume 请求已无 start_image 可推断子路径，必须从 jobId 复原。
-        val (subpath, taskId, persistedAudio) = decodeJobId(jobId)
-        val generateAudio = persistedAudio ?: effectiveAudio(request)
-        val client = buildClient(cfg.validPollTimeout())
-        val videoUrl = pollUntilDone(client, subpath, taskId, request.durationSeconds, onProgress = {})
-        VideoBackendHttp.downloadVideo(videoUrl, request.outputPath)
-        return VideoGenerationResult(
-            videoPath = request.outputPath,
-            provider = typeId,
-            model = model,
-            durationSeconds = request.durationSeconds,
-            videoUri = videoUrl,
-            taskId = taskId,
-            generateAudio = generateAudio
-        )
+        //
+        // 第五轮审查 R15 修复：补 try/catch + ResumeExpiredError 转换（对齐 Ark/Agnes/Veo 契约）。
+        // 原实现直接调 pollUntilDone，任务过期/不存在（HTTP 404 或 Kling code!=0）会被
+        // [VideoBackendHttp.shouldRetryPoll] 当瞬态重试到 maxWait 超时，worker 无法识别「过期」
+        // 与「真错误」，得到模糊的「轮询超时」错误而非清晰的 [ResumeExpiredError]。
+        return try {
+            val (subpath, taskId, persistedAudio) = decodeJobId(jobId)
+            val generateAudio = persistedAudio ?: effectiveAudio(request)
+            val client = buildClient(cfg.validPollTimeout())
+            val videoUrl = pollUntilDone(client, subpath, taskId, request.durationSeconds, onProgress = {})
+            VideoBackendHttp.downloadVideo(videoUrl, request.outputPath)
+            VideoGenerationResult(
+                videoPath = request.outputPath,
+                provider = typeId,
+                model = model,
+                durationSeconds = request.durationSeconds,
+                videoUri = videoUrl,
+                taskId = taskId,
+                generateAudio = generateAudio
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (isKlingNotFound(e)) {
+                throw ResumeExpiredError("Kling 任务已过期或不存在（provider=$typeId, jobId=$jobId）：${e.message}")
+            }
+            throw e
+        }
+    }
+
+    /** Kling 任务「不存在/已过期」判定：HTTP 404、task_not_found、expired 等关键词。 */
+    private fun isKlingNotFound(e: Throwable): Boolean {
+        val msg = e.message.orEmpty().lowercase()
+        return msg.contains("http 404") ||
+            msg.contains("task_not_found") ||
+            msg.contains("tasknotfound") ||
+            msg.contains("not found") ||
+            msg.contains("expired") ||
+            msg.contains("已过期") ||
+            msg.contains("不存在")
     }
 
     private suspend fun submitPollDownload(
@@ -237,7 +265,13 @@ class KlingVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             isFailed = { it.status == "failed" },
             pollInterval = interval,
             maxWait = maxWait,
-            retryIf = VideoBackendHttp::shouldRetryPoll,
+            // 第五轮审查 R15：poll 404 视为任务不存在（终态，不重试），让 resume 路径识别为 ResumeExpiredError。
+            // [VideoBackendHttp.shouldRetryPoll] 默认把 404 当瞬态重试（轮询期任务可能尚未注册），
+            // 此处覆写跳过 404，避免 resume 过期任务时空轮询到 maxWait 超时。
+            retryIf = { e ->
+                !e.message.orEmpty().lowercase().contains("http 404") &&
+                    VideoBackendHttp.shouldRetryPoll(e)
+            },
             label = "kling poll subpath=$subpath taskId=$taskId",
             onProgress = onProgress
         )

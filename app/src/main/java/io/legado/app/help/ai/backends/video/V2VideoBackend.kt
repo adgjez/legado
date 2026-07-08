@@ -5,6 +5,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.MediaGenerator
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
@@ -19,6 +20,7 @@ import io.legado.app.help.ai.backends.compress.PayloadLimits
 import io.legado.app.help.ai.backends.compress.RefRole
 import io.legado.app.help.ai.backends.compress.ReferenceSpec
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
+import kotlinx.coroutines.CancellationException
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -80,8 +82,33 @@ class V2VideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     }
 
     override suspend fun resumeVideo(jobId: String, request: VideoGenerationRequest): VideoGenerationResult {
-        val client = buildClient(cfg.validPollTimeout())
-        return pollAndBuild(client, jobId, request, onProgress = {})
+        // 第五轮审查 R15 修复：补 try/catch + ResumeExpiredError 转换（对齐 Ark/Agnes/Veo 契约）。
+        // 原实现直接调 pollAndBuild：
+        // - HTTP 404 会被 [VideoBackendHttp.shouldRetryPoll] 当瞬态重试到 maxWait 超时；
+        // - V2 把 expired 状态映射为 failed（[STATUS_SYNONYMS]），[extractFailure] 返回的错误消息
+        //   不含 "expired" 关键词，即便补 try/catch 也无法识别。此处补 try/catch + 关键词匹配，
+        //   并配合 [extractFailure] 在 raw status==expired 时显式带上 "expired" 字样。
+        return try {
+            val client = buildClient(cfg.validPollTimeout())
+            pollAndBuild(client, jobId, request, onProgress = {})
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (isV2NotFound(e)) {
+                throw ResumeExpiredError("V2 任务已过期或不存在（provider=$typeId, jobId=$jobId）：${e.message}")
+            }
+            throw e
+        }
+    }
+
+    /** V2 任务「不存在/已过期」判定：HTTP 404、expired（含 [extractFailure] 注入的 status=expired）。 */
+    private fun isV2NotFound(e: Throwable): Boolean {
+        val msg = e.message.orEmpty().lowercase()
+        return msg.contains("http 404") ||
+            msg.contains("not found") ||
+            msg.contains("expired") ||
+            msg.contains("已过期") ||
+            msg.contains("不存在")
     }
 
     private suspend fun submitPollDownload(
@@ -167,7 +194,11 @@ class V2VideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
             isFailed = { extractFailure(it) != null },
             pollInterval = interval,
             maxWait = maxWait,
-            retryIf = VideoBackendHttp::shouldRetryPoll,
+            // 第五轮审查 R15：poll 404 视为任务不存在（终态，不重试），让 resume 路径识别为 ResumeExpiredError。
+            retryIf = { e ->
+                !e.message.orEmpty().lowercase().contains("http 404") &&
+                    VideoBackendHttp.shouldRetryPoll(e)
+            },
             label = "v2 poll generationId=$generationId",
             onProgress = onProgress
         )
@@ -206,7 +237,14 @@ class V2VideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend {
     }
 
     private fun extractFailure(state: JsonElement): String? {
-        if (normalizeStatus(firstStrByPaths(state, STATUS_PATHS)) != "failed") return null
+        // 第五轮审查 R15：先取 raw status，若为 expired 则在错误消息显式带上 "expired" 字样，
+        // 供 [resumeVideo] 的 [isV2NotFound] 关键词匹配识别为 [ResumeExpiredError]。
+        // （[STATUS_SYNONYMS] 把 expired→failed，单纯 canonical 判断会丢失 expired 语义。）
+        val rawStatus = firstStrByPaths(state, STATUS_PATHS)?.trim()?.lowercase()
+        if (normalizeStatus(rawStatus) != "failed") return null
+        if (rawStatus == "expired") {
+            return "V2 视频生成任务已过期（status=expired）"
+        }
         val err = dig(state, "error")
         val msg = when {
             err is JsonObject -> err.get("message")?.takeIf { !it.isJsonNull }?.asString ?: err.get("name")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"

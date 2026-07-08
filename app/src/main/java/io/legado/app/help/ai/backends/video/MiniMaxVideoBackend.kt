@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.help.ai.backends.MediaGenerator
+import io.legado.app.help.ai.backends.ResumeExpiredError
 import io.legado.app.help.ai.backends.VideoBackend
 import io.legado.app.help.ai.backends.VideoBackendHttp
 import io.legado.app.help.ai.backends.VideoBackendRegistry
@@ -18,6 +19,7 @@ import io.legado.app.help.ai.backends.compress.PayloadLimits
 import io.legado.app.help.ai.backends.compress.RefRole
 import io.legado.app.help.ai.backends.compress.ReferenceSpec
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
+import kotlinx.coroutines.CancellationException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -69,8 +71,31 @@ class MiniMaxVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend
     }
 
     override suspend fun resumeVideo(jobId: String, request: VideoGenerationRequest): VideoGenerationResult {
-        val client = buildClient(cfg.validPollTimeout())
-        return pollRetrieveDownload(client, jobId, request, onProgress = {})
+        // 第五轮审查 R15 修复：补 try/catch + ResumeExpiredError 转换（对齐 Ark/Agnes/Veo 契约）。
+        // 原实现直接调 pollRetrieveDownload，任务过期/不存在（HTTP 404 或 base_resp.status_code!=0）
+        // 会被 [VideoBackendHttp.shouldRetryPoll] 当瞬态重试到 maxWait 超时，worker 无法识别「过期」
+        // 与「真错误」，得到模糊的「轮询超时」错误而非清晰的 [ResumeExpiredError]。
+        return try {
+            val client = buildClient(cfg.validPollTimeout())
+            pollRetrieveDownload(client, jobId, request, onProgress = {})
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (isMiniMaxNotFound(e)) {
+                throw ResumeExpiredError("MiniMax 任务已过期或不存在（provider=$typeId, jobId=$jobId）：${e.message}")
+            }
+            throw e
+        }
+    }
+
+    /** MiniMax 任务「不存在/已过期」判定：HTTP 404、expired 等关键词。 */
+    private fun isMiniMaxNotFound(e: Throwable): Boolean {
+        val msg = e.message.orEmpty().lowercase()
+        return msg.contains("http 404") ||
+            msg.contains("not found") ||
+            msg.contains("expired") ||
+            msg.contains("已过期") ||
+            msg.contains("不存在")
     }
 
     private suspend fun submitPollRetrieveDownload(
@@ -109,7 +134,11 @@ class MiniMaxVideoBackend(private val cfg: AiVideoProviderConfig) : VideoBackend
             isFailed = { it.failureReason != null },
             pollInterval = interval,
             maxWait = maxWait,
-            retryIf = VideoBackendHttp::shouldRetryPoll,
+            // 第五轮审查 R15：poll 404 视为任务不存在（终态，不重试），让 resume 路径识别为 ResumeExpiredError。
+            retryIf = { e ->
+                !e.message.orEmpty().lowercase().contains("http 404") &&
+                    VideoBackendHttp.shouldRetryPoll(e)
+            },
             label = "minimax poll taskId=$taskId",
             onProgress = onProgress
         )
