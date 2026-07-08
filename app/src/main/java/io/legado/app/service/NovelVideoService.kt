@@ -167,7 +167,7 @@ class NovelVideoService : BaseService() {
             when (action) {
                 IntentAction.start -> ensurePipelineRunning()
                 IntentAction.stop -> {
-                    stopAllWorkers()
+                    stopAllWorkers(preserve = false)
                     stopSelf()
                 }
                 IntentAction.remove -> {
@@ -192,6 +192,14 @@ class NovelVideoService : BaseService() {
     override fun onDestroy() {
         isRun = false
         val activeIds = SharedSchedulingState.slots.activeJobIds()
+        // 第五轮审查 R10 回归修复：
+        // 若 workerScope 仍 active，说明是系统直接销毁（非 stop/timeout 触发，二者已 cancel scope）。
+        // 此时设 preserve=true：processTask 取消路径只 releaseLease，保留 GENERATING 中间态，
+        // 让 orphan sweep 兜底恢复（R10 设计意图：断点续传而非标 CANCELLED）。
+        // 若 workerScope 已 !active（stop/timeout 已处理），preserveOnShutdown 已由 stopAllWorkers 设置。
+        if (workerScope?.isActive == true) {
+            SharedSchedulingState.preserveOnShutdown = true
+        }
         workerScope?.cancel()
         workerScope = null
         SharedSchedulingState.slots.clear()
@@ -218,10 +226,15 @@ class NovelVideoService : BaseService() {
     /**
      * R10：Android 15+ dataSync 类型前台服务有 6 小时累计超时。
      * 保留中间态（不写 FAILED/CANCELLED），让用户下次打开 App 时断点续传。
+     *
+     * 第五轮审查 R10 回归修复：原实现调 stopAllWorkers() → cancel scope →
+     * processTask catch CancellationException → markCancelled，导致 job 被标 CANCELLED
+     * 而非保留 GENERATING 中间态。现改为 stopAllWorkers(preserve=true)，processTask
+     * 的取消路径只 releaseLease 不 markCancelled，下次服务启动由 orphan sweep 恢复。
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
         AppLog.put("NovelVideoService onTimeout startId=$startId fgsType=$fgsType，保留中间态后退出")
-        stopAllWorkers()
+        stopAllWorkers(preserve = true)
         stopSelf()
     }
 
@@ -238,6 +251,8 @@ class NovelVideoService : BaseService() {
         if (workerScope?.isActive == true) return
         // 重置 orphan guard：每次启动都扫一次（进程重启恢复）
         GenerationWorker.resetOrphanSweepGuard()
+        // 重置 preserveOnShutdown：上次关闭/超时设置的 flag 不影响新启动的 worker
+        SharedSchedulingState.preserveOnShutdown = false
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         workerScope = scope
         repeat(WORKER_COUNT) { i ->
@@ -249,8 +264,13 @@ class NovelVideoService : BaseService() {
     /**
      * 停止所有 worker：cancel scope + 清空 slots。
      * lease 释放由 onDestroy 的 best-effort 路径或 orphan sweep 兜底。
+     *
+     * @param preserve 第五轮审查 R10 回归修复：
+     * - false（默认）：用户主动停止，processTask 取消路径 markCancelled
+     * - true：系统超时/销毁，processTask 取消路径只 releaseLease，保留 GENERATING 中间态
      */
-    private fun stopAllWorkers() {
+    private fun stopAllWorkers(preserve: Boolean = false) {
+        SharedSchedulingState.preserveOnShutdown = preserve
         workerScope?.cancel()
         workerScope = null
         SharedSchedulingState.slots.clear()
@@ -309,9 +329,11 @@ class NovelVideoService : BaseService() {
             }
             val idleDuration = System.currentTimeMillis() - idleSinceMs
             if (idleDuration >= IDLE_STOP_DELAY_MS && workerScope?.isActive == true) {
-                // 连续无 inflight 超过阈值：停止服务
+                // 连续无 inflight 超过阈值：停止服务（idle stop 无 processTask 在跑，
+                // preserve 无影响，但重置为 false 避免残留影响下次启动）
                 notificationContent = getString(R.string.novel_video_no_pending)
                 upNotification()
+                SharedSchedulingState.preserveOnShutdown = false
                 workerScope?.cancel()
                 workerScope = null
                 stopSelf()

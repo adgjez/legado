@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -62,16 +63,17 @@ class GenerationWorkerTest {
         GenerationWorker.resetOrphanSweepGuard()
         SharedSchedulingState.capacity.clear()
         SharedSchedulingState.slots.clear()
+        SharedSchedulingState.preserveOnShutdown = false
     }
 
     @After
     fun tearDown() {
         originalDaoProvider?.let { GenerationQueue.daoProvider = it }
         db.close()
-        // P6b：清空共享状态避免泄漏到下一个测试
         GenerationWorker.resetOrphanSweepGuard()
         SharedSchedulingState.capacity.clear()
         SharedSchedulingState.slots.clear()
+        SharedSchedulingState.preserveOnShutdown = false
     }
 
     /** 真实轮询等待条件成立（timeout 5s）。condition 为 suspend 以支持查 DB。 */
@@ -210,6 +212,41 @@ class GenerationWorkerTest {
         scope.cancel()
 
         assertEquals(NovelVideoJobStatus.CANCELLED, dao.getJob("job_1")?.status)
+    }
+
+    /**
+     * 第五轮审查 R10 回归修复：preserveOnShutdown=true 时（系统超时/销毁），
+     * processTask 的 CancellationException 路径只 releaseLease，保留 GENERATING 中间态，
+     * 不 markCancelled，让 orphan sweep 兜底恢复。
+     */
+    @Test
+    fun processTaskCancellationWithPreserveOnShutdownKeepsIntermediateState() = runBlocking {
+        dao.insertJob(NovelVideoJob(id = "job_1", status = NovelVideoJobStatus.DRAFTING, createdAt = 1000))
+        val cancelled = AtomicBoolean(false)
+        val worker = GenerationWorker(
+            workerId = "test",
+            generator = { _, _ ->
+                cancelled.set(true)
+                throw CancellationException("simulated system timeout")
+            }
+        )
+        // 模拟系统超时/销毁场景
+        SharedSchedulingState.preserveOnShutdown = true
+
+        val scope = newScope()
+        scope.launch { worker.runLoop(scope) { cancelled.get() } }
+
+        // 等 generator 被调用（processTask 进入 catch 路径）
+        assertTrue("应等到 generator 被调用", waitForCondition { cancelled.get() })
+        // 等释放完成（releaseLease 清空 workerId）
+        assertTrue("应等到 releaseLease 完成（workerId 清空）",
+            waitForCondition { dao.getJob("job_1")?.workerId == null })
+        scope.cancel()
+
+        val job = dao.getJob("job_1")
+        assertEquals("preserveOnShutdown=true 时 job 应保持 GENERATING（中间态）",
+            NovelVideoJobStatus.GENERATING, job?.status)
+        assertNull("workerId 应被 releaseLease 清空", job?.workerId)
     }
 
     // ============================================================

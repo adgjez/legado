@@ -60,6 +60,7 @@ class NovelVideoServiceMultiWorkerTest {
         GenerationWorker.resetOrphanSweepGuard()
         SharedSchedulingState.capacity.clear()
         SharedSchedulingState.slots.clear()
+        SharedSchedulingState.preserveOnShutdown = false
     }
 
     @After
@@ -69,6 +70,7 @@ class NovelVideoServiceMultiWorkerTest {
         GenerationWorker.resetOrphanSweepGuard()
         SharedSchedulingState.capacity.clear()
         SharedSchedulingState.slots.clear()
+        SharedSchedulingState.preserveOnShutdown = false
     }
 
     private suspend fun waitForCondition(

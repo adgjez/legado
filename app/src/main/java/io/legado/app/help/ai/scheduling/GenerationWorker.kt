@@ -155,8 +155,17 @@ class GenerationWorker(
                 withContext(NonCancellableCtx) { GenerationQueue.markCancelled(jobId) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
-            // 取消：markCancelled
-            withContext(NonCancellableCtx) { GenerationQueue.markCancelled(jobId) }
+            // 取消信号到达。区分两种关闭场景（第五轮审查 R10 回归修复）：
+            // - preserveOnShutdown=false：用户主动停止（IntentAction.stop）→ markCancelled
+            // - preserveOnShutdown=true：系统超时（onTimeout）/ 系统直接销毁 → 只 releaseLease，
+            //   保留 GENERATING 中间态，让 orphan sweep 兜底恢复（R10：断点续传而非标 CANCELLED）
+            withContext(NonCancellableCtx) {
+                if (SharedSchedulingState.preserveOnShutdown) {
+                    GenerationQueue.releaseLease(jobId)
+                } else {
+                    GenerationQueue.markCancelled(jobId)
+                }
+            }
             throw e
         } catch (e: Throwable) {
             // 失败：markFailed，false（0-rows 已被取消）→ markCancelled 兜底
@@ -233,8 +242,24 @@ private val NonCancellableCtx = kotlinx.coroutines.NonCancellable
  *
  * 测试若需隔离状态，可在 setUp 中调 `SharedSchedulingState.capacity.clear()` /
  * `SharedSchedulingState.slots.clear()`，或向 [GenerationWorker] 注入独立实例。
+ *
+ * **[preserveOnShutdown]（第五轮审查 R10 回归修复）**：
+ * 区分「用户主动停止」与「系统超时/销毁」两种关闭场景：
+ * - false（默认）：用户停止（IntentAction.stop），processTask 的 CancellationException 路径 markCancelled
+ * - true：系统超时（onTimeout）或系统直接销毁（onDestroy 且非 stop/timeout 触发），
+ *   processTask 的 CancellationException 路径只 releaseLease，保留 GENERATING 中间态，
+ *   让 orphan sweep 兜底恢复（R10 设计意图：断点续传而非标 CANCELLED）
  */
 object SharedSchedulingState {
     val capacity: CapacityTable = CapacityTable()
     val slots: SlotTable = SlotTable()
+
+    /**
+     * 关闭时是否保留中间态（R10 回归修复）。
+     *
+     * 由 [io.legado.app.service.NovelVideoService.stopAllWorkers] / [onDestroy] 设置，
+     * 由 [GenerationWorker.processTask] 的 CancellationException 路径读取。
+     */
+    @Volatile
+    var preserveOnShutdown: Boolean = false
 }

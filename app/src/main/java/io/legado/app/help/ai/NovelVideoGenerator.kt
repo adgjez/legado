@@ -48,7 +48,7 @@ import java.io.File
  * 3. 剧本审阅（可选）→ postEvent(NOVEL_VIDEO_REVIEW_READY) + 挂起等待用户确认
  * 4. 提取角色 + 三视图 → [NovelVideoPromptBuilder.extractMainCharacters] + [AiImageService.generateAndStore]
  * 5. 逐场景生图 → [AiImageService.generateAndStore]（多图参考重载，传入角色三视图）
- * 6. 逐场景生视频 → [AiVideoTaskPoller.generate]（参考图 = 场景图 + 角色三视图）
+ * 6. 逐场景生视频 → [AiVideoService.generate]（参考图 = 场景图 + 角色三视图）
  * 7. MediaMuxer 合并 → [VideoMuxer.merge]（无损 remux，时间戳重基准）
  * 8. 产物入库 + 通知 → BookChapter.resourceUrl + postEvent(NOVEL_VIDEO_COMPLETED)
  *
@@ -647,9 +647,9 @@ object NovelVideoGenerator {
      *
      * Stage 5: 对每个 segment 调用 [AiImageService.generateAndStore] 的多图参考重载，
      *          参考图 = 已完成的角色三视图（最多 2 张），用于保持人物一致性。
-     * Stage 6: 对每个 segment 调用 [AiVideoTaskPoller.generate]，
+     * Stage 6: 对每个 segment 调用 [AiVideoService.generate]，
      *          参考图 = 场景图 + 角色三视图（最多 3 张，场景图优先）。
-     * Stage 7: 合并 → TODO Phase 5（VideoMuxer）。
+     * Stage 7: MediaMuxer 合并 → [mergeCompletedSegments]（无损 remux，时间戳重基准）。
      *
      * 并发：按 [NovelVideoParams.concurrency] 分批，批内并行、批间串行。
      * 断点续传：跳过已 VIDEO_COMPLETED 的 segment；IMAGE_COMPLETED 的跳过生图直接进 Stage 6。
