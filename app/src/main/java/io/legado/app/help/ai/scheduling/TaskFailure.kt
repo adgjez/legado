@@ -1,7 +1,6 @@
 package io.legado.app.help.ai.scheduling
 
 import org.json.JSONObject
-import java.util.TreeMap
 
 /**
  * 结构化任务失败码编码/渲染（移植 ArcReel `lib/task_failure.py`）。
@@ -50,9 +49,20 @@ object TaskFailure {
     fun encodeFailure(code: String, params: Map<String, Any?>? = null): String {
         require(code in FAILURE_CODE_KEYS) { "unknown failure code: $code" }
         if (params.isNullOrEmpty()) return "[$code]"
-        // TreeMap 保证 key 排序；JSONObject 不保证顺序，手动排序
-        val sorted = TreeMap<String, Any?>(params)
-        val json = JSONObject(sorted as Map<String, Any?>).toString()
+        // 按 key 字母序逐个 put，保证 JSON 字符串确定性（与 ArcReel sort_keys=True 等价）。
+        // JSONObject.put 只接受基本类型，非基本类型先 toString 兜底。
+        val json = JSONObject()
+        params.keys.sortedBy { it }.forEach { k ->
+            val v = params[k] ?: return@forEach
+            when (v) {
+                is String -> json.put(k, v)
+                is Int -> json.put(k, v)
+                is Long -> json.put(k, v)
+                is Double -> json.put(k, v)
+                is Boolean -> json.put(k, v)
+                else -> json.put(k, v.toString())
+            }
+        }
         return "[$code] $json"
     }
 
