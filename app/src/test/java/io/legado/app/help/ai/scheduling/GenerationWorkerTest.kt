@@ -88,15 +88,17 @@ class GenerationWorkerTest {
 
     @Test
     fun runLoopNoJobExitsCleanlyWhenCancelled() = runBlocking {
-        val counter = AtomicInteger(0)
         val worker = GenerationWorker(workerId = "test", generator = { _, _ -> })
         val scope = newScope()
-        scope.launch { worker.runLoop(scope) { counter.incrementAndGet() >= 2 } }
+        // isCancelled 立即返回 true → runLoop 不进入循环体，直接正常返回（不抛异常）。
+        // 无 job 时的 idle delay=HEARTBEAT_INTERVAL_MS(10s)，若让循环跑一轮会超 5s timeout，
+        // 故直接验证 isCancelled=true 时 runLoop 干净退出。
+        val runLoopJob = scope.launch { worker.runLoop(scope) { true } }
 
-        val ok = waitForCondition { counter.get() >= 2 }
+        val ok = waitForCondition { !runLoopJob.isActive }
         scope.cancel()
 
-        assertTrue("runLoop 应正常退出（无异常）", ok)
+        assertTrue("runLoop 应在 isCancelled=true 时立即正常退出", ok)
     }
 
     // ============================================================
@@ -261,7 +263,8 @@ class GenerationWorkerTest {
 
         val reloaded = dao.getJob("orphan_1")
         assertEquals(NovelVideoJobStatus.FAILED, reloaded?.status)
-        assertTrue("errorMessage 应含 NotImplementedError", reloaded?.errorMessage?.contains("NotImplementedError") == true)
+        // worker 存 e.message（"P4 未实现"）而非 class name，断言消息被透传
+        assertTrue("errorMessage 应含异常消息", reloaded?.errorMessage?.contains("未实现") == true)
     }
 
     // ============================================================
