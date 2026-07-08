@@ -278,4 +278,70 @@ class NovelVideoServiceMultiWorkerTest {
         assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("job_2")?.status)
         assertNotEquals("job_1 不应为 COMPLETED", NovelVideoJobStatus.COMPLETED, dao.getJob("job_1")?.status)
     }
+
+    // ============================================================
+    // worker 崩溃后 lease 释放，另一 worker 通过 orphan 恢复接管
+    // ============================================================
+
+    /**
+     * 验证 plan.md P6 验收点 7：lease 过期后 job 可被其他 worker 认领。
+     *
+     * 场景：worker-0 崩溃遗留 status=generating + 心跳超时的 orphan job，
+     * worker-1/worker-2 启动时通过 [GenerationWorker.handleOrphanTasksOnStart]
+     * 扫描捡起 orphan（[GenerationQueue.findOrphans]），调 resumeJob 恢复。
+     *
+     * 关键验证：
+     * - orphan 被 resumeJob 处理（orphanSweepDone companion guard 保证多 worker 只扫一次）
+     * - orphan 是 generating 状态，不会被 claim（claim 只选 drafting/screenplay_confirmed）
+     * - 正常 drafting job 被 claim + generator 处理，与 orphan 恢复并行不冲突
+     */
+    @Test
+    fun crashedWorkerOrphanReclaimedByAnotherWorker() = runBlocking {
+        // 预置 orphan job：worker-0 崩溃遗留（status=generating, heartbeat 已过期）
+        val staleHeartbeat = System.currentTimeMillis() - GenerationQueue.ORPHAN_HEARTBEAT_TIMEOUT_MS - 1000
+        dao.insertJob(NovelVideoJob(
+            id = "orphan_job",
+            status = NovelVideoJobStatus.GENERATING,
+            workerId = "dead-worker",
+            workerHeartbeatAt = staleHeartbeat,
+            createdAt = 1000,
+            providerId = "grok"
+        ))
+        // 正常 drafting job，供 claim 处理（不同 provider，可与 orphan 恢复并行）
+        dao.insertJob(NovelVideoJob(id = "fresh_job", status = NovelVideoJobStatus.DRAFTING, createdAt = 2000, providerId = "agnes"))
+
+        val resumeCalls = AtomicInteger(0)
+        val generatorCalls = AtomicInteger(0)
+        val orphanDone = AtomicBoolean(false)
+        val freshDone = AtomicBoolean(false)
+
+        val sharedGenerator: suspend (String, () -> Boolean) -> Unit = { jobId, _ ->
+            generatorCalls.incrementAndGet()
+            if (jobId == "fresh_job") freshDone.set(true)
+        }
+        val sharedResume: suspend (String, () -> Boolean) -> Unit = { jobId, _ ->
+            resumeCalls.incrementAndGet()
+            if (jobId == "orphan_job") orphanDone.set(true)
+        }
+
+        val worker1 = GenerationWorker(workerId = "worker-1", generator = sharedGenerator, resumeJob = sharedResume)
+        val worker2 = GenerationWorker(workerId = "worker-2", generator = sharedGenerator, resumeJob = sharedResume)
+
+        val scope1 = newScope()
+        val scope2 = newScope()
+        scope1.launch { worker1.runLoop(scope1) { orphanDone.get() && freshDone.get() } }
+        scope2.launch { worker2.runLoop(scope2) { orphanDone.get() && freshDone.get() } }
+
+        // orphan 被 resumeJob 处理 → handleOrphanTasksOnStart 内 markSucceeded → COMPLETED
+        assertTrue("应等到 orphan_job COMPLETED", waitForCondition { dao.getJob("orphan_job")?.status == NovelVideoJobStatus.COMPLETED })
+        // fresh_job 被 claim + generator 处理 → processTask markSucceeded → COMPLETED
+        assertTrue("应等到 fresh_job COMPLETED", waitForCondition { dao.getJob("fresh_job")?.status == NovelVideoJobStatus.COMPLETED })
+        scope1.cancel()
+        scope2.cancel()
+
+        assertEquals("orphan 应被 resumeJob 接管（orphanSweepDone guard 保证只 1 次）", 1, resumeCalls.get())
+        assertEquals("fresh_job 应被 generator 处理（claim 原子保证只 1 次）", 1, generatorCalls.get())
+        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("orphan_job")?.status)
+        assertEquals(NovelVideoJobStatus.COMPLETED, dao.getJob("fresh_job")?.status)
+    }
 }
