@@ -126,15 +126,17 @@ class GenerationWorker(
      * 取消信号到达时 inner DB 写入跑完再传播。
      */
     private suspend fun processTask(jobId: String) {
-        val isCancelled = { slots.findByJobId(jobId) == null || !coroutineContext.isActive }
+        // isCancelled 非 suspend lambda（generator 签名要求），只查 slots：
+        // requestCancel → Job.cancel() → finally slots.release，findByJobId 返回 null 即取消信号。
+        // 协程取消时 generator 内部 suspend 调用会抛 CancellationException，由下方 catch 处理。
+        val isCancelled: () -> Boolean = { slots.findByJobId(jobId) == null }
         try {
             generator(jobId, isCancelled)
-            // 成功：markSucceeded，0-rows（已被取消）→ markCancelled
-            val rows = withContext(NonCancellableCtx) {
+            // 成功：markSucceeded，false（0-rows 已被取消）→ markCancelled 兜底
+            val succeeded = withContext(NonCancellableCtx) {
                 GenerationQueue.markSucceeded(jobId, outputPath = null, coverPath = null, durationMs = null)
             }
-            if (rows == 0) {
-                // 已被并发终态覆写（如取消已写 CANCELLED），兜底 markCancelled
+            if (!succeeded) {
                 withContext(NonCancellableCtx) { GenerationQueue.markCancelled(jobId) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -142,11 +144,11 @@ class GenerationWorker(
             withContext(NonCancellableCtx) { GenerationQueue.markCancelled(jobId) }
             throw e
         } catch (e: Throwable) {
-            // 失败：markFailed，0-rows（已被取消）→ markCancelled
-            val rows = withContext(NonCancellableCtx) {
+            // 失败：markFailed，false（0-rows 已被取消）→ markCancelled 兜底
+            val marked = withContext(NonCancellableCtx) {
                 GenerationQueue.markFailed(jobId, e.message ?: e::class.simpleName)
             }
-            if (rows == 0) {
+            if (!marked) {
                 withContext(NonCancellableCtx) { GenerationQueue.markCancelled(jobId) }
             }
         }
