@@ -115,6 +115,24 @@ object NovelVideoGenerator {
         }
     }
 
+    /**
+     * Resume 路径入口（P3 占位，P4 实现）。
+     *
+     * 与 [generate] 的区别：generate 对 GENERATING/MERGING 状态会重走 Stage 4-8（重新提交视频任务），
+     * 而 resumeJob 优先调 `VideoBackend.resumeVideo(providerJobId)` 续传已提交的任务，
+     * 避免重复扣费。
+     *
+     * P3 阶段抛 [NotImplementedError]，由 [io.legado.app.help.ai.scheduling.GenerationWorker]
+     * 的 orphan handler 捕获并 markFailed（结构化失败码 resume_unsupported_detail）。
+     * P4 替换为真实实现。
+     */
+    suspend fun resumeJob(
+        jobId: String,
+        isCancelled: () -> Boolean = { false }
+    ) {
+        throw NotImplementedError("resumeJob 将在 P4 实现")
+    }
+
     // ============================================================
     // Stage 1-3：草稿阶段
     // ============================================================

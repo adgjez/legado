@@ -70,6 +70,16 @@ class SlotTable {
     }
 
     /**
+     * 按 jobId 获取对应的协程 Job（cancel 路径用）。
+     */
+    fun getJob(jobId: String): Job? {
+        for (bucket in _slots.values) {
+            bucket[jobId]?.let { return it }
+        }
+        return null
+    }
+
+    /**
      * 返回所有 inflight 的 jobId 集合（cancel 全部用）。
      */
     fun activeJobIds(): Set<String> {

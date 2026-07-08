@@ -1,5 +1,6 @@
 package io.legado.app.help.ai.scheduling
 
+import androidx.annotation.VisibleForTesting
 import io.legado.app.data.appDb
 import io.legado.app.data.dao.NovelVideoDao
 import io.legado.app.data.entities.NovelVideoJob
@@ -31,7 +32,14 @@ object GenerationQueue {
     /** 孤儿判定阈值：心跳超时此时间即算孤儿（LEASE_TTL × 5 = 2.5 min，容忍短暂卡顿）。 */
     const val ORPHAN_HEARTBEAT_TIMEOUT_MS = LEASE_TTL_MS * 5
 
-    private val dao: NovelVideoDao get() = appDb.novelVideoDao
+    /**
+     * DAO 提供者（可替换用于测试注入 in-memory Room）。
+     * 生产环境用 `appDb.novelVideoDao`；测试用 [TestSchedulingDatabase] 的 dao。
+     */
+    @VisibleForTesting
+    internal var daoProvider: () -> NovelVideoDao = { appDb.novelVideoDao }
+
+    private val dao: NovelVideoDao get() = daoProvider()
 
     /**
      * 原子认领下一个可调度 job。
