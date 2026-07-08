@@ -173,9 +173,10 @@ class NovelVideoGeneratorResumeTest {
     fun validProviderJobIdResumesAndCompletes() = runBlocking {
         val fakeType = "fake_ark_${System.nanoTime()}"
         var resumeCalled = false
+        var capturedJobId: String? = null
         installFakeBackend(fakeType) { jobId, _ ->
             resumeCalled = true
-            assertEquals("task_ark_1", jobId)
+            capturedJobId = jobId
             fakeVideoResult()
         }
         insertJobWithSegment(
@@ -188,8 +189,11 @@ class NovelVideoGeneratorResumeTest {
         NovelVideoGenerator.resumeVideoSegments("job_ark") { false }
 
         assertTrue("backend.resumeVideo 应被调用", resumeCalled)
+        assertEquals("resumeVideo jobId 应为 segment.providerJobId",
+            "task_ark_1", capturedJobId)
         val seg = dao.getSegmentsByJob("job_ark").first()
-        assertEquals(NovelVideoSegmentStatus.VIDEO_COMPLETED, seg.status)
+        assertEquals("segment 应 VIDEO_COMPLETED（实际=${seg.status}, err=${seg.errorMessage}）",
+            NovelVideoSegmentStatus.VIDEO_COMPLETED, seg.status)
         assertEquals("providerJobId 应清空", null, seg.providerJobId)
         assertTrue("localVideoPath 应非空", seg.localVideoPath != null)
     }
