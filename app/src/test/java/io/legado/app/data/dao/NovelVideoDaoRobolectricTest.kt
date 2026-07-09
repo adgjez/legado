@@ -8,10 +8,12 @@ import androidx.room.RoomDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.legado.app.data.entities.NovelVideoCharacterSheet
+import io.legado.app.data.entities.NovelVideoCompilation
 import io.legado.app.data.entities.NovelVideoJob
 import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.data.entities.NovelVideoSegment
 import io.legado.app.data.entities.NovelVideoSegmentStatus
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -879,6 +881,81 @@ class NovelVideoDaoRobolectricTest {
                 )
             )
         }
+    }
+
+    // ============================================================
+    // getBookUrlsWithNovelVideoFlow —— 子项目 C 书架 UNION 查询
+    // ============================================================
+
+    @Test
+    fun getBookUrlsWithNovelVideoFlowReturnsUnionOfJobsAndCompilations() = runTest {
+        // job(bookA) + compilation(bookB) → 收到 [bookA, bookB]
+        dao.insertJob(NovelVideoJob(id = "j_a", bookUrl = "bookA", bookName = "书A"))
+        dao.insertCompilation(NovelVideoCompilation(id = "c_b", bookUrl = "bookB", bookName = "书B"))
+
+        val urls = dao.getBookUrlsWithNovelVideoFlow().first()
+
+        assertTrue("应含 bookA（有 job）", urls.contains("bookA"))
+        assertTrue("应含 bookB（有 compilation）", urls.contains("bookB"))
+    }
+
+    @Test
+    fun getBookUrlsWithNovelVideoFlowDedupesBookInBothTables() = runTest {
+        // 同一 bookUrl 既有 job 又有 compilation → UNION 去重为一行
+        dao.insertJob(NovelVideoJob(id = "j1", bookUrl = "bookX", bookName = "书X"))
+        dao.insertCompilation(NovelVideoCompilation(id = "c1", bookUrl = "bookX", bookName = "书X"))
+
+        val urls = dao.getBookUrlsWithNovelVideoFlow().first()
+
+        assertEquals("UNION 应去重，bookX 只出现一次", 1, urls.count { it == "bookX" })
+    }
+
+    @Test
+    fun getBookUrlsWithNovelVideoFlowKeepsBookAfterJobDeletedIfCompilationRemains() = runTest {
+        // 整部视频自包含语义：任务删除后，若该 bookUrl 仍有 compilation，书架保留
+        dao.insertJob(NovelVideoJob(id = "j1", bookUrl = "bookY", bookName = "书Y"))
+        dao.insertCompilation(NovelVideoCompilation(id = "c1", bookUrl = "bookY", bookName = "书Y"))
+
+        // 删 job
+        dao.deleteJob("j1")
+        val urls = dao.getBookUrlsWithNovelVideoFlow().first()
+
+        assertTrue("job 删除但 compilation 还在，bookY 应保留", urls.contains("bookY"))
+    }
+
+    @Test
+    fun getBookUrlsWithNovelVideoFlowExcludesBlankBookUrl() = runTest {
+        // 空字符串 bookUrl（异常数据）排除
+        dao.insertJob(NovelVideoJob(id = "j1", bookUrl = "", bookName = "异常"))
+        dao.insertCompilation(NovelVideoCompilation(id = "c1", bookUrl = "bookZ", bookName = "书Z"))
+
+        val urls = dao.getBookUrlsWithNovelVideoFlow().first()
+
+        assertFalse("空 bookUrl 应排除", urls.contains(""))
+        assertTrue(urls.contains("bookZ"))
+    }
+
+    @Test
+    fun getJobsByBookFlowOrdersByChapterStartIndexAsc() = runTest {
+        // 插入乱序的 job，Flow 应按 chapterStartIndex ASC 返回
+        dao.insertJob(NovelVideoJob(id = "j3", bookUrl = "bookA", chapterStartIndex = 5, chapterEndIndex = 6))
+        dao.insertJob(NovelVideoJob(id = "j1", bookUrl = "bookA", chapterStartIndex = 1, chapterEndIndex = 2))
+        dao.insertJob(NovelVideoJob(id = "j2", bookUrl = "bookA", chapterStartIndex = 3, chapterEndIndex = 4))
+
+        val jobs = dao.getJobsByBookFlow("bookA").first()
+
+        assertEquals(listOf("j1", "j2", "j3"), jobs.map { it.id })
+    }
+
+    @Test
+    fun getJobsByBookFlowFiltersByBookUrl() = runTest {
+        dao.insertJob(NovelVideoJob(id = "j1", bookUrl = "bookA", chapterStartIndex = 1, chapterEndIndex = 2))
+        dao.insertJob(NovelVideoJob(id = "j2", bookUrl = "bookB", chapterStartIndex = 1, chapterEndIndex = 2))
+
+        val jobs = dao.getJobsByBookFlow("bookA").first()
+
+        assertEquals(1, jobs.size)
+        assertEquals("j1", jobs.first().id)
     }
 }
 

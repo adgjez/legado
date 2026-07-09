@@ -54,6 +54,27 @@ interface NovelVideoDao {
     @Query("SELECT * FROM novel_video_jobs WHERE bookUrl = :bookUrl ORDER BY createdAt DESC")
     suspend fun getJobsByBook(bookUrl: String): List<NovelVideoJob>
 
+    /**
+     * 该书所有任务的 Flow（书详情页响应任务状态变化用）。
+     * 按 chapterStartIndex ASC，便于章节覆盖图按顺序渲染。
+     */
+    @Query("SELECT * FROM novel_video_jobs WHERE bookUrl = :bookUrl ORDER BY chapterStartIndex ASC")
+    fun getJobsByBookFlow(bookUrl: String): Flow<List<NovelVideoJob>>
+
+    /**
+     * 所有「有 novel-video 任务或整部视频」的 bookUrl 去重列表。
+     *
+     * UNION（非 UNION ALL）自动去重：同一 bookUrl 既有 job 又有 compilation 时只返回一行。
+     * 任务已删但整部视频还在的书仍保留（整部视频自包含语义，spec §1）。
+     * 空字符串 bookUrl（异常数据）排除。
+     */
+    @Query("""
+        SELECT DISTINCT bookUrl FROM novel_video_jobs WHERE bookUrl != ''
+        UNION
+        SELECT DISTINCT bookUrl FROM novel_video_compilations WHERE bookUrl != ''
+    """)
+    fun getBookUrlsWithNovelVideoFlow(): Flow<List<String>>
+
     @Query("UPDATE novel_video_jobs SET status = :status, updatedAt = :time WHERE id = :jobId")
     suspend fun updateJobStatus(jobId: String, status: String, time: Long = System.currentTimeMillis())
 
