@@ -413,7 +413,7 @@ fun NovelVideoTaskCenterScreen(
 }
 
 @Composable
-private fun JobCard(
+internal fun JobCard(
     job: NovelVideoJob,
     selected: Boolean = false,
     inMultiSelect: Boolean = false,
@@ -595,7 +595,7 @@ private fun CompilationList(
 }
 
 @Composable
-private fun CompilationCard(
+internal fun CompilationCard(
     c: NovelVideoCompilation,
     onOpen: () -> Unit,
     onShare: () -> Unit,
@@ -656,7 +656,7 @@ private fun CompilationCard(
 // 工具
 // ============================================================
 
-private fun formatChapterRange(job: NovelVideoJob): String {
+internal fun formatChapterRange(job: NovelVideoJob): String {
     if (job.chapterStartIndex < 0 || job.chapterEndIndex < 0) return job.id
     return runCatching {
         val titles = GSON.fromJsonArray<String>(job.chapterTitlesJson).getOrDefault(emptyList())
@@ -666,7 +666,7 @@ private fun formatChapterRange(job: NovelVideoJob): String {
     }.getOrDefault("第${job.chapterStartIndex + 1}章 → 第${job.chapterEndIndex + 1}章")
 }
 
-private fun formatTime(ts: Long): String {
+internal fun formatTime(ts: Long): String {
     if (ts <= 0) return ""
     return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(ts))
 }

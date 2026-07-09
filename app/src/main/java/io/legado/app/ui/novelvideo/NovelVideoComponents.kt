@@ -1,22 +1,44 @@
 package io.legado.app.ui.novelvideo
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.data.entities.NovelVideoSegmentStatus
+import io.legado.app.help.ai.BookNovelVideoSummary
+import io.legado.app.help.ai.ChapterStatus
+import io.legado.app.ui.widget.compose.BookCoverImage
 
 /**
  * 状态徽章：根据 job/segment 状态显示对应的色块和文案。
@@ -80,4 +102,171 @@ fun DividerBlock() {
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {}
+}
+
+// ============================================================
+// 子项目 C：书架卡片 + 章节覆盖图
+// ============================================================
+
+/**
+ * 书架卡片：展示一本书的 novel-video 聚合进度（spec §6.1）。
+ *
+ * 结构：封面 | 书名 + X/Y 章 · 进度% + 进度条 + N 个任务 · M 部整部视频
+ */
+@Composable
+internal fun BookShelfCard(
+    summary: BookNovelVideoSummary,
+    onClick: () -> Unit
+) {
+    val palette = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = novelVideoCardShape,
+        colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 封面（coverPath 可能为 null，BookCoverImage 显示默认占位）
+            BookCoverImage(
+                path = summary.coverPath,
+                name = summary.bookName.ifBlank { "未命名" },
+                author = null,
+                sourceOrigin = null,
+                modifier = Modifier
+                    .width(48.dp)
+                    .height(64.dp)
+                    .clip(RoundedCornerShape(4.dp))
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = summary.bookName.ifBlank { "未命名" },
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                val progressText = if (summary.totalChapters > 0) {
+                    "${summary.coveredCount}/${summary.totalChapters} 章 · 进度 ${(summary.progress * 100).toInt()}%"
+                } else {
+                    "${summary.coveredCount} 章 · 总数未知"
+                }
+                Text(
+                    text = progressText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { summary.progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${summary.jobCount} 个任务 · ${summary.compilationCount} 部整部视频",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 章节覆盖图：色块网格一屏看完整本书进度（spec §6.3，方案 B1）。
+ *
+ * 每章一个色块，颜色表状态：灰=未做 / 蓝=进行中 / 绿=已完成 / 红=失败。
+ * 点击色块回调；totalChapters=0 显示「章节信息未加载」占位。
+ *
+ * @param statusByChapter 由 [BookNovelVideoSummary.statusByChapter] 提供
+ */
+@Composable
+internal fun ChapterCoverageGrid(
+    totalChapters: Int,
+    statusByChapter: Map<Int, ChapterStatus>,
+    modifier: Modifier = Modifier,
+    onChapterClick: (Int) -> Unit = {},
+    onChapterLongClick: (Int) -> Unit = {}
+) {
+    val palette = MaterialTheme.colorScheme
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        if (totalChapters <= 0) {
+            Text(
+                text = "章节信息未加载",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+            return@Column
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(28.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 320.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            userScrollEnabled = true
+        ) {
+            items(totalChapters) { index ->
+                val status = statusByChapter[index] ?: ChapterStatus.NONE
+                val color = when (status) {
+                    ChapterStatus.NONE -> palette.surfaceVariant
+                    ChapterStatus.RUNNING -> palette.primary
+                    ChapterStatus.COMPLETED -> Color(0xFF4CAF50)
+                    ChapterStatus.FAILED -> palette.error
+                }
+                Box(
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(color)
+                        .combinedClickable(
+                            onClick = { onChapterClick(index) },
+                            onLongClick = { onChapterLongClick(index) }
+                        )
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        // 图例
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            LegendDot(palette.surfaceVariant, "未做")
+            LegendDot(palette.primary, "进行中")
+            LegendDot(Color(0xFF4CAF50), "已完成")
+            LegendDot(palette.error, "失败")
+        }
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    val palette = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(color)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.onSurfaceVariant
+        )
+    }
 }
