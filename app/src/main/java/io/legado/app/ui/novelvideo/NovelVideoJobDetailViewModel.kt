@@ -9,20 +9,15 @@ import androidx.lifecycle.viewModelScope
 import io.legado.app.constant.AppConst
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.NovelVideoJob
-import io.legado.app.data.entities.NovelVideoJobStatus
 import io.legado.app.help.ai.NovelVideoParams
 import io.legado.app.service.NovelVideoService
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.share
-import splitties.init.appCtx
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -75,69 +70,19 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 删除任务。
-     * M1：同时清理磁盘上的分镜视频与合并产物文件。
+     * 删除任务。委托 [NovelVideoJobOps.deleteJob]。
      */
-    suspend fun deleteJob(jobId: String) = withContext(Dispatchers.IO) {
-        NovelVideoJobOps.mutex.withLock {
-            appDb.novelVideoDao.deleteJob(jobId)
-            runCatching {
-                java.io.File(appCtx.filesDir, "novel_video/$jobId").deleteRecursively()
-            }
-        }
-    }
+    suspend fun deleteJob(jobId: String) = NovelVideoJobOps.deleteJob(jobId)
 
     /**
-     * 重试任务。
-     *
-     * R6 修复：用 Mutex 串行化对同一 job 的操作，避免 retry 与 cancel 并发覆写；
-     *        状态推进改用条件更新，避免覆写并发的 CANCELLED。
+     * 重试任务。委托 [NovelVideoJobOps.retryJob]。
      */
-    suspend fun retryJob(jobId: String) = withContext(Dispatchers.IO) {
-        NovelVideoJobOps.mutex.withLock {
-            val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
-            if (job.status == NovelVideoJobStatus.FAILED ||
-                job.status == NovelVideoJobStatus.PARTIAL_FAILED ||
-                job.status == NovelVideoJobStatus.CANCELLED
-            ) {
-                // M4+M5：智能重置非 VIDEO_COMPLETED 段，保留已生成的 imageUrl
-                appDb.novelVideoDao.getSegmentsByJob(jobId)
-                    .filter { it.status != io.legado.app.data.entities.NovelVideoSegmentStatus.VIDEO_COMPLETED }
-                    .forEach { seg ->
-                        val newStatus = if (seg.imageUrl != null) {
-                            io.legado.app.data.entities.NovelVideoSegmentStatus.IMAGE_COMPLETED
-                        } else {
-                            io.legado.app.data.entities.NovelVideoSegmentStatus.PENDING
-                        }
-                        appDb.novelVideoDao.updateSegmentStatusIfNotTerminal(seg.id, newStatus, null)
-                    }
-                // N1 修复：用 updateJobStatusForRetry 从终态转换回 GENERATING
-                appDb.novelVideoDao.updateJobStatusForRetry(
-                    jobId, NovelVideoJobStatus.GENERATING, null, System.currentTimeMillis()
-                )
-            }
-        }
-        NovelVideoService.start(getApplication())
-    }
+    suspend fun retryJob(jobId: String) = NovelVideoJobOps.retryJob(jobId)
 
     /**
-     * 取消任务：委托 Service 取消协程 + 条件更新兜底（P6b 多 worker 精确取消）。
-     *
-     * 第五轮审查 R13 修复：改用 [NovelVideoDao.markJobCancelledIfActive]（清空 workerId/heartbeat），
-     * 原 [NovelVideoDao.updateJobFinalStatusWithErrorIfNotFinished] 不清空 workerId，导致终态 job
-     * 残留 workerId 数据不一致。
+     * 取消任务。委托 [NovelVideoJobOps.cancelJob]。
      */
-    suspend fun cancelJob(jobId: String) = withContext(Dispatchers.IO) {
-        NovelVideoJobOps.mutex.withLock {
-            val job = appDb.novelVideoDao.getJob(jobId) ?: return@withLock
-            if (job.status in NovelVideoJobStatus.RUNNING_STATES) {
-                NovelVideoService.cancelJob(getApplication(), jobId)
-                appDb.novelVideoDao.markJobCancelledIfActive(
-                    jobId, NovelVideoJobStatus.CANCELLED, System.currentTimeMillis()
-                )
-            }
-        }
-    }
+    suspend fun cancelJob(jobId: String) = NovelVideoJobOps.cancelJob(jobId)
 
     companion object {
         // P6：jobOpMutex 已上移至 NovelVideoJobOps 共享单例（修复双 ViewModel 并发覆写）。
