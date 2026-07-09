@@ -335,6 +335,9 @@
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.novelvideo.NovelVideoBookDetailActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.novelvideo.NovelVideoJobDetailActivity"
             android:launchMode="standard" />
         <activity
