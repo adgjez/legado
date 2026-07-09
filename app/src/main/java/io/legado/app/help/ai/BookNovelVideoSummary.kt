@@ -75,7 +75,7 @@ data class BookNovelVideoSummary(
  * - `chapterEndIndex < chapterStartIndex` 的忽略。
  * - 状态归集：completed=[NovelVideoJobStatus.COMPLETED]；
  *   failed=[NovelVideoJobStatus.FAILED]/[NovelVideoJobStatus.PARTIAL_FAILED]；
- *   running=[NovelVideoJobStatus.DRAFTING]/SCREENPLAY_*/[NovelVideoJobStatus.GENERATING]/[NovelVideoJobStatus.MERGING]/[NovelVideoJobStatus.PAUSED]；
+ *   running=[NovelVideoJobStatus.DRAFTING]/SCREENPLAY_…/[NovelVideoJobStatus.GENERATING]/[NovelVideoJobStatus.MERGING]/[NovelVideoJobStatus.PAUSED]；
  *   [NovelVideoJobStatus.CANCELLED] 不计入覆盖（被取消=没做）。
  */
 fun computeCoverage(

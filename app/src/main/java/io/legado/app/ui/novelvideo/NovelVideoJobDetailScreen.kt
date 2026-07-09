@@ -51,8 +51,6 @@ import io.legado.app.data.entities.NovelVideoSegment
 import io.legado.app.data.entities.NovelVideoSegmentStatus
 import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /**
@@ -494,21 +492,7 @@ private fun SegmentCard(segment: NovelVideoSegment) {
 // 工具
 // ============================================================
 
-private fun formatChapterRange(job: NovelVideoJob): String {
-    if (job.chapterStartIndex < 0 || job.chapterEndIndex < 0) return job.id
-    return runCatching {
-        val titles = io.legado.app.utils.GSON.fromJsonArray<String>(job.chapterTitlesJson)
-            .getOrDefault(emptyList())
-        val start = titles.firstOrNull() ?: "第${job.chapterStartIndex + 1}章"
-        val end = titles.lastOrNull() ?: "第${job.chapterEndIndex + 1}章"
-        if (start == end) start else "$start → $end"
-    }.getOrDefault("第${job.chapterStartIndex + 1}章 → 第${job.chapterEndIndex + 1}章")
-}
-
-private fun formatTime(ts: Long): String {
-    if (ts <= 0) return ""
-    return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(ts))
-}
+// formatChapterRange / formatTime 复用 NovelVideoTaskCenterScreen.kt 的 internal 实现（Task 6 提升）
 
 private fun formatDuration(ms: Long): String {
     val totalSec = (ms / 1000).coerceAtLeast(0L)

@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -82,7 +80,7 @@ fun NovelVideoBookDetailScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onNewTask,
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                icon = { Icon(painter = androidx.compose.ui.res.painterResource(io.legado.app.R.drawable.ic_add), contentDescription = null) },
                 text = { Text("新建任务") }
             )
         }
