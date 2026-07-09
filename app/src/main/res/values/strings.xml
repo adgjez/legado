@@ -759,6 +759,10 @@
     <string name="novel_video_failed">已失败</string>
     <string name="novel_video_cancelled">已取消</string>
     <string name="novel_video_task_center">小说转视频任务中心</string>
+    <!-- 子项目 C：任务中心双入口（书架 / 任务） -->
+    <string name="novel_video_top_tasks">任务</string>
+    <string name="novel_video_shelf">书架</string>
+    <string name="novel_video_shelf_empty">还没有小说视频任务，去「任务」页新建一个吧</string>
     <string name="novel_video_tab_running">进行中</string>
     <string name="novel_video_tab_completed">已完成</string>
     <string name="novel_video_tab_failed">失败</string>

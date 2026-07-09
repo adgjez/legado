@@ -30,6 +30,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -74,17 +77,21 @@ fun NovelVideoTaskCenterScreen(
     presetBookName: String?,
     onBack: () -> Unit,
     onOpenJobDetail: (NovelVideoJob) -> Unit,
-    onOpenReview: (NovelVideoJob) -> Unit
+    onOpenReview: (NovelVideoJob) -> Unit,
+    onOpenBookDetail: (bookUrl: String, bookName: String) -> Unit
 ) {
     val runningJobs by viewModel.runningJobs.collectAsStateWithLifecycle()
     val completedJobs by viewModel.completedJobs.collectAsStateWithLifecycle()
     val failedJobs by viewModel.failedJobs.collectAsStateWithLifecycle()
     val compilations by viewModel.compilations.collectAsStateWithLifecycle()
     val serviceRunning by viewModel.serviceRunning.collectAsStateWithLifecycle()
+    val shelfBooks by viewModel.shelfBooks.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    // 子项目 C：顶部一级入口切换（0=任务，1=书架）
+    var topLevel by rememberSaveable { mutableIntStateOf(0) }
     var showConfigSheet by rememberSaveable { mutableStateOf(false) }
     var menuJob by remember { mutableStateOf<NovelVideoJob?>(null) }
     var deleteConfirmJob by remember { mutableStateOf<NovelVideoJob?>(null) }
@@ -103,10 +110,10 @@ fun NovelVideoTaskCenterScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (inMultiSelect() && selectedTab == 1) {
-                            "已选 ${selectedJobIds.size}"
-                        } else {
-                            stringResource(R.string.novel_video_task_center)
+                        when {
+                            topLevel == 1 -> stringResource(R.string.novel_video_shelf)
+                            inMultiSelect() && selectedTab == 1 -> "已选 ${selectedJobIds.size}"
+                            else -> stringResource(R.string.novel_video_task_center)
                         }
                     )
                 },
@@ -188,7 +195,8 @@ fun NovelVideoTaskCenterScreen(
             )
         },
         floatingActionButton = {
-            if (!inMultiSelect()) {
+            // 子项目 C：书架态无 FAB（新建任务在书详情页）；任务态保留原 FAB
+            if (topLevel == 0 && !inMultiSelect()) {
                 FloatingActionButton(onClick = { showConfigSheet = true }) {
                     Icon(painter = painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.novel_video_new_task))
                 }
@@ -196,7 +204,52 @@ fun NovelVideoTaskCenterScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            PrimaryTabRow(selectedTabIndex = selectedTab) {
+            // 子项目 C：顶部一级入口切换（书架 / 任务）
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                SegmentedButton(
+                    selected = topLevel == 0,
+                    onClick = { topLevel = 0 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                ) { Text(stringResource(R.string.novel_video_top_tasks)) }
+                SegmentedButton(
+                    selected = topLevel == 1,
+                    onClick = { topLevel = 1 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                ) { Text(stringResource(R.string.novel_video_shelf)) }
+            }
+
+            if (topLevel == 1) {
+                // 书架
+                if (shelfBooks.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.novel_video_shelf_empty),
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
+                    ) {
+                        items(shelfBooks, key = { it.bookUrl }) { summary ->
+                            BookShelfCard(
+                                summary = summary,
+                                onClick = { onOpenBookDetail(summary.bookUrl, summary.bookName) }
+                            )
+                        }
+                    }
+                }
+            } else {
+                // 任务 4 Tab（原逻辑）
+                PrimaryTabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -296,6 +349,7 @@ fun NovelVideoTaskCenterScreen(
                     }
                 }
             }
+            } // 闭合 else（任务态）
         }
 
         // 新建任务 bottom sheet

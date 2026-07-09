@@ -50,6 +50,9 @@ class NovelVideoTaskCenterActivity :
                     },
                     onOpenReview = { job ->
                         startActivity(NovelVideoScreenplayReviewActivity.newIntent(this, job.id))
+                    },
+                    onOpenBookDetail = { bookUrl, bookName ->
+                        startActivity(NovelVideoBookDetailActivity.newIntent(this, bookUrl, bookName))
                     }
                 )
             }

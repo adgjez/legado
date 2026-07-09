@@ -9,13 +9,18 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.NovelVideoCompilation
 import io.legado.app.data.entities.NovelVideoJob
+import io.legado.app.help.ai.BookNovelVideoSummary
 import io.legado.app.help.ai.NovelVideoParams
+import io.legado.app.help.ai.computeCoverage
 import io.legado.app.service.NovelVideoService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 任务中心 VM：通过 Room Flow 监听任务列表；服务状态由 Activity 在 EventBus 回调中调
@@ -42,13 +47,50 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
     private val _compilations = MutableStateFlow<List<NovelVideoCompilation>>(emptyList())
     val compilations: StateFlow<List<NovelVideoCompilation>> = _compilations.asStateFlow()
 
+    /** 书架：所有有 novel-video 任务/整部视频的书聚合。子项目 C。 */
+    private val _shelfBooks = MutableStateFlow<List<BookNovelVideoSummary>>(emptyList())
+    val shelfBooks: StateFlow<List<BookNovelVideoSummary>> = _shelfBooks.asStateFlow()
+
     init {
         viewModelScope.launch { appDb.novelVideoDao.getRunningJobsFlow().collectLatest { _runningJobs.value = it } }
         viewModelScope.launch { appDb.novelVideoDao.getCompletedJobsFlow().collectLatest { _completedJobs.value = it } }
         viewModelScope.launch { appDb.novelVideoDao.getFailedJobsFlow().collectLatest { _failedJobs.value = it } }
         viewModelScope.launch { appDb.bookDao.flowAll().collectLatest { _allBooks.value = it } }
         viewModelScope.launch { appDb.novelVideoDao.getCompilationsFlow().collectLatest { _compilations.value = it } }
+        viewModelScope.launch {
+            appDb.novelVideoDao.getBookUrlsWithNovelVideoFlow().collectLatest { urls ->
+                _shelfBooks.value = urls.map { buildShelfSummary(it) }
+            }
+        }
         _serviceRunning.value = NovelVideoService.isRun
+    }
+
+    /**
+     * 构建单本书的书架聚合 summary（spec §7.1）。
+     * 从 bookDao/bookChapterDao/novelVideoDao 取元数据 + jobs，调 [computeCoverage]。
+     */
+    private suspend fun buildShelfSummary(bookUrl: String): BookNovelVideoSummary {
+        val book: Book? = withContext(Dispatchers.IO) {
+            runCatching { appDb.bookDao.getBook(bookUrl) }.getOrNull()
+        }
+        val jobs = withContext(Dispatchers.IO) {
+            runCatching { appDb.novelVideoDao.getJobsByBook(bookUrl) }.getOrDefault(emptyList())
+        }
+        val total = withContext(Dispatchers.IO) {
+            runCatching { appDb.bookChapterDao.getChapterCount(bookUrl) }.getOrDefault(0)
+        }
+        val compCount = runCatching {
+            appDb.novelVideoDao.getCompilationsByBookFlow(bookUrl).first().size
+        }.getOrDefault(0)
+        val coverPath = book?.let { runCatching { it.getDisplayCover() }.getOrNull() }
+        return computeCoverage(
+            bookUrl = bookUrl,
+            bookName = book?.name ?: bookUrl,
+            coverPath = coverPath,
+            totalChapters = total,
+            jobs = jobs,
+            compilationCount = compCount
+        )
     }
 
     /** 由 Activity 的 EventBus observer 调用以同步服务运行状态。 */
