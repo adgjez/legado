@@ -30,6 +30,10 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
     private val _job = MutableStateFlow<NovelVideoJob?>(null)
     val job: StateFlow<NovelVideoJob?> = _job.asStateFlow()
 
+    /** 首次加载完成标志，区分「加载中」与「加载完查无」。 */
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     private val _segments = MutableStateFlow<List<io.legado.app.data.entities.NovelVideoSegment>>(emptyList())
     val segments: StateFlow<List<io.legado.app.data.entities.NovelVideoSegment>> = _segments.asStateFlow()
 
@@ -54,6 +58,7 @@ class NovelVideoJobDetailViewModel(app: Application) : AndroidViewModel(app) {
             appDb.novelVideoDao.getJobFlow(jobId).collectLatest {
                 _job.value = it
                 _params.value = it?.let { NovelVideoParams.fromJob(it) } ?: NovelVideoParams()
+                _loaded.value = true
             }
         }
         viewModelScope.launch {

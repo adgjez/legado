@@ -18,6 +18,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +69,7 @@ fun NovelVideoScreenplayReviewScreen(
     val job by viewModel.job.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
+    val loaded by viewModel.loaded.collectAsStateWithLifecycle()
 
     val editable = job?.status == NovelVideoJobStatus.SCREENPLAY_PENDING_REVIEW
     var cancelConfirm by remember { mutableStateOf(false) }
@@ -101,10 +103,14 @@ fun NovelVideoScreenplayReviewScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = stringResource(R.string.novel_video_review_no_draft),
-                    color = MaterialTheme.colorScheme.outline
-                )
+                if (!loaded) {
+                    CircularProgressIndicator()
+                } else {
+                    Text(
+                        text = stringResource(R.string.novel_video_review_no_draft),
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
             return@Scaffold
         }

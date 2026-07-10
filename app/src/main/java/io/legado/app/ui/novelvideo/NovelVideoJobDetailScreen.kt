@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +75,7 @@ fun NovelVideoJobDetailScreen(
     val segments by viewModel.segments.collectAsStateWithLifecycle()
     val characters by viewModel.characters.collectAsStateWithLifecycle()
     val params by viewModel.params.collectAsStateWithLifecycle()
+    val loaded by viewModel.loaded.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -148,15 +150,18 @@ fun NovelVideoJobDetailScreen(
         }
     ) { padding ->
         if (currentJob == null) {
-            // M11：区分"任务不存在"与"无分镜段"，原复用 novel_video_no_segments 文案误导用户
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = stringResource(R.string.novel_video_job_not_found),
-                    color = MaterialTheme.colorScheme.outline
-                )
+                if (!loaded) {
+                    CircularProgressIndicator()
+                } else {
+                    Text(
+                        text = stringResource(R.string.novel_video_job_not_found),
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
             return@Scaffold
         }

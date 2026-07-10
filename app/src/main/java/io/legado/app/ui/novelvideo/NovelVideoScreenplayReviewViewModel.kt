@@ -35,6 +35,10 @@ class NovelVideoScreenplayReviewViewModel(app: Application) : AndroidViewModel(a
     private val _draft = MutableStateFlow<ScreenplayDraft?>(null)
     val draft: StateFlow<ScreenplayDraft?> = _draft.asStateFlow()
 
+    /** 首次加载完成标志，区分「加载中」与「加载完无草稿」。 */
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     /** 提交中标记，避免重复点击。 */
     private val _submitting = MutableStateFlow(false)
     val submitting: StateFlow<Boolean> = _submitting.asStateFlow()
@@ -51,6 +55,7 @@ class NovelVideoScreenplayReviewViewModel(app: Application) : AndroidViewModel(a
         viewModelScope.launch {
             appDb.novelVideoDao.getJobFlow(jobId).collectLatest { j ->
                 _job.value = j
+                _loaded.value = true
                 // 仅在首次加载或 status 变化时重载 draft，避免用户编辑期间被 DB 推送覆写
                 val statusChanged = j?.status != lastSeenStatus
                 lastSeenStatus = j?.status
