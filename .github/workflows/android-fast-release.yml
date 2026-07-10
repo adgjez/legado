@@ -2,6 +2,9 @@ name: Android Fast Release
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'archive-v3-*'
 
 permissions:
   contents: write
@@ -38,9 +41,17 @@ jobs:
       - name: Prepare release version
         id: version
         run: |
-          VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H%M)"
-          VERSION_CODE=$(($(date -u +%s) / 60))
-          TAG_NAME="archive-v3-${VERSION_NAME}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # tag 触发：从 tag 名 archive-v3-3.26.07091234 解析版本号
+            TAG_NAME="${GITHUB_REF##*/}"
+            VERSION_NAME="${TAG_NAME#archive-v3-}"
+            VERSION_CODE=$(($(date -u +%s) / 60))
+          else
+            # workflow_dispatch 触发：自动生成版本号与 tag 名
+            VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H%M)"
+            VERSION_CODE=$(($(date -u +%s) / 60))
+            TAG_NAME="archive-v3-${VERSION_NAME}"
+          fi
           {
             echo "name=${VERSION_NAME}"
             echo "code=${VERSION_CODE}"
