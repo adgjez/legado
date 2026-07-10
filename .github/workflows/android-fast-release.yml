@@ -134,24 +134,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -x
           CHANNEL_TAG="latest-arm64-release"
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$CHANNEL_TAG --jq '.id // empty' 2>/dev/null || true)
-          if [ -n "$RELEASE_ID" ]; then
-            gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --paginate \
-              --jq '.[] | select(.name | endswith(".apk")) | .id' \
-              | while read -r ASSET_ID; do
-                  gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
-                done
-            gh release upload "$CHANNEL_TAG" release-apks/*.apk --clobber
-            gh release edit "$CHANNEL_TAG" \
-              --title "阅读 Archive 更新通道" \
-              --notes-file release-notes.md
+          REPO="${{ github.repository }}"
+          API="https://api.github.com/repos/$REPO"
+          AUTH=(-H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json")
+
+          # 查更新通道 release 是否存在（绕开 gh release 子命令的参数解析问题，直接用 REST API）
+          REL_ID=$(curl -fsSL "${AUTH[@]}" "$API/releases/tags/$CHANNEL_TAG" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || true)
+
+          python3 -c "import json; json.dump({'name':'阅读 Archive 更新通道','body':open('release-notes.md').read()}, open('/tmp/rel.json','w'), ensure_ascii=False)"
+
+          if [ -n "$REL_ID" ]; then
+            curl -fsSL "${AUTH[@]}" "$API/releases/$REL_ID/assets" | python3 -c "import sys,json; [print(a['id']) for a in json.load(sys.stdin) if str(a.get('name','')).endswith('.apk')]" | while read -r AID; do
+              curl -fsSL -X DELETE "${AUTH[@]}" "$API/releases/assets/$AID" >/dev/null
+            done
+            curl -fsSL -X PATCH "${AUTH[@]}" -d @/tmp/rel.json "$API/releases/$REL_ID" >/dev/null
           else
-            gh release create "$CHANNEL_TAG" \
-              --title "阅读 Archive 更新通道" \
-              --notes-file release-notes.md
-            gh release upload "$CHANNEL_TAG" release-apks/*.apk --clobber
+            python3 -c "import json; d=json.load(open('/tmp/rel.json')); d.update({'tag_name':'$CHANNEL_TAG','target_commitish':'$GITHUB_SHA','prerelease':False}); json.dump(d, open('/tmp/rel.json','w'), ensure_ascii=False)"
+            REL_ID=$(curl -fsSL -X POST "${AUTH[@]}" -d @/tmp/rel.json "$API/releases" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))")
           fi
+
+          for apk in release-apks/*.apk; do
+            NAME=$(basename "$apk")
+            curl -fsSL -X POST -H "Authorization: token $GH_TOKEN" -H "Content-Type: application/octet-stream" --data-binary @"$apk" "https://uploads.github.com/repos/$REPO/releases/$REL_ID/assets?name=$NAME" >/dev/null
+          done
 
       - name: Sync release to Gitee
         env:
