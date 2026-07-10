@@ -109,17 +109,16 @@ class NovelVideoBookDetailViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /** 惰性加载单章标题（长按色块时调）。 */
-    fun loadChapterTitle(bookUrl: String, chapterIndex: Int) {
-        if (_chapterTitles.value.containsKey(chapterIndex)) return
-        viewModelScope.launch {
-            val chapter: BookChapter? = withContext(Dispatchers.IO) {
-                runCatching { appDb.bookChapterDao.getChapter(bookUrl, chapterIndex) }.getOrNull()
-            }
-            chapter?.title?.let { title ->
-                _chapterTitles.value = _chapterTitles.value + (chapterIndex to title)
-            }
+    /** 惰性加载单章标题，返回标题（长按色块 toast 用）。带缓存。 */
+    suspend fun loadChapterTitle(bookUrl: String, chapterIndex: Int): String? {
+        _chapterTitles.value[chapterIndex]?.let { return it }
+        val chapter: BookChapter? = withContext(Dispatchers.IO) {
+            runCatching { appDb.bookChapterDao.getChapter(bookUrl, chapterIndex) }.getOrNull()
         }
+        chapter?.title?.let { title ->
+            _chapterTitles.value = _chapterTitles.value + (chapterIndex to title)
+        }
+        return chapter?.title
     }
 
     /** 加载章节列表（供新建任务 sheet 用）。委托 [NovelVideoJobOps.loadChapters]。 */

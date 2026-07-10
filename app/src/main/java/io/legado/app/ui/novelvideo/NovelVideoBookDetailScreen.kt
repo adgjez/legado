@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,8 +33,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.widget.Toast
 import io.legado.app.data.entities.NovelVideoCompilation
 import io.legado.app.data.entities.NovelVideoJob
+import kotlinx.coroutines.launch
 
 /**
  * 书详情页（子项目 C）：聚合展示一本书的章节覆盖 + 任务 + 整部视频。
@@ -59,8 +63,8 @@ fun NovelVideoBookDetailScreen(
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val jobs by viewModel.jobs.collectAsStateWithLifecycle()
     val compilations by viewModel.compilations.collectAsStateWithLifecycle()
-    val chapterTitles by viewModel.chapterTitles.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var pendingDeleteCompilation by remember { mutableStateOf<NovelVideoCompilation?>(null) }
 
     Scaffold(
@@ -90,6 +94,16 @@ fun NovelVideoBookDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            if (summary == null) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 80.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else {
             // 概要卡
             item {
                 SummaryCard(summary)
@@ -111,22 +125,25 @@ fun NovelVideoBookDetailScreen(
                         if (jobAtChapter != null) {
                             onOpenJobDetail(jobAtChapter)
                         } else {
-                            android.widget.Toast.makeText(
+                            Toast.makeText(
                                 context,
                                 "第${idx + 1}章尚未建任务",
-                                android.widget.Toast.LENGTH_SHORT
+                                Toast.LENGTH_SHORT
                             ).show()
                         }
                     },
                     onChapterLongClick = { idx ->
-                        viewModel.loadChapterTitle(summary?.bookUrl ?: "", idx)
-                        val title = chapterTitles[idx]
-                        if (title != null) {
-                            android.widget.Toast.makeText(
-                                context,
-                                "第${idx + 1}章：$title",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
+                        val url = summary?.bookUrl
+                        if (url != null) {
+                            scope.launch {
+                                val title = viewModel.loadChapterTitle(url, idx)
+                                val msg = if (title != null) {
+                                    "第${idx + 1}章：$title"
+                                } else {
+                                    "第${idx + 1}章（无标题）"
+                                }
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 )
@@ -181,6 +198,7 @@ fun NovelVideoBookDetailScreen(
                     )
                 }
             }
+            } // 闭合 else（summary != null）
         }
     }
 
@@ -206,13 +224,7 @@ fun NovelVideoBookDetailScreen(
 }
 
 @Composable
-private fun SummaryCard(summary: io.legado.app.help.ai.BookNovelVideoSummary?) {
-    if (summary == null) {
-        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-            Text("加载中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        return
-    }
+private fun SummaryCard(summary: io.legado.app.help.ai.BookNovelVideoSummary) {
     androidx.compose.material3.Card(
         modifier = Modifier
             .fillMaxWidth()

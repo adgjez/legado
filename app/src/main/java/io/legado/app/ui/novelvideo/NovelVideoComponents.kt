@@ -6,19 +6,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -122,14 +119,14 @@ internal fun BookShelfCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable(onClick = onClick),
         shape = novelVideoCardShape,
         colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -190,6 +187,7 @@ internal fun BookShelfCard(
  *
  * @param statusByChapter 由 [BookNovelVideoSummary.statusByChapter] 提供
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ChapterCoverageGrid(
     totalChapters: Int,
@@ -209,16 +207,14 @@ internal fun ChapterCoverageGrid(
             )
             return@Column
         }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(28.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 320.dp),
+        // 用 FlowRow 替代 LazyVerticalGrid：避免在 LazyColumn 内同方向嵌套 Lazy 组件导致滚动冲突。
+        // 色块仅 28dp 小方块，非 lazy 渲染对千级章节也能接受；自然展开不限制高度，一屏看全。
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-            userScrollEnabled = true
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            items(totalChapters) { index ->
+            for (index in 0 until totalChapters) {
                 val status = statusByChapter[index] ?: ChapterStatus.NONE
                 val color = when (status) {
                     ChapterStatus.NONE -> palette.surfaceVariant
@@ -228,7 +224,7 @@ internal fun ChapterCoverageGrid(
                 }
                 Box(
                     modifier = Modifier
-                        .aspectRatio(1f)
+                        .size(28.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(color)
                         .combinedClickable(
