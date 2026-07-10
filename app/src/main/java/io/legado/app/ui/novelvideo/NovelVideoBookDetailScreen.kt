@@ -94,7 +94,8 @@ fun NovelVideoBookDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (summary == null) {
+            val s = summary
+            if (s == null) {
                 item {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 80.dp),
@@ -106,7 +107,7 @@ fun NovelVideoBookDetailScreen(
             } else {
             // 概要卡
             item {
-                SummaryCard(summary)
+                SummaryCard(s)
             }
 
             // 章节覆盖图
@@ -118,8 +119,8 @@ fun NovelVideoBookDetailScreen(
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
                 )
                 ChapterCoverageGrid(
-                    totalChapters = summary?.totalChapters ?: 0,
-                    statusByChapter = summary?.statusByChapter() ?: emptyMap(),
+                    totalChapters = s.totalChapters,
+                    statusByChapter = s.statusByChapter(),
                     onChapterClick = { idx ->
                         val jobAtChapter = jobs.firstOrNull { idx in it.chapterStartIndex..it.chapterEndIndex }
                         if (jobAtChapter != null) {
@@ -133,17 +134,14 @@ fun NovelVideoBookDetailScreen(
                         }
                     },
                     onChapterLongClick = { idx ->
-                        val url = summary?.bookUrl
-                        if (url != null) {
-                            scope.launch {
-                                val title = viewModel.loadChapterTitle(url, idx)
-                                val msg = if (title != null) {
-                                    "第${idx + 1}章：$title"
-                                } else {
-                                    "第${idx + 1}章（无标题）"
-                                }
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            val title = viewModel.loadChapterTitle(s.bookUrl, idx)
+                            val msg = if (title != null) {
+                                "第${idx + 1}章：$title"
+                            } else {
+                                "第${idx + 1}章（无标题）"
                             }
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
                     }
                 )
