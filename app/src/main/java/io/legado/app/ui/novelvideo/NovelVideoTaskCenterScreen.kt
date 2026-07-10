@@ -86,6 +86,7 @@ fun NovelVideoTaskCenterScreen(
     val compilations by viewModel.compilations.collectAsStateWithLifecycle()
     val serviceRunning by viewModel.serviceRunning.collectAsStateWithLifecycle()
     val shelfBooks by viewModel.shelfBooks.collectAsStateWithLifecycle()
+    val shelfLoaded by viewModel.shelfLoaded.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -224,26 +225,37 @@ fun NovelVideoTaskCenterScreen(
 
             if (topLevel == 1) {
                 // 书架
-                if (shelfBooks.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.novel_video_shelf_empty),
-                            color = MaterialTheme.colorScheme.outline
-                        )
+                when {
+                    !shelfLoaded -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
-                    ) {
-                        items(shelfBooks, key = { it.bookUrl }) { summary ->
-                            BookShelfCard(
-                                summary = summary,
-                                onClick = { onOpenBookDetail(summary.bookUrl, summary.bookName) }
+                    shelfBooks.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.novel_video_shelf_empty),
+                                color = MaterialTheme.colorScheme.outline
                             )
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
+                        ) {
+                            items(shelfBooks, key = { it.bookUrl }) { summary ->
+                                BookShelfCard(
+                                    summary = summary,
+                                    onClick = { onOpenBookDetail(summary.bookUrl, summary.bookName) }
+                                )
+                            }
                         }
                     }
                 }

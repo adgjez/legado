@@ -51,6 +51,10 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
     private val _shelfBooks = MutableStateFlow<List<BookNovelVideoSummary>>(emptyList())
     val shelfBooks: StateFlow<List<BookNovelVideoSummary>> = _shelfBooks.asStateFlow()
 
+    /** 书架是否已完成首次加载（区分「加载中」与「加载完确实空」）。 */
+    private val _shelfLoaded = MutableStateFlow(false)
+    val shelfLoaded: StateFlow<Boolean> = _shelfLoaded.asStateFlow()
+
     init {
         viewModelScope.launch { appDb.novelVideoDao.getRunningJobsFlow().collectLatest { _runningJobs.value = it } }
         viewModelScope.launch { appDb.novelVideoDao.getCompletedJobsFlow().collectLatest { _completedJobs.value = it } }
@@ -60,6 +64,7 @@ class NovelVideoTaskCenterViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             appDb.novelVideoDao.getBookUrlsWithNovelVideoFlow().collectLatest { urls ->
                 _shelfBooks.value = urls.map { buildShelfSummary(it) }
+                _shelfLoaded.value = true
             }
         }
         _serviceRunning.value = NovelVideoService.isRun

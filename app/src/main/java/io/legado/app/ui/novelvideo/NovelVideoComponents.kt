@@ -27,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -222,6 +224,12 @@ internal fun ChapterCoverageGrid(
                     ChapterStatus.COMPLETED -> Color(0xFF4CAF50)
                     ChapterStatus.FAILED -> palette.error
                 }
+                val statusLabel = when (status) {
+                    ChapterStatus.NONE -> "未做"
+                    ChapterStatus.RUNNING -> "进行中"
+                    ChapterStatus.COMPLETED -> "已完成"
+                    ChapterStatus.FAILED -> "失败"
+                }
                 Box(
                     modifier = Modifier
                         .size(28.dp)
@@ -229,8 +237,10 @@ internal fun ChapterCoverageGrid(
                         .background(color)
                         .combinedClickable(
                             onClick = { onChapterClick(index) },
-                            onLongClick = { onChapterLongClick(index) }
+                            onLongClick = { onChapterLongClick(index) },
+                            onClickLabel = "第${index + 1}章 $statusLabel"
                         )
+                        .semantics { contentDescription = "第${index + 1}章：$statusLabel" }
                 )
             }
         }
