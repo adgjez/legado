@@ -34,8 +34,8 @@ jobs:
           {
             echo
             echo "RELEASE_KEY_ALIAS=legado-ci-debug"
-            echo "RELEASE_KEY_PASSWORD=${{ secrets.CI_DEBUG_KEY_PASSWORD }}"
-            echo "RELEASE_STORE_PASSWORD=${{ secrets.CI_DEBUG_STORE_PASSWORD }}"
+            echo "RELEASE_KEY_PASSWORD=legado-ci-debug"
+            echo "RELEASE_STORE_PASSWORD=legado-ci-debug"
             echo "RELEASE_STORE_FILE=./ci-debug.keystore"
           } >> gradle.properties
 
