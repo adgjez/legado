@@ -11,36 +11,44 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiImageProviderEditBinding
+import io.legado.app.help.ai.backends.ProviderConnectionTester
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.main.ai.AiImageProviderConfig
-import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.launch
 
 class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBinding>() {
 
     override val binding by viewBinding(ActivityAiImageProviderEditBinding::inflate)
     private var providerId: String? = null
 
-    // Compose state
+    // 基础区
     private var nameText by mutableStateOf("")
-    private var baseUrlText by mutableStateOf("")
     private var apiKeyText by mutableStateOf("")
+    private var baseUrlText by mutableStateOf("")
     private var modelText by mutableStateOf("")
+    private var providerType by mutableStateOf(AiImageProviderConfig.TYPE_ARK)
+
+    // 高级区
     private var headersText by mutableStateOf("")
     private var timeoutText by mutableStateOf("300000")
-    private var enabledState by mutableStateOf(true)
-    private var providerType by mutableStateOf(AiImageProviderConfig.TYPE_ARK)
-    private var paramsText by mutableStateOf("")
     private var stylePromptText by mutableStateOf("")
-    private var scriptText by mutableStateOf("")
-    private var jsLibText by mutableStateOf("")
+    private var paramsText by mutableStateOf("")
+    private var advancedExpanded by mutableStateOf(false)
+
+    // 状态
+    private var enabledState by mutableStateOf(true)
+    private var testing by mutableStateOf(false)
+    private var testResult by mutableStateOf<ProviderConnectionTester.Result?>(null)
+
     private var editingField: Field = Field.PARAMS
 
     private val codeEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -49,8 +57,6 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         when (editingField) {
             Field.PARAMS -> paramsText = text
             Field.STYLE_PROMPT -> stylePromptText = text
-            Field.SCRIPT -> scriptText = text
-            Field.JS_LIB -> jsLibText = text
         }
     }
 
@@ -67,11 +73,9 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         val container = binding.root as? ViewGroup ?: return
         val titleBar = binding.titleBar
         val index = container.indexOfChild(titleBar)
-        // Remove all children after the title bar (the ScrollView and save button)
         while (container.childCount > index + 1) {
             container.removeViewAt(index + 1)
         }
-        // Also remove the title bar itself since Compose handles the top bar
         container.removeView(titleBar)
         val cv = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -80,51 +84,43 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                val isOpenAi = true
                 AiImageProviderEditScreen(
                     name = nameText,
                     onNameChange = { nameText = it },
-                    baseUrl = baseUrlText,
-                    onBaseUrlChange = { baseUrlText = it },
                     apiKey = apiKeyText,
                     onApiKeyChange = { apiKeyText = it },
+                    baseUrl = baseUrlText,
+                    onBaseUrlChange = { baseUrlText = it },
                     model = modelText,
                     onModelChange = { modelText = it },
+                    providerType = providerType,
+                    onTypeChange = {
+                        providerType = it
+                        testResult = null
+                    },
                     headers = headersText,
                     onHeadersChange = { headersText = it },
                     timeout = timeoutText,
                     onTimeoutChange = { timeoutText = it },
-                    enabled = enabledState,
-                    onEnabledChange = { enabledState = it },
-                    providerType = providerType,
-                    isOpenAi = isOpenAi,
-                    typeLabel = typeLabel(),
-                    onTypeClick = { selectType() },
                     stylePromptSummary = "${getString(R.string.ai_image_style_prompt)}: ${summary(stylePromptText)}",
                     onStylePromptClick = {
+                        editingField = Field.STYLE_PROMPT
                         openCodeEditor(
-                            Field.STYLE_PROMPT,
-                            getString(R.string.ai_image_style_prompt),
-                            stylePromptText,
-                            "text.html.markdown"
+                            getString(R.string.ai_image_style_prompt), stylePromptText, "text.html.markdown"
                         )
                     },
                     paramsSummary = "${getString(R.string.ai_image_params)}: ${summary(paramsText.ifBlank { defaultParams() })}",
                     onParamsClick = {
-                        openCodeEditor(
-                            Field.PARAMS,
-                            getString(R.string.ai_image_params),
-                            paramsText.ifBlank { defaultParams() }
-                        )
+                        editingField = Field.PARAMS
+                        openCodeEditor(getString(R.string.ai_image_params), paramsText.ifBlank { defaultParams() })
                     },
-                    scriptSummary = "${getString(R.string.ai_image_script)}: ${summary(scriptText)}",
-                    onScriptClick = {
-                        openCodeEditor(Field.SCRIPT, getString(R.string.ai_image_script), scriptText)
-                    },
-                    jsLibSummary = "jsLib: ${summary(jsLibText)}",
-                    onJsLibClick = {
-                        openCodeEditor(Field.JS_LIB, "jsLib", jsLibText)
-                    },
+                    enabled = enabledState,
+                    onEnabledChange = { enabledState = it },
+                    advancedExpanded = advancedExpanded,
+                    onAdvancedExpandedChange = { advancedExpanded = it },
+                    testing = testing,
+                    testResult = testResult,
+                    onTestClick = { runTest() },
                     onSave = { save() },
                     onBack = { finish() }
                 )
@@ -135,54 +131,42 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
 
     private fun bind(provider: AiImageProviderConfig?) {
         nameText = provider?.name.orEmpty()
-        baseUrlText = provider?.baseUrl.orEmpty()
         apiKeyText = provider?.apiKey.orEmpty()
+        baseUrlText = provider?.baseUrl.orEmpty()
         modelText = provider?.model.orEmpty()
         headersText = provider?.headers.orEmpty()
         timeoutText = (provider?.validTimeout() ?: 300_000L).toString()
         enabledState = provider?.enabled ?: true
         paramsText = provider?.defaultParamsJson.orEmpty()
         stylePromptText = provider?.stylePrompt.orEmpty()
-        scriptText = provider?.script.orEmpty()
-        jsLibText = provider?.jsLib.orEmpty()
     }
 
-    private fun selectType() {
-        val types = listOf(
-            AiImageProviderConfig.TYPE_ARK,
-            AiImageProviderConfig.TYPE_DASHSCOPE,
-            AiImageProviderConfig.TYPE_GEMINI,
-            AiImageProviderConfig.TYPE_GROK,
-            AiImageProviderConfig.TYPE_KLING,
-            AiImageProviderConfig.TYPE_MINIMAX,
-            AiImageProviderConfig.TYPE_VIDU
+    /** 用当前编辑态构建临时 config 供连通性测试，不落库。 */
+    private fun buildConfigForTest(): AiImageProviderConfig {
+        val old = currentProvider()
+        return (old ?: AiImageProviderConfig(name = nameText, type = providerType)).copy(
+            name = nameText,
+            type = providerType,
+            baseUrl = baseUrlText,
+            apiKey = apiKeyText,
+            model = modelText
         )
-        showComposeActionListDialog(
-            title = getString(R.string.ai_image_provider_type),
-            labels = types.map { typeLabel(it) }
-        ) { index ->
-            types.getOrNull(index)?.let { providerType = it }
+    }
+
+    private fun runTest() {
+        if (testing) return
+        testing = true
+        testResult = null
+        lifecycleScope.launch {
+            try {
+                testResult = ProviderConnectionTester.testImage(buildConfigForTest())
+            } finally {
+                testing = false
+            }
         }
     }
 
-    private fun typeLabel(type: String = providerType): String = when (type) {
-        AiImageProviderConfig.TYPE_ARK -> getString(R.string.ai_image_provider_ark)
-        AiImageProviderConfig.TYPE_DASHSCOPE -> getString(R.string.ai_image_provider_dashscope)
-        AiImageProviderConfig.TYPE_GEMINI -> getString(R.string.ai_image_provider_gemini)
-        AiImageProviderConfig.TYPE_GROK -> getString(R.string.ai_image_provider_grok)
-        AiImageProviderConfig.TYPE_KLING -> getString(R.string.ai_image_provider_kling)
-        AiImageProviderConfig.TYPE_MINIMAX -> getString(R.string.ai_image_provider_minimax)
-        AiImageProviderConfig.TYPE_VIDU -> getString(R.string.ai_image_provider_vidu)
-        else -> type
-    }
-
-    private fun openCodeEditor(
-        field: Field,
-        title: String,
-        text: String,
-        languageName: String = "source.js"
-    ) {
-        editingField = field
+    private fun openCodeEditor(title: String, text: String, languageName: String = "source.js") {
         codeEditLauncher.launch(Intent(this, CodeEditActivity::class.java).apply {
             putExtra("title", title)
             putExtra("text", text)
@@ -206,8 +190,6 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             model = modelText,
             defaultParamsJson = paramsText.ifBlank { defaultParams() },
             stylePrompt = stylePromptText.trim(),
-            jsLib = jsLibText,
-            script = scriptText,
             timeoutMillisecond = timeoutText.toLongOrNull() ?: 300_000L,
             enabled = if (needDefaultProvider) true else enabledState
         )
@@ -225,19 +207,14 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         return AppConfig.aiImageProviderList.firstOrNull { it.id == id }
     }
 
-    private fun defaultParams(): String {
-        return ""
-    }
+    private fun defaultParams(): String = ""
 
-    private fun summary(value: String): String {
-        return value.trim().lineSequence().firstOrNull()?.take(36)?.ifBlank { null } ?: "未设置"
-    }
+    private fun summary(value: String): String =
+        value.trim().lineSequence().firstOrNull()?.take(36)?.ifBlank { null } ?: "未设置"
 
     private enum class Field {
         PARAMS,
-        STYLE_PROMPT,
-        SCRIPT,
-        JS_LIB
+        STYLE_PROMPT
     }
 
     companion object {

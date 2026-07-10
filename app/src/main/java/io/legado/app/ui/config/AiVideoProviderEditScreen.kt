@@ -18,8 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
@@ -42,27 +40,35 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
+import io.legado.app.help.ai.backends.ProviderConnectionTester
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.ui.main.ai.AiVideoProviderConfig
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
 
+/**
+ * 视频供应商编辑页（按 ArcReel 模型重构）。
+ *
+ * 结构：类型卡片选择 → 基础区（name/key/baseUrl/model，placeholder 显示默认）→
+ * 连通性测试 → 高级折叠区（submit/poll URL、JSONPath、timeout，留空用默认）→ 启用 → 测试/保存。
+ */
 @Composable
 internal fun AiVideoProviderEditScreen(
     name: String,
     onNameChange: (String) -> Unit,
+    apiKey: String,
+    onApiKeyChange: (String) -> Unit,
+    baseUrl: String,
+    onBaseUrlChange: (String) -> Unit,
+    model: String,
+    onModelChange: (String) -> Unit,
+    providerType: String,
+    onTypeChange: (String) -> Unit,
     submitUrl: String,
     onSubmitUrlChange: (String) -> Unit,
     pollUrlTemplate: String,
     onPollUrlTemplateChange: (String) -> Unit,
-    apiKey: String,
-    onApiKeyChange: (String) -> Unit,
-    model: String,
-    onModelChange: (String) -> Unit,
-    headers: String,
-    onHeadersChange: (String) -> Unit,
     taskIdJsonPath: String,
     onTaskIdJsonPathChange: (String) -> Unit,
     videoUrlJsonPath: String,
@@ -75,30 +81,32 @@ internal fun AiVideoProviderEditScreen(
     onFailedStatusValueChange: (String) -> Unit,
     maxReferenceImages: String,
     onMaxReferenceImagesChange: (String) -> Unit,
+    headers: String,
+    onHeadersChange: (String) -> Unit,
     submitTimeout: String,
     onSubmitTimeoutChange: (String) -> Unit,
     pollTimeout: String,
     onPollTimeoutChange: (String) -> Unit,
     pollInterval: String,
     onPollIntervalChange: (String) -> Unit,
-    enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-    providerType: String,
-    isOpenAi: Boolean,
-    typeLabel: String,
-    onTypeClick: () -> Unit,
     paramsSummary: String,
     onParamsClick: () -> Unit,
-    scriptSummary: String,
-    onScriptClick: () -> Unit,
-    jsLibSummary: String,
-    onJsLibClick: () -> Unit,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    advancedExpanded: Boolean,
+    onAdvancedExpandedChange: (Boolean) -> Unit,
+    testing: Boolean,
+    testResult: ProviderConnectionTester.Result?,
+    onTestClick: () -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val style = rememberAppDialogStyle()
     val palette = style.toMiuixPalette()
+    val meta = VideoProviderTypeRegistry.getOrNull(providerType)
+    val baseUrlPlaceholder = meta?.defaultBaseUrl?.ifBlank { null } ?: stringResource(R.string.provider_base_url_hint)
+    val modelPlaceholder = meta?.defaultModel?.ifBlank { null } ?: stringResource(R.string.provider_base_url_hint)
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
     ) {
@@ -122,125 +130,131 @@ internal fun AiVideoProviderEditScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Type selector
-                    LegadoMiuixCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onTypeClick),
-                        color = style.fieldSurface,
-                        contentColor = style.primaryText,
-                        cornerRadius = style.actionRadius,
-                        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
-                    ) {
-                        Text(
-                            text = "${stringResource(R.string.ai_video_provider_type)}: " + typeLabel,
-                            color = style.primaryText,
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    // ① 类型选择卡片
+                    ProviderTypeSelector(
+                        metas = VideoProviderTypeRegistry.metas,
+                        selectedTypeId = providerType,
+                        onSelect = onTypeChange
+                    )
 
+                    // ② 基础区
                     EditTextField(
                         value = name,
                         onValueChange = onNameChange,
                         label = stringResource(R.string.name)
                     )
+                    EditTextField(
+                        value = apiKey,
+                        onValueChange = onApiKeyChange,
+                        label = stringResource(R.string.ai_api_key),
+                        isPassword = true
+                    )
+                    EditTextField(
+                        value = baseUrl,
+                        onValueChange = onBaseUrlChange,
+                        label = stringResource(R.string.ai_base_url),
+                        placeholder = baseUrlPlaceholder,
+                        keyboardType = KeyboardType.Uri
+                    )
+                    EditTextField(
+                        value = model,
+                        onValueChange = onModelChange,
+                        label = stringResource(R.string.ai_model),
+                        placeholder = modelPlaceholder
+                    )
 
-                    if (isOpenAi) {
-                        EditTextField(
-                            value = submitUrl,
-                            onValueChange = onSubmitUrlChange,
-                            label = stringResource(R.string.ai_video_submit_url),
-                            keyboardType = KeyboardType.Uri
-                        )
-                        EditTextField(
-                            value = pollUrlTemplate,
-                            onValueChange = onPollUrlTemplateChange,
-                            label = stringResource(R.string.ai_video_poll_url),
-                            keyboardType = KeyboardType.Uri
-                        )
-                        EditTextField(
-                            value = apiKey,
-                            onValueChange = onApiKeyChange,
-                            label = stringResource(R.string.ai_api_key),
-                            isPassword = true
-                        )
-                        EditTextField(
-                            value = model,
-                            onValueChange = onModelChange,
-                            label = stringResource(R.string.ai_model)
-                        )
-                        EditTextField(
-                            value = headers,
-                            onValueChange = onHeadersChange,
-                            label = stringResource(R.string.ai_custom_headers),
-                            minLines = 3,
-                            maxLines = 5
-                        )
+                    // ③ 连通性测试结果
+                    TestResultView(result = testResult)
 
-                        // JSONPath extraction
-                        Text(
-                            text = stringResource(R.string.ai_video_jsonpath_section),
-                            color = style.secondaryText,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                        EditTextField(
-                            value = taskIdJsonPath,
-                            onValueChange = onTaskIdJsonPathChange,
-                            label = stringResource(R.string.ai_video_task_id_jsonpath)
-                        )
-                        EditTextField(
-                            value = videoUrlJsonPath,
-                            onValueChange = onVideoUrlJsonPathChange,
-                            label = stringResource(R.string.ai_video_url_jsonpath)
-                        )
-                        EditTextField(
-                            value = statusJsonPath,
-                            onValueChange = onStatusJsonPathChange,
-                            label = stringResource(R.string.ai_video_status_jsonpath)
-                        )
-                        EditTextField(
-                            value = doneStatusValue,
-                            onValueChange = onDoneStatusValueChange,
-                            label = stringResource(R.string.ai_video_done_status)
-                        )
-                        EditTextField(
-                            value = failedStatusValue,
-                            onValueChange = onFailedStatusValueChange,
-                            label = stringResource(R.string.ai_video_failed_status)
-                        )
-                        EditTextField(
-                            value = maxReferenceImages,
-                            onValueChange = onMaxReferenceImagesChange,
-                            label = stringResource(R.string.ai_video_max_reference_images),
-                            keyboardType = KeyboardType.Number
-                        )
+                    // ④ 高级折叠区
+                    AdvancedConfigSection(
+                        expanded = advancedExpanded,
+                        onToggle = onAdvancedExpandedChange
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            EditTextField(
+                                value = submitUrl,
+                                onValueChange = onSubmitUrlChange,
+                                label = stringResource(R.string.ai_video_submit_url),
+                                placeholder = stringResource(R.string.provider_base_url_hint),
+                                keyboardType = KeyboardType.Uri
+                            )
+                            EditTextField(
+                                value = pollUrlTemplate,
+                                onValueChange = onPollUrlTemplateChange,
+                                label = stringResource(R.string.ai_video_poll_url),
+                                placeholder = stringResource(R.string.provider_base_url_hint),
+                                keyboardType = KeyboardType.Uri
+                            )
+                            EditTextField(
+                                value = taskIdJsonPath,
+                                onValueChange = onTaskIdJsonPathChange,
+                                label = stringResource(R.string.ai_video_task_id_jsonpath),
+                                placeholder = stringResource(R.string.provider_base_url_hint)
+                            )
+                            EditTextField(
+                                value = videoUrlJsonPath,
+                                onValueChange = onVideoUrlJsonPathChange,
+                                label = stringResource(R.string.ai_video_url_jsonpath),
+                                placeholder = stringResource(R.string.provider_base_url_hint)
+                            )
+                            EditTextField(
+                                value = statusJsonPath,
+                                onValueChange = onStatusJsonPathChange,
+                                label = stringResource(R.string.ai_video_status_jsonpath),
+                                placeholder = stringResource(R.string.provider_base_url_hint)
+                            )
+                            EditTextField(
+                                value = doneStatusValue,
+                                onValueChange = onDoneStatusValueChange,
+                                label = stringResource(R.string.ai_video_done_status),
+                                placeholder = stringResource(R.string.provider_base_url_hint)
+                            )
+                            EditTextField(
+                                value = failedStatusValue,
+                                onValueChange = onFailedStatusValueChange,
+                                label = stringResource(R.string.ai_video_failed_status),
+                                placeholder = stringResource(R.string.provider_base_url_hint)
+                            )
+                            EditTextField(
+                                value = maxReferenceImages,
+                                onValueChange = onMaxReferenceImagesChange,
+                                label = stringResource(R.string.ai_video_max_reference_images),
+                                keyboardType = KeyboardType.Number
+                            )
+                            EditTextField(
+                                value = headers,
+                                onValueChange = onHeadersChange,
+                                label = stringResource(R.string.ai_custom_headers),
+                                minLines = 3,
+                                maxLines = 5
+                            )
+                            EditTextField(
+                                value = submitTimeout,
+                                onValueChange = onSubmitTimeoutChange,
+                                label = stringResource(R.string.ai_video_submit_timeout),
+                                keyboardType = KeyboardType.Number
+                            )
+                            EditTextField(
+                                value = pollTimeout,
+                                onValueChange = onPollTimeoutChange,
+                                label = stringResource(R.string.ai_video_poll_timeout),
+                                keyboardType = KeyboardType.Number
+                            )
+                            EditTextField(
+                                value = pollInterval,
+                                onValueChange = onPollIntervalChange,
+                                label = stringResource(R.string.ai_video_poll_interval),
+                                keyboardType = KeyboardType.Number
+                            )
+                            EditCodeButton(
+                                label = paramsSummary,
+                                onClick = onParamsClick
+                            )
+                        }
                     }
 
-                    // Timeouts
-                    EditTextField(
-                        value = submitTimeout,
-                        onValueChange = onSubmitTimeoutChange,
-                        label = stringResource(R.string.ai_video_submit_timeout),
-                        keyboardType = KeyboardType.Number
-                    )
-                    EditTextField(
-                        value = pollTimeout,
-                        onValueChange = onPollTimeoutChange,
-                        label = stringResource(R.string.ai_video_poll_timeout),
-                        keyboardType = KeyboardType.Number
-                    )
-                    EditTextField(
-                        value = pollInterval,
-                        onValueChange = onPollIntervalChange,
-                        label = stringResource(R.string.ai_video_poll_interval),
-                        keyboardType = KeyboardType.Number
-                    )
-
-                    // Enabled checkbox
+                    // ⑤ 启用开关
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -248,10 +262,10 @@ internal fun AiVideoProviderEditScreen(
                             .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Checkbox(
+                        androidx.compose.material3.Checkbox(
                             checked = enabled,
                             onCheckedChange = onEnabledChange,
-                            colors = CheckboxDefaults.colors(
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(
                                 checkedColor = palette.accent,
                                 uncheckedColor = palette.secondaryText,
                                 checkmarkColor = palette.surface
@@ -265,42 +279,59 @@ internal fun AiVideoProviderEditScreen(
                         )
                     }
 
-                    // Params button (OpenAI only)
-                    if (isOpenAi) {
-                        EditCodeButton(
-                            label = paramsSummary,
-                            onClick = onParamsClick
-                        )
-                    }
-
-                    // Script button (JS only)
-                    if (!isOpenAi) {
-                        EditCodeButton(
-                            label = scriptSummary,
-                            onClick = onScriptClick
-                        )
-                        EditCodeButton(
-                            label = jsLibSummary,
-                            onClick = onJsLibClick
-                        )
-                    }
-
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                LegadoMiuixActionButton(
-                    text = stringResource(R.string.action_save),
-                    palette = palette,
-                    onClick = onSave,
+                // ⑥ 底部操作栏：测试 + 保存
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 14.dp),
-                    primary = true,
-                    cornerRadius = style.actionRadius,
-                    minHeight = 46.dp
-                )
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    LegadoMiuixActionButton(
+                        text = if (testing) stringResource(R.string.provider_testing) else stringResource(R.string.provider_test),
+                        palette = palette,
+                        onClick = onTestClick,
+                        modifier = Modifier.weight(1f),
+                        primary = false,
+                        cornerRadius = style.actionRadius,
+                        minHeight = 46.dp
+                    )
+                    LegadoMiuixActionButton(
+                        text = stringResource(R.string.action_save),
+                        palette = palette,
+                        onClick = onSave,
+                        modifier = Modifier.weight(1f),
+                        primary = true,
+                        cornerRadius = style.actionRadius,
+                        minHeight = 46.dp
+                    )
+                }
             }
         }
+    }
+}
+
+/** 连通性测试结果行内提示卡。null 时不渲染。 */
+@Composable
+private fun TestResultView(result: ProviderConnectionTester.Result?) {
+    if (result == null) return
+    val style = rememberAppDialogStyle()
+    val color = if (result.success) Color(0xFF2E7D32) else style.accent
+    LegadoMiuixCard(
+        modifier = Modifier.fillMaxWidth(),
+        color = color.copy(alpha = 0.10f),
+        contentColor = style.primaryText,
+        cornerRadius = style.actionRadius,
+        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = result.message,
+            color = color,
+            fontSize = 13.sp
+        )
     }
 }
 
@@ -358,7 +389,8 @@ private fun EditTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     isPassword: Boolean = false,
     minLines: Int = 1,
-    maxLines: Int = 1
+    maxLines: Int = 1,
+    placeholder: String? = null
 ) {
     val style = rememberAppDialogStyle()
     Column(
@@ -380,6 +412,7 @@ private fun EditTextField(
             singleLine = maxLines == 1,
             minLines = minLines,
             maxLines = maxLines,
+            placeholder = placeholder?.let { { Text(it, color = style.secondaryText, fontSize = 13.sp) } },
             visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             shape = RoundedCornerShape(style.actionRadius),

@@ -11,29 +11,35 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiImageProviderEditBinding
+import io.legado.app.help.ai.backends.ProviderConnectionTester
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
-import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.launch
 
 class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBinding>() {
 
     override val binding by viewBinding(ActivityAiImageProviderEditBinding::inflate)
     private var providerId: String? = null
 
-    // Compose state
+    // 基础区
     private var nameText by mutableStateOf("")
+    private var apiKeyText by mutableStateOf("")
+    private var baseUrlText by mutableStateOf("")
+    private var modelText by mutableStateOf("")
+    private var providerType by mutableStateOf(AiVideoProviderConfig.TYPE_ARK)
+
+    // 高级区
     private var submitUrlText by mutableStateOf("")
     private var pollUrlTemplateText by mutableStateOf("")
-    private var apiKeyText by mutableStateOf("")
-    private var modelText by mutableStateOf("")
     private var headersText by mutableStateOf("")
     private var taskIdJsonPathText by mutableStateOf("\$.data.id")
     private var videoUrlJsonPathText by mutableStateOf("\$.data.video_url")
@@ -44,21 +50,20 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     private var submitTimeoutText by mutableStateOf("60000")
     private var pollTimeoutText by mutableStateOf("600000")
     private var pollIntervalText by mutableStateOf("2000")
-    private var enabledState by mutableStateOf(true)
-    private var providerType by mutableStateOf(AiVideoProviderConfig.TYPE_ARK)
     private var paramsText by mutableStateOf("")
-    private var scriptText by mutableStateOf("")
-    private var jsLibText by mutableStateOf("")
-    private var editingField: Field = Field.PARAMS
+    private var advancedExpanded by mutableStateOf(false)
+
+    // 状态
+    private var enabledState by mutableStateOf(true)
+    private var testing by mutableStateOf(false)
+    private var testResult by mutableStateOf<ProviderConnectionTester.Result?>(null)
+
+    private var editingParams = false
 
     private val codeEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
         val text = result.data?.getStringExtra("text") ?: return@registerForActivityResult
-        when (editingField) {
-            Field.PARAMS -> paramsText = text
-            Field.SCRIPT -> scriptText = text
-            Field.JS_LIB -> jsLibText = text
-        }
+        if (editingParams) paramsText = text
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -85,20 +90,25 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                val isOpenAi = true
                 AiVideoProviderEditScreen(
                     name = nameText,
                     onNameChange = { nameText = it },
+                    apiKey = apiKeyText,
+                    onApiKeyChange = { apiKeyText = it },
+                    baseUrl = baseUrlText,
+                    onBaseUrlChange = { baseUrlText = it },
+                    model = modelText,
+                    onModelChange = { modelText = it },
+                    providerType = providerType,
+                    onTypeChange = {
+                        providerType = it
+                        // 切换类型后清空旧测试结果
+                        testResult = null
+                    },
                     submitUrl = submitUrlText,
                     onSubmitUrlChange = { submitUrlText = it },
                     pollUrlTemplate = pollUrlTemplateText,
                     onPollUrlTemplateChange = { pollUrlTemplateText = it },
-                    apiKey = apiKeyText,
-                    onApiKeyChange = { apiKeyText = it },
-                    model = modelText,
-                    onModelChange = { modelText = it },
-                    headers = headersText,
-                    onHeadersChange = { headersText = it },
                     taskIdJsonPath = taskIdJsonPathText,
                     onTaskIdJsonPathChange = { taskIdJsonPathText = it },
                     videoUrlJsonPath = videoUrlJsonPathText,
@@ -111,34 +121,26 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
                     onFailedStatusValueChange = { failedStatusValueText = it },
                     maxReferenceImages = maxReferenceImagesText,
                     onMaxReferenceImagesChange = { maxReferenceImagesText = it },
+                    headers = headersText,
+                    onHeadersChange = { headersText = it },
                     submitTimeout = submitTimeoutText,
                     onSubmitTimeoutChange = { submitTimeoutText = it },
                     pollTimeout = pollTimeoutText,
                     onPollTimeoutChange = { pollTimeoutText = it },
                     pollInterval = pollIntervalText,
                     onPollIntervalChange = { pollIntervalText = it },
-                    enabled = enabledState,
-                    onEnabledChange = { enabledState = it },
-                    providerType = providerType,
-                    isOpenAi = isOpenAi,
-                    typeLabel = typeLabel(),
-                    onTypeClick = { selectType() },
                     paramsSummary = "${getString(R.string.ai_video_params)}: ${summary(paramsText.ifBlank { defaultParams() })}",
                     onParamsClick = {
-                        openCodeEditor(
-                            Field.PARAMS,
-                            getString(R.string.ai_video_params),
-                            paramsText.ifBlank { defaultParams() }
-                        )
+                        editingParams = true
+                        openCodeEditor(getString(R.string.ai_video_params), paramsText.ifBlank { defaultParams() })
                     },
-                    scriptSummary = "${getString(R.string.ai_video_script)}: ${summary(scriptText)}",
-                    onScriptClick = {
-                        openCodeEditor(Field.SCRIPT, getString(R.string.ai_video_script), scriptText)
-                    },
-                    jsLibSummary = "jsLib: ${summary(jsLibText)}",
-                    onJsLibClick = {
-                        openCodeEditor(Field.JS_LIB, "jsLib", jsLibText)
-                    },
+                    enabled = enabledState,
+                    onEnabledChange = { enabledState = it },
+                    advancedExpanded = advancedExpanded,
+                    onAdvancedExpandedChange = { advancedExpanded = it },
+                    testing = testing,
+                    testResult = testResult,
+                    onTestClick = { runTest() },
                     onSave = { save() },
                     onBack = { finish() }
                 )
@@ -149,10 +151,11 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
 
     private fun bind(provider: AiVideoProviderConfig?) {
         nameText = provider?.name.orEmpty()
+        apiKeyText = provider?.apiKey.orEmpty()
+        baseUrlText = provider?.baseUrl.orEmpty()
+        modelText = provider?.model.orEmpty()
         submitUrlText = provider?.submitUrl.orEmpty()
         pollUrlTemplateText = provider?.pollUrlTemplate.orEmpty()
-        apiKeyText = provider?.apiKey.orEmpty()
-        modelText = provider?.model.orEmpty()
         headersText = provider?.headers.orEmpty()
         taskIdJsonPathText = provider?.taskIdJsonPath?.ifBlank { "\$.data.id" } ?: "\$.data.id"
         videoUrlJsonPathText = provider?.videoUrlJsonPath?.ifBlank { "\$.data.video_url" } ?: "\$.data.video_url"
@@ -165,54 +168,34 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         pollIntervalText = (provider?.validPollInterval() ?: 2_000L).toString()
         enabledState = provider?.enabled ?: true
         paramsText = provider?.defaultParamsJson.orEmpty()
-        scriptText = provider?.script.orEmpty()
-        jsLibText = provider?.jsLib.orEmpty()
     }
 
-    private fun selectType() {
-        val types = listOf(
-            AiVideoProviderConfig.TYPE_ARK,
-            AiVideoProviderConfig.TYPE_AGNES,
-            AiVideoProviderConfig.TYPE_SORA,
-            AiVideoProviderConfig.TYPE_VEO,
-            AiVideoProviderConfig.TYPE_KLING,
-            AiVideoProviderConfig.TYPE_NEWAPI,
-            AiVideoProviderConfig.TYPE_V2,
-            AiVideoProviderConfig.TYPE_DASHSCOPE,
-            AiVideoProviderConfig.TYPE_MINIMAX,
-            AiVideoProviderConfig.TYPE_VIDU,
-            AiVideoProviderConfig.TYPE_GROK
+    /** 用当前编辑态构建临时 config 供连通性测试，不落库。 */
+    private fun buildConfigForTest(): AiVideoProviderConfig {
+        val old = currentProvider()
+        return (old ?: AiVideoProviderConfig(name = nameText, type = providerType)).copy(
+            name = nameText,
+            type = providerType,
+            baseUrl = baseUrlText,
+            apiKey = apiKeyText,
+            model = modelText
         )
-        showComposeActionListDialog(
-            title = getString(R.string.ai_video_provider_type),
-            labels = types.map { typeLabel(it) }
-        ) { index ->
-            types.getOrNull(index)?.let { providerType = it }
+    }
+
+    private fun runTest() {
+        if (testing) return
+        testing = true
+        testResult = null
+        lifecycleScope.launch {
+            try {
+                testResult = ProviderConnectionTester.testVideo(buildConfigForTest())
+            } finally {
+                testing = false
+            }
         }
     }
 
-    private fun typeLabel(type: String = providerType): String = when (type) {
-        AiVideoProviderConfig.TYPE_ARK -> getString(R.string.ai_video_provider_ark)
-        AiVideoProviderConfig.TYPE_AGNES -> getString(R.string.ai_video_provider_agnes)
-        AiVideoProviderConfig.TYPE_SORA -> getString(R.string.ai_video_provider_sora)
-        AiVideoProviderConfig.TYPE_VEO -> getString(R.string.ai_video_provider_veo)
-        AiVideoProviderConfig.TYPE_KLING -> getString(R.string.ai_video_provider_kling)
-        AiVideoProviderConfig.TYPE_NEWAPI -> getString(R.string.ai_video_provider_newapi)
-        AiVideoProviderConfig.TYPE_V2 -> getString(R.string.ai_video_provider_v2)
-        AiVideoProviderConfig.TYPE_DASHSCOPE -> getString(R.string.ai_video_provider_dashscope)
-        AiVideoProviderConfig.TYPE_MINIMAX -> getString(R.string.ai_video_provider_minimax)
-        AiVideoProviderConfig.TYPE_VIDU -> getString(R.string.ai_video_provider_vidu)
-        AiVideoProviderConfig.TYPE_GROK -> getString(R.string.ai_video_provider_grok)
-        else -> type
-    }
-
-    private fun openCodeEditor(
-        field: Field,
-        title: String,
-        text: String,
-        languageName: String = "source.js"
-    ) {
-        editingField = field
+    private fun openCodeEditor(title: String, text: String, languageName: String = "source.js") {
         codeEditLauncher.launch(Intent(this, CodeEditActivity::class.java).apply {
             putExtra("title", title)
             putExtra("text", text)
@@ -230,7 +213,7 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         val updated = (old ?: AiVideoProviderConfig(name = nameText, type = providerType)).copy(
             name = nameText,
             type = providerType,
-            baseUrl = "",
+            baseUrl = baseUrlText,
             apiKey = apiKeyText,
             headers = headersText,
             model = modelText,
@@ -243,8 +226,6 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             failedStatusValue = failedStatusValueText.ifBlank { "failed" },
             defaultParamsJson = paramsText.ifBlank { defaultParams() },
             maxReferenceImages = maxReferenceImagesText.toIntOrNull()?.coerceIn(0, 16) ?: 3,
-            jsLib = jsLibText,
-            script = scriptText,
             submitTimeoutMillisecond = submitTimeoutText.toLongOrNull() ?: 60_000L,
             pollTimeoutMillisecond = pollTimeoutText.toLongOrNull() ?: 600_000L,
             pollIntervalMillisecond = pollIntervalText.toLongOrNull() ?: 2_000L,
@@ -264,19 +245,10 @@ class AiVideoProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         return AppConfig.aiVideoProviderList.firstOrNull { it.id == id }
     }
 
-    private fun defaultParams(): String {
-        return ""
-    }
+    private fun defaultParams(): String = ""
 
-    private fun summary(value: String): String {
-        return value.trim().lineSequence().firstOrNull()?.take(36)?.ifBlank { null } ?: "未设置"
-    }
-
-    private enum class Field {
-        PARAMS,
-        SCRIPT,
-        JS_LIB
-    }
+    private fun summary(value: String): String =
+        value.trim().lineSequence().firstOrNull()?.take(36)?.ifBlank { null } ?: "未设置"
 
     companion object {
         private const val EXTRA_PROVIDER_ID = "providerId"
