@@ -113,7 +113,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/${{ steps.version.outputs.tag }} --jq '.id' 2>/dev/null || true)
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/${{ steps.version.outputs.tag }} --jq '.id // empty' 2>/dev/null || true)
           if [ -n "$RELEASE_ID" ]; then
             gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --paginate \
               --jq '.[] | select(.name | endswith(".apk")) | .id' \
@@ -138,7 +138,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           CHANNEL_TAG="latest-arm64-release"
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$CHANNEL_TAG --jq '.id' 2>/dev/null || true)
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$CHANNEL_TAG --jq '.id // empty' 2>/dev/null || true)
           if [ -n "$RELEASE_ID" ]; then
             gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --paginate \
               --jq '.[] | select(.name | endswith(".apk")) | .id' \
