@@ -60,24 +60,21 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           cat > release-notes.md <<'EOF'
-          阅读 Archive 小说转视频工作台更新
+          阅读 Archive 更新
 
-          本次更新为「小说转视频」功能引入项目化工作台，以「书」为入口聚合任务与整部视频，并修复多轮体验问题。
+          按 ArcReel 模型重构 AI 视频/图像供应商编辑界面，并修复若干配置问题。
 
           新增：
-          - 任务中心新增「书架」一级入口，与「任务」并列切换。书架聚合展示所有有视频任务的小说及其章节进度。
-          - 新增书详情页：概要卡（已覆盖章节数 / 任务数 / 整部视频数）+ 章节覆盖色块图 + 任务列表 + 整部视频列表，可从书架或色块快速定位任务。
-          - 新增章节覆盖图：每章一个色块（灰未做 / 蓝进行中 / 绿完成 / 红失败），点击定位该章任务，长按显示章节标题。
+          - 供应商编辑页改为类型卡片选择，预设类型一目了然，替代旧的文字弹窗。
+          - 新增连通性测试按钮：填好 API Key + Base URL 后可一键探测地址可达性与 Key 有效性，不消耗生成额度。
+          - 新增「高级配置」折叠区，收纳 submit/poll URL、JSONPath、超时等技术字段，避免吓退普通用户。
 
           修复：
-          - 修复章节覆盖图在书详情页内嵌套滚动冲突导致的滑动卡顿。
-          - 修复书架卡片边距区域无法点击进入的问题。
-          - 修复长按章节色块首次无响应的时序问题。
-          - 修复任务详情页、剧本审阅页、书详情页、书架进入瞬间因数据未加载完成而误显「任务不存在 / 无草稿 / 空态」的问题，现统一显示加载指示。
+          - 修复视频供应商保存时 Base URL 被写死为空的问题（此前填写的 Base URL 不会保存）。
+          - 修复图像供应商类型选择遗漏 OpenAI / Agnes 两个类型的问题。
 
           调整：
-          - 抽取小说转视频任务操作共享层，修复任务中心与详情页双视图并发时的状态覆写问题。
-          - 章节覆盖色块增加无障碍朗读，TalkBack 可正确播报章节状态。
+          - 移除已失效的 isOpenAi / 脚本 / jsLib 分支等死代码。
           EOF
 
       - name: Build arm64 release APK
@@ -150,9 +147,10 @@ jobs:
               --title "阅读 Archive 更新通道" \
               --notes-file release-notes.md
           else
-            gh release create "$CHANNEL_TAG" release-apks/*.apk \
+            gh release create "$CHANNEL_TAG" \
               --title "阅读 Archive 更新通道" \
               --notes-file release-notes.md
+            gh release upload "$CHANNEL_TAG" release-apks/*.apk --clobber
           fi
 
       - name: Sync release to Gitee
